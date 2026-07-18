@@ -9,7 +9,7 @@ This will be intially designed with quantum computing in mind. I will also attem
     - Database of news sources
     - Daily (Weekly) Search & Report
 2. Job Tracker
-    - Will scour job boards weekly
+    - Will scour job boards weekly including Indeed, LinkedIn, specific companies job boards, university job boards, etc.
     - Compare with company and connection database
     - Job evaluator
 3. Company database
