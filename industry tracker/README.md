@@ -3,3 +3,5 @@ Industry Tracker is intended to follow news and developments in a certain indust
 Develop a list of companies
 IBM
 Anderon
+Qedma
+Algoritmiq
