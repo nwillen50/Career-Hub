@@ -1,14 +1,39 @@
-# This file tells github which files and folders to ignore when staging commits to and pulling from our repository
+# Personal data never lives in the repo. The app keeps it in
+# ~/Library/Application Support/CareerHub. These patterns are a second line of defense.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+data/
+backups/
+exports/
+*.csv
+!tests/fixtures/**/*.csv
+*.pdf
+!tests/fixtures/**/*.pdf
 
-
-# Virtual environments
-venv/
-.venv/
-env/
-
-# Python cache
-__pycache__/
-*.pyc
-
-# Environment variables (secret keys)
+# Secrets
 .env
+.env.*
+*.pem
+*.key
+secrets.*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# macOS
+.DS_Store
+
+# Other virtual environment names
+venv/
+env/
