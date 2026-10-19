@@ -36,6 +36,7 @@ src/careerhub/        the application, one package per layer
 tests/                tests, mirroring src/
 spikes/               short experiments that answer one question before we commit to a design
 docs/decisions/       architecture decision records (why things are the way they are)
+CLAUDE.md             instructions every Claude session follows: team, workflow, rules
 ```
 
 Packages for later steps (`llm/`, `providers/`, `profile/`, `modules/jobs/`, `web/`, `menubar/`)
