@@ -4,7 +4,7 @@ version = "0.0.1"
 description = "A local-first assistant that finds, ranks, and plans job applications."
 readme = "README.md"
 requires-python = ">=3.12"
-# License is decided in CH-8 and added here once chosen.
+license = "MIT"
 dependencies = [
     "sqlalchemy>=2.0,<2.2",
     "alembic>=1.13,<2",

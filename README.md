@@ -64,4 +64,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how work flows from ticket to merge.
 
 ## License
 
-To be decided (ticket CH-8).
+[MIT](LICENSE).
