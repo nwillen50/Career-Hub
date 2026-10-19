@@ -135,6 +135,7 @@ def get_or_create_database_key(store: KeyStore) -> str:
     Raises:
         InvalidKeyError: a key is stored but is malformed. It is never replaced automatically.
         KeyStoreUnavailableError: the key store can't be reached.
+
     """
     existing = store.get(DATABASE_KEY_NAME)
     if existing is not None:
