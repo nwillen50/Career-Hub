@@ -9,6 +9,7 @@ dependencies = [
     "sqlalchemy>=2.0,<2.2",
     "alembic>=1.13,<2",
     "sqlcipher3-wheels>=0.5.7,<0.6",
+    "keyring>=25,<26",
 ]
 
 [dependency-groups]
