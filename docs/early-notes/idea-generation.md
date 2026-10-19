@@ -15,7 +15,7 @@ This will be intially designed with quantum computing in mind. I will also attem
 3. Company database
     - Private labs
     - National labs
-    
+
 4. Grad school database
     - List of graduate schools with program
     - List of labs at said schools
@@ -25,14 +25,13 @@ This will be intially designed with quantum computing in mind. I will also attem
         - List of research topics
         - List of industry connections
 5. Connections database
-    - List of people I know in the industry or industry-adjacent    
+    - List of people I know in the industry or industry-adjacent
 6. Personal database (to know me)
     - Resume
     - Transcript
         - Will look
     - Books read
     - Graduation date/plans
-    - Applications sent   
+    - Applications sent
 7. Front end dashboards
     - Able to pick and choose which industry and which features to set up with
-

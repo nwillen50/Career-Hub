@@ -36,6 +36,7 @@ src/careerhub/        the application, one package per layer
 tests/                tests, mirroring src/
 spikes/               short experiments that answer one question before we commit to a design
 docs/decisions/       architecture decision records (why things are the way they are)
+docs/early-notes/     summer 2026 notes, kept for reference; the PRD supersedes them
 ```
 
 Packages for later steps (`llm/`, `providers/`, `profile/`, `modules/jobs/`, `web/`, `menubar/`)
