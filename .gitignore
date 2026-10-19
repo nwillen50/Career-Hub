@@ -18,7 +18,10 @@ exports/
 .env.*
 *.pem
 *.key
-secrets.*
+# Secret files at the repo root only. A bare "secrets.*" would also hide source files such as
+# src/careerhub/core/secrets.py (bug CH-39).
+/secrets.*
+*.secret
 
 # Python
 __pycache__/
