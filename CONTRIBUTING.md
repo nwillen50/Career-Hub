@@ -10,7 +10,7 @@ the PRD's Team tab.
    one first.
 2. **Branch** from `main` as `ch-<n>-short-description`, for example `ch-12-sqlcipher-spike`.
 3. **Commit** in small steps. Start each message with the ticket: `CH-12: test Alembic migrations`.
-4. **Open a pull request** whose title starts with the ticket and whose description says what
+4. **Open a pull request into `main`** (never into another PR's branch) whose title starts with the ticket and whose description says what
    changed, how it was tested, and anything a reviewer should look at closely.
 5. **Review.** A second persona reviews; the owner never reviews their own ticket. Then Nicholas
    approves and merges. Nothing reaches `main` without Nicholas.
