@@ -12,7 +12,7 @@ sends, submits, or applies on your behalf.
 ## How this project is built
 
 Career Hub is built **bottom-up**: each module runs and passes its own tests before anything is built
-on top of it. The plan, scope, and design live in the product requirements document (PRD); every
+on top of it. The plan, scope, and design live in the [PRD](docs/prd/prd.md); every
 piece of work is a ticket (`CH-1`, `CH-2`, ...) on the project board.
 
 | Step | What | Milestone |
@@ -35,6 +35,7 @@ src/careerhub/        the application, one package per layer
   core/               data models, encrypted storage, secrets, settings, logging (step 1)
 tests/                tests, mirroring src/
 spikes/               short experiments that answer one question before we commit to a design
+docs/prd/             the product requirements (prd.md) and the team (team.md)
 docs/decisions/       architecture decision records (why things are the way they are)
 CLAUDE.md             instructions every Claude session follows: team, workflow, rules
 ```

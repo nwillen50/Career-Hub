@@ -4,14 +4,16 @@ Career Hub is a local-first Python app for macOS that finds full-time jobs, rank
 explanations, maps warm paths through the user's network, and plans the week around available time.
 It drafts and advises; it never sends, submits, or applies on the user's behalf.
 
-Read this file, then `README.md`, `CONTRIBUTING.md`, `docs/decisions/`, and the README of any
-package you touch before writing code.
+Read this file, then `docs/prd/prd.md`, `README.md`, `CONTRIBUTING.md`, `docs/decisions/`, and
+the README of any package you touch before writing code.
 
 ## Where things live
 
-- **PRD (the plan):** https://claude.ai/code/artifact/a23c912b-3a47-4702-9c63-607a6602c316
-  (a Claude Docs document with PRD, Team, and Review log tabs). Don't edit it; propose changes as a
-  ticket owned by Nicholas.
+- **PRD (the plan):** [`docs/prd/prd.md`](docs/prd/prd.md), with the team in
+  [`docs/prd/team.md`](docs/prd/team.md). This repo copy is the one to work from. Don't change it
+  in a feature PR: propose PRD changes as a ticket owned by Nicholas, then make them in their own
+  PR. The original Claude Docs document (with the review history) is at
+  https://claude.ai/code/artifact/a23c912b-3a47-4702-9c63-607a6602c316 and is no longer updated.
 - **Board (the tickets):** https://claude.ai/artifact/CGHqFtxSf8BQ5suX27CbLM. Tickets are
   `CH-<n>`, stored in the artifact's `tickets` collection with fields: key, title, type
   (epic|story|task|spike|bug), status (backlog|todo|in_progress|in_review|done), owner
@@ -108,4 +110,4 @@ open instead.
 - Commit personal data, API keys, tokens, or credentials.
 - Add code that sends, submits, deletes, or applies on the user's behalf.
 - Call a model anywhere except through the model router (`careerhub.llm`, from step 2 on).
-- Edit the PRD or delete tickets.
+- Change the PRD without a ticket Nicholas approved, or delete tickets.
