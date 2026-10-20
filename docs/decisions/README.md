@@ -7,6 +7,7 @@ that supersedes the old one.
 | Record | Decision | Status |
 | --- | --- | --- |
 | [0001](0001-encrypted-storage.md) | Encrypted storage with SQLCipher, SQLAlchemy, and Alembic | Accepted |
+| [0002](0002-data-models-and-migrations.md) | Data models in SQLAlchemy, UTC times, tables added by the step that needs them | Accepted |
 
 ## Template
 

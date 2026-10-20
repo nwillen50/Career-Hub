@@ -7,7 +7,8 @@ The bottom layer. Every other package depends on it; it depends on nothing else 
 | `paths` | Where the data folder and database file live | CH-37 | Built |
 | `storage` | Opens the encrypted database; the only code that does | CH-37 | Built |
 | `secrets` | Creates the database key once and keeps it in the macOS Keychain | CH-36 | Built |
-| `models` | The shared core entities as typed models, plus the first migration | CH-38 | Next |
+| `models` | `Base`, UTC time handling, timestamps (CH-38); the shared core tables (CH-40) | CH-38, CH-40 | Base built; tables next |
+| `migrate` | Brings the database to the latest schema; writes new migration files | CH-38 | Built |
 | `settings` | Loads user settings from the data folder | CH-15 | Planned |
 | `logging` | Logs with personal details redacted | CH-15 | Planned |
 | `runlog` | Records each pipeline run | CH-15 | Planned |
@@ -37,3 +38,15 @@ Design decisions: [ADR-0001, encrypted storage](../../../docs/decisions/0001-enc
 - `session_factory(engine)` gives ORM sessions.
 - The data folder is `~/Library/Application Support/CareerHub` on a Mac. Set
   `CAREERHUB_DATA_DIR` to use another folder.
+
+## `models` and `migrate` in brief
+
+See [ADR-0002](../../../docs/decisions/0002-data-models-and-migrations.md) for the reasoning.
+
+- Every table subclasses `models.Base`. Add `TimestampMixin` for `created_at` and `updated_at`.
+- Use `UTCDateTime()` for every time column and `utcnow()` for "now". A time without a timezone
+  is refused.
+- `migrate(engine)` brings a database up to date; call it at every start.
+- To change the schema, edit the models, then run
+  `uv run python -m careerhub.core.migrate new "what changed"` and read the file it writes. The
+  steps are in [`migrations/README.md`](migrations/README.md).
