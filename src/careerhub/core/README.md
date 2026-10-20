@@ -9,10 +9,10 @@ The bottom layer. Every other package depends on it; it depends on nothing else 
 | `secrets` | Creates the database key once and keeps it in the macOS Keychain | CH-36 | Built |
 | `models` | `Base`, UTC time handling, timestamps (CH-38); the shared core tables (CH-40) | CH-38, CH-40 | Base built; tables next |
 | `migrate` | Brings the database to the latest schema; writes new migration files | CH-38 | Built |
-| `settings` | Loads user settings from the data folder | CH-15 | Planned |
-| `logging` | Logs with personal details redacted | CH-15 | Planned |
-| `runlog` | Records each pipeline run | CH-15 | Planned |
-| `backup` | Nightly encrypted backup with `VACUUM INTO` | CH-15 | Planned |
+| `settings` | Loads user settings from the data folder | CH-44 | Built |
+| `logging` | Logs with personal details redacted | CH-44 | Built |
+| `runlog` | Records each pipeline run | CH-45 | Planned |
+| `backup` | Nightly encrypted backup with `VACUUM INTO` | CH-45 | Planned |
 
 Design decisions: [ADR-0001, encrypted storage](../../../docs/decisions/0001-encrypted-storage.md).
 
@@ -38,6 +38,15 @@ Design decisions: [ADR-0001, encrypted storage](../../../docs/decisions/0001-enc
 - `session_factory(engine)` gives ORM sessions.
 - The data folder is `~/Library/Application Support/CareerHub` on a Mac. Set
   `CAREERHUB_DATA_DIR` to use another folder.
+
+## `settings` and `logging` in brief
+
+- `load_settings()` reads `settings.json` from the data folder; no file means defaults. A bad
+  file raises `SettingsError` naming the setting, never echoing its value. Unknown names are
+  rejected so typos don't silently do nothing.
+- `configure_logging(level, log_file)` sets up the `careerhub` logger. Every message and
+  traceback is passed through `redact()`, which hides emails, phone numbers, keys, and
+  credentials. It's a safety net: still don't log personal data.
 
 ## `models` and `migrate` in brief
 

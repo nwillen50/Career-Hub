@@ -10,6 +10,7 @@ dependencies = [
     "alembic>=1.13,<2",
     "sqlcipher3-wheels>=0.5.7,<0.6",
     "keyring>=25,<26",
+    "pydantic>=2.7,<3",
 ]
 
 [dependency-groups]
