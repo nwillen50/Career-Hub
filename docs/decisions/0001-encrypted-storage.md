@@ -63,13 +63,14 @@ the target platform.
 
 ## Consequences
 
-- `careerhub.core.storage` (CH-14) implements the connection factory and is the only place that
+- `careerhub.core.storage` (CH-37) implements the connection factory and is the only place that
   opens the database.
-- `careerhub.core.secrets` (CH-14) creates and reads the key from the Keychain.
+- `careerhub.core.secrets` (CH-36) creates and reads the key from the Keychain.
 - Migrations must use batch mode for any column change; the migration template sets
   `render_as_batch=True`.
 - SQLCipher logs its own error lines when a wrong key is used. They contain no secrets, but the app
-  should set `PRAGMA cipher_log_level = NONE` to keep its logs clean. To be confirmed in CH-14.
+  sets `PRAGMA cipher_log_level = NONE` to keep its logs clean. Confirmed in CH-37 with SQLCipher
+  4.12.0, and covered by a test.
 - Backups (CH-15) use `VACUUM INTO`.
 - If `sqlcipher3-wheels` stops publishing wheels for a new Python version, we pin Python to the last
   supported version until it catches up, or fall back to the encrypted volume.
