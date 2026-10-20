@@ -52,6 +52,8 @@ Design decisions: [ADR-0001, encrypted storage](../../../docs/decisions/0001-enc
 `models/core_tables.py` holds `Company`, `Person`, `Interaction`, `Source`, `Proposal`, and
 `RunLog`. Sources and proposals start as `proposed` / `pending` and only the user moves them on.
 `tests/core/test_migrations.py` fails if a model changes without a migration.
+The columns match the PRD's "Core data model" table (ADR-0004): list-like fields (`Company.domains`,
+`ats_board_ids`, `Source.config`) are JSON, and `RunLog.cost_usd` is a float in US dollars.
 
 ## `runlog` and `backup` in brief
 
