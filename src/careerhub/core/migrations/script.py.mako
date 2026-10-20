@@ -12,6 +12,8 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa  # noqa: F401  (used by most migrations, not all)
 from alembic import op  # noqa: F401  (used by most migrations, not all)
+
+import careerhub.core.models.base  # noqa: F401  (autogenerate writes UTCDateTime columns as this)
 ${imports if imports else ""}
 revision: str = ${repr(up_revision)}
 down_revision: str | None = ${repr(down_revision)}
