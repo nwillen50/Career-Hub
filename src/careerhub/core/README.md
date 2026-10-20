@@ -7,7 +7,7 @@ The bottom layer. Every other package depends on it; it depends on nothing else 
 | `paths` | Where the data folder and database file live | CH-37 | Built |
 | `storage` | Opens the encrypted database; the only code that does | CH-37 | Built |
 | `secrets` | Creates the database key once and keeps it in the macOS Keychain | CH-36 | Built |
-| `models` | `Base`, UTC time handling, timestamps (CH-38); the shared core tables (CH-40) | CH-38, CH-40 | Base built; tables next |
+| `models` | `Base`, UTC time handling, timestamps (CH-38); the shared core tables (CH-40) | CH-38, CH-40 | Built |
 | `migrate` | Brings the database to the latest schema; writes new migration files | CH-38 | Built |
 | `settings` | Loads user settings from the data folder | CH-15 | Planned |
 | `logging` | Logs with personal details redacted | CH-15 | Planned |
@@ -38,6 +38,12 @@ Design decisions: [ADR-0001, encrypted storage](../../../docs/decisions/0001-enc
 - `session_factory(engine)` gives ORM sessions.
 - The data folder is `~/Library/Application Support/CareerHub` on a Mac. Set
   `CAREERHUB_DATA_DIR` to use another folder.
+
+## Core tables
+
+`models/core_tables.py` holds `Company`, `Person`, `Interaction`, `Source`, `Proposal`, and
+`RunLog`. Sources and proposals start as `proposed` / `pending` and only the user moves them on.
+`tests/core/test_migrations.py` fails if a model changes without a migration.
 
 ## `models` and `migrate` in brief
 

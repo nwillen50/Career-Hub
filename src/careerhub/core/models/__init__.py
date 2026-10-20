@@ -11,5 +11,25 @@ from careerhub.core.models.base import (
     UTCDateTime,
     utcnow,
 )
+from careerhub.core.models.core_tables import (
+    Company,
+    Interaction,
+    Person,
+    Proposal,
+    RunLog,
+    Source,
+)
 
-__all__ = ["NAMING_CONVENTION", "Base", "TimestampMixin", "UTCDateTime", "utcnow"]
+__all__ = [
+    "NAMING_CONVENTION",
+    "Base",
+    "Company",
+    "Interaction",
+    "Person",
+    "Proposal",
+    "RunLog",
+    "Source",
+    "TimestampMixin",
+    "UTCDateTime",
+    "utcnow",
+]
