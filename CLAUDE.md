@@ -67,7 +67,9 @@ locally). Check which you are in with `uname -s`: `Darwin` means the Mac, `Linux
 
 1. Set the ticket to `in_progress` with a note.
 2. Branch from `main` (or from an unmerged dependency, noting "Depends on #N" in the PR) as
-   `ch-<n>-short-description`.
+   `ch-<n>-short-description`. **Every PR targets `main`**, even one built on another PR's
+   branch: a PR aimed at another PR's branch merges into that branch, not `main` (bug CH-42).
+   Until the dependency merges, its commits also show in the diff; say which commits to review.
 3. Commit in small steps; every message starts `CH-<n>: `.
 4. Write code a student can read: clear names, a docstring on every module and public function,
    comments for anything non-obvious, a current README in each package.
