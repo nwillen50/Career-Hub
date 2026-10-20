@@ -45,6 +45,14 @@ Design decisions: [ADR-0001, encrypted storage](../../../docs/decisions/0001-enc
 `RunLog`. Sources and proposals start as `proposed` / `pending` and only the user moves them on.
 `tests/core/test_migrations.py` fails if a model changes without a migration.
 
+## `runlog` and `backup` in brief
+
+- `start_run` / `finish_run` record a step in `run_log`. A failed run stores only the error's
+  type name, never its message. A run left `running` was interrupted.
+- `backup_database(engine, keep)` writes `backups/careerhub-<UTC time>.db`, still encrypted with
+  the same key, then removes older backups beyond `keep`. It only removes files matching its own
+  naming pattern. Scheduling it nightly belongs to the schedule steps (CH-27, CH-34).
+
 ## `models` and `migrate` in brief
 
 See [ADR-0002](../../../docs/decisions/0002-data-models-and-migrations.md) for the reasoning.
