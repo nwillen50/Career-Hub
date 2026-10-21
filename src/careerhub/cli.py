@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from careerhub.core.migrate import migrate
 from careerhub.core.models import utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore, SecretsError
+from careerhub.core.settings import SettingsError
 from careerhub.core.storage import StorageError, open_database, session_factory
 from careerhub.modules.jobs import (
     FetchError,
@@ -24,6 +25,7 @@ from careerhub.modules.jobs import (
     propose_source,
     reject_source,
 )
+from careerhub.pipeline import run_nightly
 from careerhub.profile.files import ProfileFileError
 from careerhub.profile.profile import Profile, format_profile, load_profile
 from careerhub.web.shortlist import write_shortlist
@@ -31,6 +33,7 @@ from careerhub.web.shortlist import write_shortlist
 USAGE = """Usage:
   hub profile show
   hub ingest greenhouse --company <board>   (the source must be approved)
+  hub nightly                                (run the whole pipeline once)
   hub shortlist build                        (write the shortlist page)
   hub sources list
   hub sources add <kind> <name> <url>     (saved as proposed; nothing is fetched yet)
@@ -47,6 +50,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return 0
         if len(args) == 4 and args[:2] == ["ingest", "greenhouse"] and args[2] == "--company":
             return _with_session(store, lambda s: _ingest(s, args[3]))
+        if args == ["nightly"]:
+            return _nightly(store)
         if args == ["shortlist", "build"]:
             return _with_session(store, _shortlist_build)
         if args[:2] == ["sources", "list"] and len(args) == 2:
@@ -55,8 +60,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _with_session(store, lambda s: _sources_add(s, *args[2:]))
         if len(args) == 3 and args[0] == "sources" and args[1] in _DECISIONS and args[2].isdigit():
             return _with_session(store, lambda s: _sources_decide(s, args[1], int(args[2])))
-    except ProfileFileError as error:
-        print(f"Problem with a profile file: {error}")
+    except (ProfileFileError, SettingsError) as error:
+        print(f"Problem with a settings or profile file: {error}")
         return 1
     except (StorageError, SecretsError) as error:
         print(f"Can't open the database ({type(error).__name__}).")
@@ -82,6 +87,15 @@ def _with_session(store: KeyStore, action: Callable[[Session], int]) -> int:
     migrate(engine)
     with session_factory(engine)() as session:
         return action(session)
+
+
+def _nightly(store: KeyStore) -> int:
+    """Run the pipeline once; exit code 1 if the run failed outright."""
+    engine = open_database(store)
+    migrate(engine)
+    report = run_nightly(engine, store)
+    print(report.summary())
+    return 1 if any(p.startswith("run failed") for p in report.problems) else 0
 
 
 def _shortlist_build(session: Session) -> int:

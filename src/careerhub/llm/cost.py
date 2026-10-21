@@ -19,6 +19,9 @@ from careerhub.core.models import LLMUsage, RunLog, utcnow
 from careerhub.llm.provider import Destination, Provider
 from careerhub.llm.types import LLMResponse
 
+#: Essential calls may spend up to this multiple of the monthly budget before they pause too.
+ESSENTIAL_CEILING = 2.0
+
 
 class BudgetExceeded(Exception):
     """The month's model spending has reached the budget and the call isn't essential."""
@@ -99,11 +102,17 @@ class CostLog:
         return float(total or 0.0)
 
     def check_budget(self, provider: Provider, essential: bool) -> None:
-        """Raise `BudgetExceeded` if a non-essential cloud call would run past the budget."""
-        if essential or provider.destination is Destination.LOCAL:
+        """Raise `BudgetExceeded` if a cloud call would run past the budget.
+
+        Non-essential calls stop at the budget. Essential calls get some headroom, but stop at
+        `ESSENTIAL_CEILING` times the budget, so spending always has an upper limit.
+        """
+        if provider.destination is Destination.LOCAL:
             return
-        if self.spent_this_month() >= self.monthly_budget_usd:
+        limit = self.monthly_budget_usd * (ESSENTIAL_CEILING if essential else 1.0)
+        if self.spent_this_month() >= limit:
+            kind = "even essential calls are" if essential else "calls that aren't essential are"
             raise BudgetExceeded(
                 f"The monthly model budget (${self.monthly_budget_usd:.2f}) is reached; "
-                f"{provider.name!r} calls that aren't essential are paused."
+                f"{provider.name!r}: {kind} paused."
             )

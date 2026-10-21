@@ -25,6 +25,7 @@ that supersedes the old one.
 | [0017](0017-rubric-scoring.md) | Rubric scoring: model rates criteria, code computes the score; Personal tier | Accepted |
 | [0018](0018-ranking-eval.md) | Ranking eval runs the full pipeline in a scratch database; PRD pass rule | Accepted |
 | [0019](0019-shortlist-page.md) | Shortlist page: static, escaped, http(s) links only, error and empty states | Accepted |
+| [0020](0020-nightly-run.md) | Nightly run: keep going on failures, fail only when nothing worked; 2x ceiling on essential spend | Accepted |
 
 ## Template
 
