@@ -27,6 +27,7 @@ that supersedes the old one.
 | [0019](0019-shortlist-page.md) | Shortlist page: static, escaped, http(s) links only, error and empty states | Accepted |
 | [0020](0020-nightly-run.md) | Nightly run: keep going on failures, fail only when nothing worked; 2x ceiling on essential spend | Accepted |
 | [0021](0021-launchd-schedule.md) | launchd: write the job file, user starts it; runs the venv's Python | Accepted |
+| [0022](0022-alumni-and-tags.md) | Alumni CSV import and tagging; user's words never overwritten | Accepted |
 
 ## Template
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
@@ -25,6 +26,7 @@ from careerhub.modules.jobs import (
     propose_source,
     reject_source,
 )
+from careerhub.modules.network import UnknownPerson, find_people, import_alumni, tag_person
 from careerhub.pipeline import run_nightly
 from careerhub.profile.files import ProfileFileError
 from careerhub.profile.profile import Profile, format_profile, load_profile
@@ -34,6 +36,9 @@ from careerhub.web.shortlist import write_shortlist
 USAGE = """Usage:
   hub profile show
   hub ingest greenhouse --company <board>   (the source must be approved)
+  hub people find <text>                     (by name or company)
+  hub people tag <id> <how you know them>
+  hub people import-alumni <file.csv>
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
   hub shortlist build                        (write the shortlist page)
@@ -52,6 +57,12 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return 0
         if len(args) == 4 and args[:2] == ["ingest", "greenhouse"] and args[2] == "--company":
             return _with_session(store, lambda s: _ingest(s, args[3]))
+        if args[:2] == ["people", "find"] and len(args) >= 3:
+            return _with_session(store, lambda s: _people_find(s, " ".join(args[2:])))
+        if args[:2] == ["people", "tag"] and len(args) >= 4 and args[2].isdigit():
+            return _with_session(store, lambda s: _people_tag(s, int(args[2]), " ".join(args[3:])))
+        if args[:2] == ["people", "import-alumni"] and len(args) == 3:
+            return _with_session(store, lambda s: _people_import(s, Path(args[2])))
         if args == ["schedule", "install"]:
             return _schedule_install()
         if args == ["nightly"]:
@@ -91,6 +102,42 @@ def _with_session(store: KeyStore, action: Callable[[Session], int]) -> int:
     migrate(engine)
     with session_factory(engine)() as session:
         return action(session)
+
+
+def _people_find(session: Session, text: str) -> int:
+    people = find_people(session, text)
+    for person in people:
+        company = person.company.name if person.company else "-"
+        columns = (
+            person.id,
+            person.full_name,
+            company,
+            person.title or "-",
+            person.how_known or "-",
+        )
+        print("\t".join(str(column) for column in columns))
+    if not people:
+        print("No one found.")
+    return 0
+
+
+def _people_tag(session: Session, person_id: int, how_known: str) -> int:
+    try:
+        person = tag_person(session, person_id, how_known)
+    except UnknownPerson:
+        print(f"No person with id {person_id}.")
+        return 1
+    print(f"{person.full_name}: {person.how_known or '(cleared)'}")
+    return 0
+
+
+def _people_import(session: Session, path: Path) -> int:
+    report = import_alumni(session, path)
+    print(
+        f"{report.created} added, {report.tagged} tagged as alumni, {report.unchanged} unchanged, "
+        f"{report.skipped} rows skipped (missing name, company, or group)."
+    )
+    return 0
 
 
 def _schedule_install() -> int:
