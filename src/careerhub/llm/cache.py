@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 
-from sqlalchemy import Select, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from careerhub.core.models import LLMCacheEntry
@@ -36,7 +36,7 @@ class ResponseCache:
     def get(self, provider: Provider, request: LLMRequest) -> LLMResponse | None:
         """Return the saved answer for this call, or None. The result has `cached=True`."""
         with self._sessions() as session:
-            entry = session.scalars(self._query(provider, request)).first()
+            entry = self._find(session, provider, request)
             if entry is None:
                 return None
             return LLMResponse(
@@ -51,7 +51,7 @@ class ResponseCache:
     def put(self, provider: Provider, request: LLMRequest, response: LLMResponse) -> None:
         """Save `response` for this call, replacing any older answer for the same call."""
         with self._sessions() as session:
-            entry = session.scalars(self._query(provider, request)).first()
+            entry = self._find(session, provider, request)
             if entry is None:
                 entry = LLMCacheEntry(
                     provider=provider.name,
@@ -66,9 +66,12 @@ class ResponseCache:
             session.commit()
 
     @staticmethod
-    def _query(provider: Provider, request: LLMRequest) -> Select[tuple[LLMCacheEntry]]:
-        return select(LLMCacheEntry).where(
-            LLMCacheEntry.provider == provider.name,
-            LLMCacheEntry.model == provider.model,
-            LLMCacheEntry.prompt_hash == prompt_hash(request),
-        )
+    def _find(session: Session, provider: Provider, request: LLMRequest) -> LLMCacheEntry | None:
+        """Return the row for this call, if one exists."""
+        return session.scalars(
+            select(LLMCacheEntry).where(
+                LLMCacheEntry.provider == provider.name,
+                LLMCacheEntry.model == provider.model,
+                LLMCacheEntry.prompt_hash == prompt_hash(request),
+            )
+        ).first()
