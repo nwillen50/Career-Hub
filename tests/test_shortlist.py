@@ -163,3 +163,34 @@ def test_hub_shortlist_build(
     assert main(["shortlist", "build"], InMemoryKeyStore()) == 0
     page = tmp_path / "shortlist" / "index.html"
     assert str(page) in capsys.readouterr().out and "Nothing to show yet" in page.read_text()
+
+
+def test_who_to_contact_is_shown_escaped_and_limited_to_two() -> None:
+    from careerhub.modules.network import WarmPath
+
+    contacts = [
+        WarmPath(1, "Ada <b>Sample</b>", "Engineer & Lead", 4, ["you noted: <i>mentor</i>"]),
+        WarmPath(2, "Ben Example", None, 1, ["LinkedIn connection"]),
+        WarmPath(3, "Cy Extra", None, 0, []),
+    ]
+    html = render_shortlist(ShortlistData([entry(contacts=contacts[:2])], NOW), NOW)
+    assert "Who to contact" in html and "Ben Example" in html and "LinkedIn connection" in html
+    assert "<b>Sample</b>" not in html and "&lt;b&gt;Sample&lt;/b&gt;" in html
+    assert "Engineer &amp; Lead" in html and "<i>mentor</i>" not in html
+
+
+def test_a_job_with_no_known_contacts_says_so() -> None:
+    html = render_shortlist(ShortlistData([entry()], NOW), NOW)
+    assert "no one you know here yet" in html
+
+
+def test_gather_attaches_the_two_strongest_contacts(session: Session) -> None:
+    from careerhub.core.models import Person
+
+    seed(session, 1)
+    job = session.scalars(select(Job)).one()
+    for name, how in (("Ann", "friend"), ("Bea", None), ("Cat", "mentor; alumni: Club")):
+        session.add(Person(full_name=name, company_id=job.company_id, how_known=how))
+    session.commit()
+    contacts = gather_shortlist(session).entries[0].contacts
+    assert [c.name for c in contacts] == ["Cat", "Ann"]
