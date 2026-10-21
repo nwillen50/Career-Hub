@@ -6,6 +6,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy.orm import Session
@@ -34,8 +35,10 @@ from careerhub.modules.network import (
     tag_person,
     warm_paths,
 )
+from careerhub.modules.plan import suggest_week
+from careerhub.modules.plan.ics import IcsError
 from careerhub.pipeline import run_nightly
-from careerhub.profile.files import ProfileFileError
+from careerhub.profile.files import ProfileFileError, load_preferences
 from careerhub.profile.profile import Profile, format_profile, load_profile
 from careerhub.schedule import install_plist, launchctl_commands
 from careerhub.web.shortlist import write_shortlist
@@ -43,6 +46,7 @@ from careerhub.web.shortlist import write_shortlist
 USAGE = """Usage:
   hub profile show
   hub ingest greenhouse --company <board>   (the source must be approved)
+  hub plan                                   (suggested blocks for the next 7 days)
   hub paths <company>                        (who you know there, strongest first)
   hub people find <text>                     (by name or company)
   hub people tag <id> <how you know them>
@@ -65,6 +69,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return 0
         if len(args) == 4 and args[:2] == ["ingest", "greenhouse"] and args[2] == "--company":
             return _with_session(store, lambda s: _ingest(s, args[3]))
+        if args == ["plan"]:
+            return _with_session(store, _plan)
         if args[:1] == ["paths"] and len(args) >= 2:
             return _with_session(store, lambda s: _paths(s, " ".join(args[1:])))
         if args[:2] == ["people", "find"] and len(args) >= 3:
@@ -112,6 +118,29 @@ def _with_session(store: KeyStore, action: Callable[[Session], int]) -> int:
     migrate(engine)
     with session_factory(engine)() as session:
         return action(session)
+
+
+def _plan(session: Session) -> int:
+    """Print the suggested week. It only suggests: nothing is written to a calendar."""
+    settings = load_settings()
+    preferences = load_preferences()
+    budget = preferences.weekly_time_budget_hours if preferences else 5.0
+    try:
+        plan = suggest_week(session, settings, budget, utcnow())
+    except IcsError as error:
+        print(f"Can't read a calendar file: {error}")
+        return 1
+    zone = ZoneInfo(settings.timezone)
+    hours, minutes = divmod(plan.planned_minutes, 60)
+    print(f"Suggested plan ({hours}h{minutes:02d}m of {budget:g}h):")
+    for block in plan.blocks:
+        when = block.start.astimezone(zone)
+        print(f"  {when:%a %b %d %H:%M}-{block.end.astimezone(zone):%H:%M}  {block.task.title}")
+    for item in plan.unplaced:
+        print(f"  not placed: {item.task.title} ({item.reason})")
+    if not plan.blocks and not plan.unplaced:
+        print("  Nothing to plan yet: no ranked jobs. Run `hub nightly` first.")
+    return 0
 
 
 def _paths(session: Session, company_text: str) -> int:
