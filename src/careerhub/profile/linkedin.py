@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from careerhub.core.models import Company, Person
+from careerhub.core.names import company_key
 from careerhub.core.paths import data_dir
 from careerhub.profile.files import ProfileFileError
 
@@ -42,11 +43,6 @@ class ImportReport:
 def connections_path() -> Path:
     """Return where `Connections.csv` should be (it may not exist)."""
     return data_dir() / "inputs" / "linkedin" / CONNECTIONS_FILENAME
-
-
-def company_key(name: str) -> str:
-    """Return the lowercase, single-spaced form of a company name used to avoid duplicates."""
-    return re.sub(r"\s+", " ", name).strip().lower()
 
 
 def import_connections(session: Session, path: Path | None = None) -> ImportReport:

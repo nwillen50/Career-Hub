@@ -19,6 +19,7 @@ from careerhub.core.models.core_tables import (
     RunLog,
     Source,
 )
+from careerhub.core.models.job import JOB_STATUSES, Job
 from careerhub.core.models.llm_cache import LLMCacheEntry
 from careerhub.core.models.llm_usage import LLMUsage
 
@@ -26,7 +27,9 @@ __all__ = [
     "NAMING_CONVENTION",
     "Base",
     "Company",
+    "JOB_STATUSES",
     "Interaction",
+    "Job",
     "LLMCacheEntry",
     "LLMUsage",
     "Person",
