@@ -10,3 +10,10 @@ Pages Career Hub writes for the user to read.
 `hub shortlist build` writes `shortlist/index.html` in the data folder; bookmark it. The page is
 static (no scripts, no external requests), escapes everything from postings, and links only to
 http(s) addresses. See [ADR-0019](../../../docs/decisions/0019-shortlist-page.md).
+
+## Who to contact
+
+Each job lists up to two people you know at the company (from `hub paths` rules, ADR-0023) with the
+reasons, or says that you don't know anyone there yet. Names, titles, and reasons are escaped like
+all page text. Your own `how_known` notes appear in the reasons, so the page stays in the private
+data folder.

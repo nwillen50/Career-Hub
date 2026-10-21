@@ -24,9 +24,12 @@ from sqlalchemy.orm import Session
 from careerhub.core.models import RunLog
 from careerhub.core.paths import data_dir
 from careerhub.modules.jobs.scoring import ranked_jobs
+from careerhub.modules.network import WarmPath, warm_paths
 
 #: Today shows at most this many ranked jobs (PRD).
 MAX_JOBS = 5
+#: Warm paths shown per job.
+MAX_CONTACTS = 2
 RUN_STEP = "nightly"
 
 
@@ -41,6 +44,8 @@ class ShortlistEntry:
     score: float
     explanation: str
     criteria: list[dict[str, object]]
+    #: Up to two people the user knows at the company, strongest first.
+    contacts: list[WarmPath] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -64,6 +69,7 @@ def gather_shortlist(session: Session, limit: int = MAX_JOBS) -> ShortlistData:
             score=assessment.fit_score or 0.0,
             explanation=assessment.explanation or "",
             criteria=list(assessment.criteria_scores),
+            contacts=warm_paths(session, job.company_id, limit=MAX_CONTACTS),
         )
         for job, assessment in ranked_jobs(session, min(limit, MAX_JOBS))
     ]
@@ -104,6 +110,7 @@ body { margin:0; background:var(--bg); color:var(--fg);
   font:16px/1.5 -apple-system, system-ui, "Segoe UI", sans-serif; }
 main { max-width:46rem; margin:0 auto; padding:1.5rem 1rem 3rem; }
 h1 { font-size:1.6rem; margin:0 0 .25rem; } h2 { font-size:1.15rem; margin:0; }
+h3 { font-size:1rem; margin:.6rem 0 .2rem; } ul { margin:.2rem 0 .6rem; padding-left:1.2rem; }
 .meta { color:var(--muted); margin:0 0 1.5rem; }
 .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
   padding:1rem 1.1rem; margin:0 0 1rem; }
@@ -175,9 +182,23 @@ def _render_entry(index: int, entry: ShortlistEntry) -> str:
         f'<article class="card"><h2><span class="score" aria-label="fit score">'
         f"{entry.score:.0f}/100</span>{index}. {heading}</h2>"
         f'<p class="where">{where}</p><p>{escape(_first_sentence(entry.explanation))}</p>'
+        f"{_render_contacts(entry.contacts)}"
         f"<details><summary>Full explanation</summary><p>{escape(entry.explanation)}</p>{table}"
         "</details></article>"
     )
+
+
+def _render_contacts(contacts: list[WarmPath]) -> str:
+    """Render "who to contact" for a job, or a short note when the user knows no one there."""
+    if not contacts:
+        return '<p class="meta">Who to contact: no one you know here yet.</p>'
+    items = "".join(
+        f"<li><strong>{escape(path.name)}</strong>"
+        f"{' (' + escape(path.title) + ')' if path.title else ''}"
+        f"{': ' + escape('; '.join(path.reasons)) if path.reasons else ''}</li>"
+        for path in contacts
+    )
+    return f"<h3>Who to contact</h3><ul>{items}</ul>"
 
 
 def shortlist_path() -> Path:
