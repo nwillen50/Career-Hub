@@ -42,6 +42,7 @@ SETTINGS = Settings.model_validate(
         "model_routes": {"extract": ["local"], "score": ["local"]},
     }
 )
+TAILOR = json.dumps({"lead_with": ["Your ML project"], "gaps": [], "resume_suggestions": []})
 EXTRACT = json.dumps({"level": "new_grad", "locations": ["Boston, MA"]})
 SCORE = json.dumps(
     {"criteria": [{"name": "field", "score": 8, "reason": "fits"}], "explanation": "Good fit."}
@@ -55,7 +56,12 @@ def handler(board_status: int = 200, model_ok: bool = True, tokens: int = 0):  #
         if not model_ok:
             return httpx.Response(500)
         prompt = json.loads(request.content)["messages"][-1]["content"]
-        text = EXTRACT if "extract structured facts" in prompt else SCORE
+        if "extract structured facts" in prompt:
+            text = EXTRACT
+        elif "tailor their job application" in prompt:
+            text = TAILOR
+        else:
+            text = SCORE
         body = {
             "choices": [{"message": {"content": text}}],
             "usage": {"prompt_tokens": tokens, "completion_tokens": 0},
@@ -193,3 +199,36 @@ def test_hub_nightly_command(
     out = capsys.readouterr().out
     assert "Sources: 0 fetched, 0 failed" in out and "Shortlist:" in out
     assert (tmp_path / "shortlist" / "index.html").exists()
+
+
+def test_tailoring_notes_are_written_for_the_shortlist_when_a_route_and_resume_exist(
+    env: Any,
+) -> None:
+    engine, data = env
+    (data / "inputs" / "resume").mkdir(parents=True)
+    (data / "inputs" / "resume" / "resume.tex").write_text(
+        r"\documentclass{article}\begin{document}Built ML tools.\end{document}"
+    )
+    settings = Settings.model_validate(
+        {
+            "providers": [{"name": "local", "kind": "local", "model": "m"}],
+            "model_routes": {"extract": ["local"], "score": ["local"], "tailor": ["local"]},
+        }
+    )
+    report = run_nightly(engine, InMemoryKeyStore(), settings, handler(), NOW)
+    assert (report.scored, report.tailored, report.problems) == (1, 1, [])
+    assert "Your ML project" in (data / "shortlist" / "index.html").read_text(encoding="utf-8")
+
+
+def test_tailoring_is_silently_off_without_a_route_and_noted_without_a_resume(env: Any) -> None:
+    engine, data = env
+    quiet = run_nightly(engine, InMemoryKeyStore(), SETTINGS, handler(), NOW)
+    assert quiet.tailored == 0 and not any("tailor" in p for p in quiet.problems)
+    settings = Settings.model_validate(
+        {
+            "providers": [{"name": "local", "kind": "local", "model": "m"}],
+            "model_routes": {"extract": ["local"], "score": ["local"], "tailor": ["local"]},
+        }
+    )
+    report = run_nightly(engine, InMemoryKeyStore(), settings, handler(), NOW)
+    assert any("no LaTeX resume" in p for p in report.problems)

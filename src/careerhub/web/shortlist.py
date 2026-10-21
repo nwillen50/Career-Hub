@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from careerhub.core.models import RunLog
+from careerhub.core.models import Assessment, RunLog
 from careerhub.core.paths import data_dir
 from careerhub.modules.jobs.scoring import ranked_jobs
 from careerhub.modules.network import WarmPath, warm_paths
@@ -46,6 +46,8 @@ class ShortlistEntry:
     criteria: list[dict[str, object]]
     #: Up to two people the user knows at the company, strongest first.
     contacts: list[WarmPath] = field(default_factory=list)
+    #: Tailoring notes: {"lead_with": [...], "gaps": [...], "resume_suggestions": [...]}.
+    tailoring: dict[str, list[str]] | None = None
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,7 @@ def gather_shortlist(session: Session, limit: int = MAX_JOBS) -> ShortlistData:
             explanation=assessment.explanation or "",
             criteria=list(assessment.criteria_scores),
             contacts=warm_paths(session, job.company_id, limit=MAX_CONTACTS),
+            tailoring=_notes(assessment),
         )
         for job, assessment in ranked_jobs(session, min(limit, MAX_JOBS))
     ]
@@ -88,6 +91,17 @@ def gather_shortlist(session: Session, limit: int = MAX_JOBS) -> ShortlistData:
         success.finished_at if success is not None else None,
         error or ("The last run failed." if runs and runs[0].status == "failed" else None),
     )
+
+
+def _notes(assessment: Assessment) -> dict[str, list[str]] | None:
+    """Return the saved tailoring notes, if any, with every value as a list of strings."""
+    saved = (assessment.tailoring or {}).get("notes")
+    if not isinstance(saved, dict):
+        return None
+    return {
+        key: [str(item) for item in saved.get(key, [])]
+        for key in ("lead_with", "gaps", "resume_suggestions")
+    }
 
 
 def _safe_link(url: str) -> str | None:
@@ -184,8 +198,27 @@ def _render_entry(index: int, entry: ShortlistEntry) -> str:
         f'<p class="where">{where}</p><p>{escape(_first_sentence(entry.explanation))}</p>'
         f"{_render_contacts(entry.contacts)}"
         f"<details><summary>Full explanation</summary><p>{escape(entry.explanation)}</p>{table}"
-        "</details></article>"
+        f"</details>{_render_tailoring(entry.tailoring)}</article>"
     )
+
+
+_TAILORING_TITLES = (
+    ("lead_with", "Lead with"),
+    ("gaps", "Gaps to address"),
+    ("resume_suggestions", "Resume edits to consider"),
+)
+
+
+def _render_tailoring(notes: dict[str, list[str]] | None) -> str:
+    """Render tailoring notes in a collapsed section, or nothing when there are none."""
+    if not notes or not any(notes.values()):
+        return ""
+    sections = "".join(
+        f"<h3>{title}</h3><ul>{''.join(f'<li>{escape(item)}</li>' for item in notes[key])}</ul>"
+        for key, title in _TAILORING_TITLES
+        if notes.get(key)
+    )
+    return f"<details><summary>Tailoring notes</summary>{sections}</details>"
 
 
 def _render_contacts(contacts: list[WarmPath]) -> str:

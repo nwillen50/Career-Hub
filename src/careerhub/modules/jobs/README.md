@@ -8,6 +8,7 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | `sources` | Propose, approve, reject, disable sources; `require_approved` | CH-61 | Built |
 | `extract` | `JobFields` and `extract_and_save`: posting text into structured fields | CH-62 | Built |
 | `rank_evals` | `run_ranking_eval`: labeled postings through the whole pipeline | CH-68 | Built |
+| `tailoring` | `tailor_job`: what to lead with, gaps, resume edits (notes only) | CH-75 | Built |
 | `scoring` | `score_job`, `ranked_jobs`: rubric scores with explanations | CH-67 | Built |
 | `filters` | Hard filters (companies, title words, locations, salary) with reasons | CH-66 | Built |
 | `evals` | `run_extraction_eval`: per-field accuracy against hand-checked postings | CH-63 | Built |
@@ -68,3 +69,11 @@ score_routes)` runs great/okay/no labeled postings through extraction, filters, 
 scratch in-memory database and reports whether the PRD rule holds (no great filtered out, at most
 one "no" in the top 10). See [ADR-0018](../../../../docs/decisions/0018-ranking-eval.md) and
 [`evals/README.md`](../../../../evals/README.md).
+
+## Tailoring notes
+
+For each shortlisted job (nightly, if a `tailor` route and `inputs/resume` exist) a model writes
+notes: what to lead with, gaps to address, resume edits to consider. Notes only; nothing is edited or
+sent. The resume goes to the model as plain text with emails, links, and phone numbers removed, and
+only to providers allowed to see Personal data. See
+[ADR-0024](../../../../docs/decisions/0024-tailoring-notes.md).
