@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from careerhub.core.migrate import migrate
 from careerhub.core.models import utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore, SecretsError
-from careerhub.core.settings import SettingsError
+from careerhub.core.settings import SettingsError, load_settings
 from careerhub.core.storage import StorageError, open_database, session_factory
 from careerhub.modules.jobs import (
     FetchError,
@@ -28,11 +28,13 @@ from careerhub.modules.jobs import (
 from careerhub.pipeline import run_nightly
 from careerhub.profile.files import ProfileFileError
 from careerhub.profile.profile import Profile, format_profile, load_profile
+from careerhub.schedule import install_plist, launchctl_commands
 from careerhub.web.shortlist import write_shortlist
 
 USAGE = """Usage:
   hub profile show
   hub ingest greenhouse --company <board>   (the source must be approved)
+  hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
   hub shortlist build                        (write the shortlist page)
   hub sources list
@@ -50,6 +52,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return 0
         if len(args) == 4 and args[:2] == ["ingest", "greenhouse"] and args[2] == "--company":
             return _with_session(store, lambda s: _ingest(s, args[3]))
+        if args == ["schedule", "install"]:
+            return _schedule_install()
         if args == ["nightly"]:
             return _nightly(store)
         if args == ["shortlist", "build"]:
@@ -87,6 +91,16 @@ def _with_session(store: KeyStore, action: Callable[[Session], int]) -> int:
     migrate(engine)
     with session_factory(engine)() as session:
         return action(session)
+
+
+def _schedule_install() -> int:
+    """Write the launchd job at the `nightly_run_time` setting; print how to start and stop it."""
+    path = install_plist(load_settings().nightly_run_time)
+    start, stop = launchctl_commands(path)
+    print(
+        f"Wrote {path}. It is not running yet. To start it:\n  {start}\nTo stop it later:\n  {stop}"
+    )
+    return 0
 
 
 def _nightly(store: KeyStore) -> int:
