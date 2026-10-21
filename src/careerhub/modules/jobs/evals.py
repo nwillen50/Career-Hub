@@ -15,7 +15,7 @@ from datetime import date
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from careerhub.core.models import Job
 from careerhub.llm import Router
@@ -39,6 +39,12 @@ class Expected(BaseModel):
     locations: list[str]
     visa_sponsorship: Visa
     deadline: date | None
+
+    @field_validator("visa_sponsorship", mode="before")
+    @classmethod
+    def _yaml_booleans(cls, value: object) -> object:
+        """Read unquoted `yes`/`no` (which YAML turns into True/False) as the words."""
+        return {True: "yes", False: "no"}.get(value, value)  # type: ignore[call-overload]
 
 
 class EvalCase(BaseModel):
