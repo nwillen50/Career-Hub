@@ -19,7 +19,9 @@ spacing, and order. A case the model can't answer validly counts as wrong on eve
 ```python
 from careerhub.modules.jobs.evals import load_cases, run_extraction_eval
 
-report = run_extraction_eval(router, load_cases(Path("evals/extraction/real.yaml")), ["cheap", "strong"])
+report = run_extraction_eval(
+    router, load_cases(Path("evals/extraction/real.yaml")), ["cheap", "strong"]
+)
 print(report.summary())
 ```
 
