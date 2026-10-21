@@ -7,6 +7,7 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | `store` | `NormalizedJob`, `store_jobs`: upsert, close missing, link duplicates | CH-59 | Built |
 | `sources` | Propose, approve, reject, disable sources; `require_approved` | CH-61 | Built |
 | `extract` | `JobFields` and `extract_and_save`: posting text into structured fields | CH-62 | Built |
+| `scoring` | `score_job`, `ranked_jobs`: rubric scores with explanations | CH-67 | Built |
 | `filters` | Hard filters (companies, title words, locations, salary) with reasons | CH-66 | Built |
 | `evals` | `run_extraction_eval`: per-field accuracy against hand-checked postings | CH-63 | Built |
 | `greenhouse` | Fetch a company's public board; `hub ingest greenhouse` | CH-60 | Built |
@@ -50,3 +51,11 @@ visa sponsorship, and deadline and lists every miss. File format and scoring rul
 `filter_passed` and `filter_results` (`reasons` for a rejection, `uncertain` for facts it couldn't
 check). A job is rejected only when a known fact breaks a rule; missing information passes. See
 [ADR-0016](../../../../docs/decisions/0016-hard-filters-and-assessment.md).
+
+## Scoring
+
+`score_job(session, router, job, profile_doc, rubric, routes)` has the model rate each rubric
+criterion (0 to 10) and explain; the code computes the 0-100 fit score and saves it on the job's
+`Assessment` with the model, prompt version, and rubric version. Only filtered-in jobs are scored.
+`ranked_jobs(session)` lists open, original jobs best first. See
+[ADR-0017](../../../../docs/decisions/0017-rubric-scoring.md).

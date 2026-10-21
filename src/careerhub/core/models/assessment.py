@@ -27,6 +27,8 @@ class Assessment(TimestampMixin, Base):
     #: {"reasons": [...], "uncertain": [...]}: why it failed, and what couldn't be checked.
     filter_results: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     fit_score: Mapped[float | None] = mapped_column(Float)
+    #: Per-criterion scores: [{"name": ..., "score": 0-10, "reason": ...}].
+    criteria_scores: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     explanation: Mapped[str | None] = mapped_column(Text)
     model_used: Mapped[str | None] = mapped_column(String(100))
     prompt_version: Mapped[int | None] = mapped_column()
