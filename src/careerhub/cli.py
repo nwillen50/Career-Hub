@@ -10,6 +10,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from careerhub.core.migrate import migrate
+from careerhub.core.models import utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore, SecretsError
 from careerhub.core.storage import StorageError, open_database, session_factory
 from careerhub.modules.jobs import (
@@ -25,10 +26,12 @@ from careerhub.modules.jobs import (
 )
 from careerhub.profile.files import ProfileFileError
 from careerhub.profile.profile import Profile, format_profile, load_profile
+from careerhub.web.shortlist import write_shortlist
 
 USAGE = """Usage:
   hub profile show
   hub ingest greenhouse --company <board>   (the source must be approved)
+  hub shortlist build                        (write the shortlist page)
   hub sources list
   hub sources add <kind> <name> <url>     (saved as proposed; nothing is fetched yet)
   hub sources approve|reject|disable <id>"""
@@ -44,6 +47,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return 0
         if len(args) == 4 and args[:2] == ["ingest", "greenhouse"] and args[2] == "--company":
             return _with_session(store, lambda s: _ingest(s, args[3]))
+        if args == ["shortlist", "build"]:
+            return _with_session(store, _shortlist_build)
         if args[:2] == ["sources", "list"] and len(args) == 2:
             return _with_session(store, _sources_list)
         if args[:2] == ["sources", "add"] and len(args) == 5:
@@ -77,6 +82,12 @@ def _with_session(store: KeyStore, action: Callable[[Session], int]) -> int:
     migrate(engine)
     with session_factory(engine)() as session:
         return action(session)
+
+
+def _shortlist_build(session: Session) -> int:
+    path = write_shortlist(session, utcnow())
+    print(f"Wrote {path}. Open it in your browser and bookmark it.")
+    return 0
 
 
 def _sources_list(session: Session) -> int:
