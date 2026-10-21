@@ -7,6 +7,7 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | `store` | `NormalizedJob`, `store_jobs`: upsert, close missing, link duplicates | CH-59 | Built |
 | `sources` | Propose, approve, reject, disable sources; `require_approved` | CH-61 | Built |
 | `extract` | `JobFields` and `extract_and_save`: posting text into structured fields | CH-62 | Built |
+| `filters` | Hard filters (companies, title words, locations, salary) with reasons | CH-66 | Built |
 | `evals` | `run_extraction_eval`: per-field accuracy against hand-checked postings | CH-63 | Built |
 | `greenhouse` | Fetch a company's public board; `hub ingest greenhouse` | CH-60 | Built |
 
@@ -42,3 +43,10 @@ extracted with this version is skipped. See
 `run_extraction_eval(router, load_cases(path), routes)` measures accuracy for level, locations,
 visa sponsorship, and deadline and lists every miss. File format and scoring rules:
 [`evals/README.md`](../../../../evals/README.md). The real hand-checked set is CH-65 (Nicholas).
+
+## Hard filters
+
+`assess_filters(session, job, preferences.hard_constraints)` saves an `Assessment` with
+`filter_passed` and `filter_results` (`reasons` for a rejection, `uncertain` for facts it couldn't
+check). A job is rejected only when a known fact breaks a rule; missing information passes. See
+[ADR-0016](../../../../docs/decisions/0016-hard-filters-and-assessment.md).

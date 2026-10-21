@@ -4,6 +4,7 @@ Every table subclasses `Base`. Importing this package must import every model mo
 `Base.metadata` lists every table; migrations and the drift check rely on it.
 """
 
+from careerhub.core.models.assessment import Assessment
 from careerhub.core.models.base import (
     NAMING_CONVENTION,
     Base,
@@ -24,6 +25,7 @@ from careerhub.core.models.llm_cache import LLMCacheEntry
 from careerhub.core.models.llm_usage import LLMUsage
 
 __all__ = [
+    "Assessment",
     "NAMING_CONVENTION",
     "Base",
     "Company",
