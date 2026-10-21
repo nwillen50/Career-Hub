@@ -31,6 +31,7 @@ that supersedes the old one.
 | [0023](0023-warm-path-rules.md) | Warm-path ranking: transparent points, user's words first | Accepted |
 | [0024](0024-tailoring-notes.md) | Tailoring notes: advice only, Personal tier, contact details removed | Accepted |
 | [0025](0025-review-fixes.md) | Fixes from an independent review: cache only valid answers, stale scores, duplicates, empty boards | Accepted |
+| [0026](0026-free-busy-from-calendar-files.md) | Free/busy from calendar files first; intervals only, no event text | Accepted |
 
 ## Template
 

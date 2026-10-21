@@ -11,6 +11,7 @@ import json
 import re
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
@@ -58,6 +59,10 @@ class Settings(BaseModel):
     #: Most the model router may spend on cloud models in a calendar month, in US dollars. When
     #: it is reached, calls not marked essential are paused (PRD, "Cost tracking").
     monthly_budget_usd: float = Field(default=20.0, ge=0)
+    #: Your timezone (an IANA name such as "America/New_York"), for working hours and calendars.
+    timezone: str = "America/New_York"
+    #: Calendar files (.ics) whose busy time the weekly plan avoids. Only times are read.
+    calendar_files: tuple[str, ...] = ()
     #: The models Career Hub may use. Empty until the user adds some.
     providers: tuple[ProviderSetting, ...] = ()
     #: Which providers handle each task, in order: the first is tried, later ones are escalations.
@@ -79,6 +84,16 @@ class Settings(BaseModel):
             if unknown:
                 raise ValueError(f"route {task!r} names unknown providers: {', '.join(unknown)}")
         return self
+
+    @field_validator("timezone")
+    @classmethod
+    def _check_timezone(cls, value: str) -> str:
+        """Require a timezone name the system knows."""
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("must be an IANA timezone name like America/New_York") from None
+        return value
 
     @field_validator("nightly_run_time")
     @classmethod
