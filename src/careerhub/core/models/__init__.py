@@ -19,12 +19,14 @@ from careerhub.core.models.core_tables import (
     RunLog,
     Source,
 )
+from careerhub.core.models.llm_cache import LLMCacheEntry
 
 __all__ = [
     "NAMING_CONVENTION",
     "Base",
     "Company",
     "Interaction",
+    "LLMCacheEntry",
     "Person",
     "Proposal",
     "RunLog",

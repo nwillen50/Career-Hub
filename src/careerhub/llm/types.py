@@ -41,3 +41,5 @@ class LLMResponse:
     model: str
     input_tokens: int = 0
     output_tokens: int = 0
+    #: True when the answer came from the response cache, so it cost nothing this time.
+    cached: bool = False
