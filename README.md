@@ -36,6 +36,7 @@ src/careerhub/        the application, one package per layer
   llm/                the model router: privacy tiers, providers (step 2)
   profile/            profile and preference files, resume, LinkedIn import (step 3)
   modules/jobs/       find, store, and (later) understand and rank postings (steps 4 to 6)
+  prompts/            versioned prompt files, one per model task
 tests/                tests, mirroring src/
 spikes/               short experiments that answer one question before we commit to a design
 docs/prd/             the product requirements (prd.md) and the team (team.md)
