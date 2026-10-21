@@ -16,6 +16,7 @@ that supersedes the old one.
 | [0008](0008-profile-files.md) | Profile files: Markdown front matter and YAML, strict models, errors without values | Accepted |
 | [0009](0009-profile-assembly.md) | Profile assembly: missing inputs reported, invalid ones fatal; `hub profile show` | Accepted |
 | [0010](0010-broad-job-source.md) | Broad job source: Adzuna, pending Nicholas checking its terms | Proposed |
+| [0011](0011-job-table-and-dedupe.md) | Job table, identity by source and external id, cross-source dedupe key | Accepted |
 
 ## Template
 

@@ -8,10 +8,11 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.migrate import migrate
 from careerhub.core.models import Company, Person
+from careerhub.core.names import company_key
 from careerhub.core.secrets import new_database_key
 from careerhub.core.storage import open_engine, session_factory
 from careerhub.profile import ProfileFileError
-from careerhub.profile.linkedin import company_key, connections_path, import_connections
+from careerhub.profile.linkedin import connections_path, import_connections
 
 NOTES = """Notes:
 "When exporting your connections data, you may notice that some email addresses are missing."
