@@ -6,9 +6,18 @@ Free time and the weekly time budget become suggested work blocks (build step 8,
 | --- | --- | --- | --- |
 | `freebusy` | `Interval`, `FreeBusySource`, `merge`, `free_windows`, `daily_windows` | CH-76 | Built |
 | `ics` | `IcsCalendar`: busy time from an exported calendar file | CH-76 | Built |
-| weekly plan | Suggested blocks for the week | CH-77 | Planned |
+| `weekly` | `plan_week`, `build_tasks`: suggested blocks inside the time budget | CH-77 | Built |
+| `suggest` | `suggest_week`: settings, calendar files, and the shortlist into a plan | CH-77 | Built |
 
 Only *when* you are busy is read from a calendar: event titles, places, and attendees are never read
 or kept. Put the path of an exported `.ics` file in the `calendar_files` setting and your
 `timezone` (for example `"America/New_York"`) in `settings.json`. Live Google and Outlook sync
 needs app registration (CH-30). See [ADR-0026](../../../../docs/decisions/0026-free-busy-from-calendar-files.md).
+
+## The weekly plan
+
+`hub plan` suggests work blocks for the next seven days: apply to the top jobs (90 minutes) and
+message someone you know there first (30 minutes), soonest deadline first, in your free time, within
+the `weekly_time_budget_hours` in `preferences.yaml`, and never more than half the budget on one day.
+It only suggests: nothing is put on a calendar or sent. Tasks that don't fit are listed with the
+reason. See [ADR-0027](../../../../docs/decisions/0027-weekly-plan.md).
