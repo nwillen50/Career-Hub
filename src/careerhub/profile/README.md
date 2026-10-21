@@ -6,7 +6,7 @@ Who the user is and what they want (build step 3, epic CH-18). Everything here i
 | --- | --- | --- | --- |
 | `models` | `ProfileDoc`, `Preferences`, `HardConstraints`, `Timeline` | CH-55 | Built |
 | `files` | Finds and reads `profile.md` and `preferences.yaml` | CH-55 | Built |
-| LinkedIn import | `Connections.csv` into `Person` rows | CH-56 | Planned |
+| `linkedin` | Imports `Connections.csv` into `Person` and `Company` rows | CH-56 | Built |
 | resume, transcript, rubric, `hub profile show` | | CH-57 | Planned |
 
 ## Files (in the data folder, `profile/`)
@@ -40,3 +40,11 @@ weekly_time_budget_hours: 6
 A missing file gives `None` (the caller reports it). A malformed file raises `ProfileFileError`
 naming the wrong *fields*, never their values. Unknown keys are errors, so typos aren't ignored.
 See [ADR-0008](../../../docs/decisions/0008-profile-files.md).
+
+## LinkedIn import
+
+`import_connections(session)` reads `inputs/linkedin/Connections.csv` (an unzipped LinkedIn data
+export; the notes lines before the header row are skipped). People are matched by profile URL, or
+by name and company, so re-importing adds no duplicates. It refreshes only title, company, and
+email; your notes and "how I know them" are never touched, and nobody is deleted. A missing file
+returns `ImportReport(found=False)`. No scraping: the export is the supported path (PRD).
