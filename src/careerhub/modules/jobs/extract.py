@@ -60,11 +60,15 @@ def build_request(job: Job, company_name: str) -> LLMRequest:
     return LLMRequest(prompt=prompt, tier=PrivacyTier.PUBLIC, max_tokens=700, essential=True)
 
 
-def extract_fields(router: Router, job: Job, routes: Sequence[str]) -> JobFields:
-    """Ask the model for `job`'s fields. Raises `ValidationFailed` if no route answers validly."""
-    return complete_validated(
-        router, build_request(job, job.company.name), JobFields, routes=routes
-    )
+def extract_fields(
+    router: Router, job: Job, routes: Sequence[str], company: str | None = None
+) -> JobFields:
+    """Ask the model for `job`'s fields. Raises `ValidationFailed` if no route answers validly.
+
+    `company` defaults to the job's company; evals pass it for jobs that aren't saved.
+    """
+    name = company if company is not None else job.company.name
+    return complete_validated(router, build_request(job, name), JobFields, routes=routes)
 
 
 def extract_and_save(

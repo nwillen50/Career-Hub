@@ -1,0 +1,44 @@
+# Made-up postings in the eval file format. The real set (about 20 hand-checked postings) is
+# written by Nicholas (CH-65) and lives in evals/extraction/real.yaml.
+#
+# Each case: the posting as the extractor sees it, and the right answer for four fields.
+#   level: internship | new_grad | entry | mid | senior | staff_plus | unknown
+#   locations: places as written ([] if none stated)
+#   visa_sponsorship: yes | no | unknown
+#   deadline: YYYY-MM-DD or null
+cases:
+  - id: sample-1
+    company: Northwind Labs
+    title: Software Engineer, New Grad
+    location: Boston, MA
+    text: >
+      Join our 2027 new graduate program. You will build backend services in Python.
+      We are unable to sponsor visas. Apply by December 1, 2026.
+    expected:
+      level: new_grad
+      locations: ["Boston, MA"]
+      visa_sponsorship: "no"
+      deadline: 2026-12-01
+  - id: sample-2
+    company: Contoso Analytics
+    title: Senior Data Engineer
+    location: Remote (US)
+    text: >
+      We are hiring a senior data engineer with 7+ years of experience. This role is fully
+      remote within the United States. Visa sponsorship is available.
+    expected:
+      level: senior
+      locations: ["Remote (US)"]
+      visa_sponsorship: "yes"
+      deadline: null
+  - id: sample-3
+    company: Fabrikam
+    title: Associate Product Analyst
+    location: New York, NY or Austin, TX
+    text: >
+      An entry-level analyst role on our product team. Work from our New York or Austin office.
+    expected:
+      level: entry
+      locations: ["New York, NY", "Austin, TX"]
+      visa_sponsorship: unknown
+      deadline: null
