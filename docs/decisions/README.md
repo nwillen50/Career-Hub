@@ -33,6 +33,7 @@ that supersedes the old one.
 | [0025](0025-review-fixes.md) | Fixes from an independent review: cache only valid answers, stale scores, duplicates, empty boards | Accepted |
 | [0026](0026-free-busy-from-calendar-files.md) | Free/busy from calendar files first; intervals only, no event text | Accepted |
 | [0027](0027-weekly-plan.md) | Weekly plan: suggestions only, urgent first, budget and daily share limits | Accepted |
+| [0028](0028-review-fixes-2.md) | Second review: stronger redaction, unusable answers never cached, copies, plan cap, bad events | Accepted |
 
 ## Template
 

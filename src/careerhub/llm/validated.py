@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 
 from pydantic import BaseModel, ValidationError
@@ -33,10 +33,14 @@ def _parse[T: BaseModel](text: str, schema: type[T]) -> T:
     return schema.model_validate_json(fenced.group(1) if fenced else text)
 
 
-def _is_valid(text: str, schema: type[BaseModel]) -> bool:
-    """Say whether `text` parses as `schema` (used to keep bad answers out of the cache)."""
+def _is_valid[T: BaseModel](
+    text: str, schema: type[T], check: Callable[[T], object] | None = None
+) -> bool:
+    """Say whether `text` is a usable answer (used to keep bad answers out of the cache)."""
     try:
-        _parse(text, schema)
+        parsed = _parse(text, schema)
+        if check is not None:
+            check(parsed)
     except (ValidationError, ValueError):
         return False
     return True
@@ -51,6 +55,8 @@ def _describe(error: Exception) -> str:
         )
     if isinstance(error, json.JSONDecodeError):
         return f"not valid JSON ({error.msg})"
+    if isinstance(error, ValueError) and getattr(error, "safe_message", False):
+        return str(error)  # a check's own message, which never quotes the answer
     return type(error).__name__
 
 
@@ -75,17 +81,28 @@ def complete_validated_detailed[T: BaseModel](
     schema: type[T],
     routes: Sequence[str],
     retries: int = 1,
+    check: Callable[[T], object] | None = None,
 ) -> tuple[T, LLMResponse]:
-    """Like `complete_validated`, but also return the response, to learn which model answered."""
+    """Like `complete_validated`, but also return the response, to learn which model answered.
+
+    `check` is an extra test on the parsed answer (it raises `ValueError` if the answer is
+    unusable; its return value is ignored). A failed check counts like a schema failure: it is
+    retried, escalated, and the answer is never cached.
+    """
     if not routes:
         raise ValueError("routes must name at least one provider")
     problems: list[str] = []
     for name in routes:
         current = request
         for _ in range(retries + 1):
-            response = router.complete(current, name, accept=lambda r: _is_valid(r.text, schema))
+            response = router.complete(
+                current, name, accept=lambda r: _is_valid(r.text, schema, check)
+            )
             try:
-                return _parse(response.text, schema), response
+                parsed = _parse(response.text, schema)
+                if check is not None:
+                    check(parsed)
+                return parsed, response
             except (ValidationError, ValueError) as error:  # JSONDecodeError is a ValueError
                 problem = _describe(error)
                 problems.append(f"{name}: {problem}")
