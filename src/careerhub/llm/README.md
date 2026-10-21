@@ -12,7 +12,7 @@ See [ADR-0003](../../../docs/decisions/0003-router-contract.md).
 | `validated` | `complete_validated`: Pydantic-checked output, one retry, then escalate | CH-49 | Built |
 | `cache` | Response cache in the encrypted database | CH-50 | Built |
 | `cost` | Cost log and the monthly budget | CH-51 | Built |
-| real providers | Anthropic, OpenAI, Google, local | CH-52 | Planned |
+| `providers` | Anthropic, OpenAI, Google, and local adapters | CH-52 | Built |
 
 ## The privacy rule
 
@@ -51,3 +51,11 @@ estimated dollars for every call that reaches a provider (`llm_usage` table). Wh
 spend reaches `monthly_budget_usd` (a setting, default $20), non-essential cloud calls raise
 `BudgetExceeded`; set `essential=True` on a request to keep it running. Local models and cache
 hits are always free. See [ADR-0006](../../../docs/decisions/0006-cost-log-and-budget.md).
+
+## Real providers
+
+`AnthropicProvider`, `OpenAIProvider`, `GoogleProvider`, and `LocalProvider` (an OpenAI-style
+server on localhost) each take a name and model; cloud ones also take an API key. Keys live in the
+Keychain as `api-key-<provider name>` (for example `api-key-anthropic`); read one with
+`load_api_key(store, name)`. HTTP errors say only the status code. Tests use a mock transport.
+See [ADR-0007](../../../docs/decisions/0007-real-providers.md).
