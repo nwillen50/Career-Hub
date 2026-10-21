@@ -35,6 +35,9 @@ class Settings(BaseModel):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     #: How many nightly backups to keep before the oldest is removed.
     backup_keep: int = Field(default=7, ge=1, le=365)
+    #: Most the model router may spend on cloud models in a calendar month, in US dollars. When
+    #: it is reached, calls not marked essential are paused (PRD, "Cost tracking").
+    monthly_budget_usd: float = Field(default=20.0, ge=0)
     #: Local time (24-hour ``HH:MM``) the nightly run starts.
     nightly_run_time: str = "02:00"
 

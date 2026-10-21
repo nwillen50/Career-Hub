@@ -11,7 +11,7 @@ See [ADR-0003](../../../docs/decisions/0003-router-contract.md).
 | `fake` | Scripted provider for tests | CH-48 | Built |
 | `validated` | `complete_validated`: Pydantic-checked output, one retry, then escalate | CH-49 | Built |
 | `cache` | Response cache in the encrypted database | CH-50 | Built |
-| cost log, budget | Per-run cost and the monthly budget | CH-51 | Planned |
+| `cost` | Cost log and the monthly budget | CH-51 | Built |
 | real providers | Anthropic, OpenAI, Google, local | CH-52 | Planned |
 
 ## The privacy rule
@@ -43,3 +43,11 @@ and token limit; the prompt itself is never stored. The privacy check runs *befo
 and a hit comes back with `cached=True` so the cost log (CH-51) can count it as free. There is no
 expiry yet; a changed prompt or model is a different key. See
 [ADR-0005](../../../docs/decisions/0005-response-cache.md).
+
+## Cost and budget
+
+`Router(providers, cache=..., costs=CostLog(sessions, budget, prices, run_id))` logs tokens and
+estimated dollars for every call that reaches a provider (`llm_usage` table). When this month's
+spend reaches `monthly_budget_usd` (a setting, default $20), non-essential cloud calls raise
+`BudgetExceeded`; set `essential=True` on a request to keep it running. Local models and cache
+hits are always free. See [ADR-0006](../../../docs/decisions/0006-cost-log-and-budget.md).
