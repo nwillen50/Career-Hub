@@ -26,7 +26,14 @@ from careerhub.modules.jobs import (
     propose_source,
     reject_source,
 )
-from careerhub.modules.network import UnknownPerson, find_people, import_alumni, tag_person
+from careerhub.modules.network import (
+    UnknownPerson,
+    find_company,
+    find_people,
+    import_alumni,
+    tag_person,
+    warm_paths,
+)
 from careerhub.pipeline import run_nightly
 from careerhub.profile.files import ProfileFileError
 from careerhub.profile.profile import Profile, format_profile, load_profile
@@ -36,6 +43,7 @@ from careerhub.web.shortlist import write_shortlist
 USAGE = """Usage:
   hub profile show
   hub ingest greenhouse --company <board>   (the source must be approved)
+  hub paths <company>                        (who you know there, strongest first)
   hub people find <text>                     (by name or company)
   hub people tag <id> <how you know them>
   hub people import-alumni <file.csv>
@@ -57,6 +65,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return 0
         if len(args) == 4 and args[:2] == ["ingest", "greenhouse"] and args[2] == "--company":
             return _with_session(store, lambda s: _ingest(s, args[3]))
+        if args[:1] == ["paths"] and len(args) >= 2:
+            return _with_session(store, lambda s: _paths(s, " ".join(args[1:])))
         if args[:2] == ["people", "find"] and len(args) >= 3:
             return _with_session(store, lambda s: _people_find(s, " ".join(args[2:])))
         if args[:2] == ["people", "tag"] and len(args) >= 4 and args[2].isdigit():
@@ -102,6 +112,22 @@ def _with_session(store: KeyStore, action: Callable[[Session], int]) -> int:
     migrate(engine)
     with session_factory(engine)() as session:
         return action(session)
+
+
+def _paths(session: Session, company_text: str) -> int:
+    company = find_company(session, company_text)
+    if company is None:
+        print(f"No company matching {company_text!r}.")
+        return 1
+    paths = warm_paths(session, company.id, limit=10)
+    print(f"{company.name}:")
+    for path in paths:
+        print(
+            f"  {path.name} ({path.title or 'no title'}): {'; '.join(path.reasons) or 'no details'}"
+        )
+    if not paths:
+        print("  You don't know anyone here yet.")
+    return 0
 
 
 def _people_find(session: Session, text: str) -> int:
