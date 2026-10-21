@@ -18,6 +18,7 @@ that supersedes the old one.
 | [0010](0010-broad-job-source.md) | Broad job source: Adzuna, pending Nicholas checking its terms | Proposed |
 | [0011](0011-job-table-and-dedupe.md) | Job table, identity by source and external id, cross-source dedupe key | Accepted |
 | [0012](0012-source-approval.md) | Sources start proposed; only a user action approves; fetching requires approval | Accepted |
+| [0013](0013-greenhouse-adapter.md) | Greenhouse adapter: public feed; a failed fetch changes nothing | Accepted |
 
 ## Template
 
