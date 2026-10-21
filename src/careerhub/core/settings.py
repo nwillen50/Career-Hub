@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from careerhub.core.paths import data_dir
 
@@ -24,6 +24,25 @@ _CLOCK_TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 class SettingsError(Exception):
     """The settings file can't be read or holds an invalid value."""
+
+
+class ProviderSetting(BaseModel):
+    """One model the router may use. API keys are never stored here (they live in the Keychain)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    #: Unique name used in routes, e.g. "claude-cheap".
+    name: str = Field(min_length=1)
+    kind: Literal["anthropic", "openai", "google", "local"]
+    model: str = Field(min_length=1)
+    #: Override the API address (for local servers or compatible APIs).
+    base_url: str | None = None
+    #: True if the provider's terms let it train on API data; such providers never see
+    #: personal data (PRD, privacy tiers). Defaults to False; check your plan's terms.
+    trains_on_data: bool = False
+    #: Dollars per million tokens, used to estimate cost. Leave unset for local models.
+    input_per_mtok: float | None = Field(default=None, ge=0)
+    output_per_mtok: float | None = Field(default=None, ge=0)
 
 
 class Settings(BaseModel):
@@ -38,8 +57,27 @@ class Settings(BaseModel):
     #: Most the model router may spend on cloud models in a calendar month, in US dollars. When
     #: it is reached, calls not marked essential are paused (PRD, "Cost tracking").
     monthly_budget_usd: float = Field(default=20.0, ge=0)
+    #: The models Career Hub may use. Empty until the user adds some.
+    providers: tuple[ProviderSetting, ...] = ()
+    #: Which providers handle each task, in order: the first is tried, later ones are escalations.
+    #: Example: {"extract": ["claude-cheap", "claude-strong"]}.
+    model_routes: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     #: Local time (24-hour ``HH:MM``) the nightly run starts.
     nightly_run_time: str = "02:00"
+
+    @model_validator(mode="after")
+    def _check_providers_and_routes(self) -> Settings:
+        """Require unique provider names and routes that name only known providers."""
+        names = [provider.name for provider in self.providers]
+        if len(set(names)) != len(names):
+            raise ValueError("provider names must be unique")
+        for task, route in self.model_routes.items():
+            if not route:
+                raise ValueError(f"route {task!r} names no providers")
+            unknown = [name for name in route if name not in names]
+            if unknown:
+                raise ValueError(f"route {task!r} names unknown providers: {', '.join(unknown)}")
+        return self
 
     @field_validator("nightly_run_time")
     @classmethod

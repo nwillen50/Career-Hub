@@ -20,6 +20,7 @@ that supersedes the old one.
 | [0012](0012-source-approval.md) | Sources start proposed; only a user action approves; fetching requires approval | Accepted |
 | [0013](0013-greenhouse-adapter.md) | Greenhouse adapter: public feed; a failed fetch changes nothing | Accepted |
 | [0014](0014-job-extraction.md) | Job extraction: versioned prompt, strict schema, public tier, skip if already done | Accepted |
+| [0015](0015-router-from-settings.md) | Router built from settings: providers, task routes, Keychain keys, budget | Accepted |
 
 ## Template
 
