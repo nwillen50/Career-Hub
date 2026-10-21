@@ -10,6 +10,7 @@ that supersedes the old one.
 | [0002](0002-data-models-and-migrations.md) | Data models in SQLAlchemy, UTC times, tables added by the step that needs them | Accepted |
 | [0003](0003-router-contract.md) | Router contract: ordered privacy tiers, one choke point, no fallback on refusal | Accepted |
 | [0004](0004-core-tables-match-prd.md) | Core tables follow the PRD's data model; JSON for list fields; proposals end `rejected` | Accepted |
+| [0005](0005-response-cache.md) | Response cache keyed by provider, model, and prompt hash; checked after privacy | Accepted |
 
 ## Template
 

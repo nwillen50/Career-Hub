@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from careerhub.llm.cache import ResponseCache
 from careerhub.llm.provider import Destination, Provider
 from careerhub.llm.types import LLMRequest, LLMResponse, PrivacyTier
 
@@ -46,8 +47,9 @@ def check_allowed(tier: PrivacyTier, provider: Provider) -> None:
 class Router:
     """Sends requests to named providers, after the privacy check."""
 
-    def __init__(self, providers: Iterable[Provider]) -> None:
-        """Register providers by name. Duplicate names are an error."""
+    def __init__(self, providers: Iterable[Provider], cache: ResponseCache | None = None) -> None:
+        """Register providers by name (duplicates are an error); optionally add a cache."""
+        self._cache = cache
         self._providers: dict[str, Provider] = {}
         for provider in providers:
             if provider.name in self._providers:
@@ -62,7 +64,18 @@ class Router:
             raise UnknownProvider(name) from None
 
     def complete(self, request: LLMRequest, provider: str) -> LLMResponse:
-        """Check privacy, then send `request` to the provider called `provider`."""
+        """Check privacy, then answer from the cache or send `request` to the provider.
+
+        The privacy check always runs first, so a cached answer is never served to a provider
+        that the request's tier forbids.
+        """
         chosen = self.provider(provider)
         check_allowed(request.tier, chosen)
-        return chosen.complete(request)
+        if self._cache is not None:
+            hit = self._cache.get(chosen, request)
+            if hit is not None:
+                return hit
+        response = chosen.complete(request)
+        if self._cache is not None:
+            self._cache.put(chosen, request, response)
+        return response

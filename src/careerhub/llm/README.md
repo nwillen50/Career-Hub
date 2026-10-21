@@ -10,7 +10,7 @@ See [ADR-0003](../../../docs/decisions/0003-router-contract.md).
 | `router` | Privacy check, then the call; raises `PrivacyViolation` | CH-48 | Built |
 | `fake` | Scripted provider for tests | CH-48 | Built |
 | `validated` | `complete_validated`: Pydantic-checked output, one retry, then escalate | CH-49 | Built |
-| `cache` | Response cache in the encrypted database | CH-50 | Planned |
+| `cache` | Response cache in the encrypted database | CH-50 | Built |
 | cost log, budget | Per-run cost and the monthly budget | CH-51 | Planned |
 | real providers | Anthropic, OpenAI, Google, local | CH-52 | Planned |
 
@@ -34,3 +34,12 @@ object. Each provider gets one attempt plus one retry (the retry tells the model
 without quoting its answer); then the next route is tried. Escalation goes through the router, so
 a Sensitive call can never escalate to a cloud provider. If everything fails it raises
 `ValidationFailed`, whose message lists only field names and rules, never the model's text.
+
+## Response cache
+
+`Router(providers, cache=ResponseCache(sessions))` answers a repeated call from the encrypted
+database (`llm_cache` table). The key is provider, model, and a hash of the system text, prompt,
+and token limit; the prompt itself is never stored. The privacy check runs *before* the lookup,
+and a hit comes back with `cached=True` so the cost log (CH-51) can count it as free. There is no
+expiry yet; a changed prompt or model is a different key. See
+[ADR-0005](../../../docs/decisions/0005-response-cache.md).
