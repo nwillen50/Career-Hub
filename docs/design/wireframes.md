@@ -188,3 +188,58 @@ or profile text).
 Interface code (CH-31): the local web app, menu-bar helper, and notifications. When you reply,
 I'll turn the answers into tickets in the order Today, Job detail, Tracker, Conversation panel,
 System status.
+
+## Answers and changes (Nicholas, Oct 21)
+
+These override the sketches above where they differ. The visual design (look, type, color,
+navigation feel) is still being decided (CH-105); build structure and behavior with neutral styling
+in design tokens until then.
+
+**Q1.** One exploration pick by default; a setting can raise it to two.
+
+**Q2.** The card's headline is the job title, company, location, salary, and overall score. If it
+doesn't fit at the standard width, salary is always the part dropped (never location), and it moves
+to the expandable section. Below the headline, an expandable section, closed by default, holds the
+reason, the rubric breakdown, a short summary of the job, and who to contact. The full posting
+stays on Job detail.
+
+```
++----------------------------------------------------------------------------------+
+| ML Engineer, New Grad · Northwind Labs · Boston, MA · $95k-$110k            82   |
+|   [i] Interested   [x] Not interested v   [a] Applied   [Open >]   [More v]      |
+|   (More, closed by default:)                                                     |
+|   Why: strong match on field and level; Boston is on your list.                  |
+|   The job: computer vision for warehouse robots; builds and tests models.        |
+|   field 9/10 · level 8/10 · location 10/10 · ...                                 |
+|   Contact: Ada Sample (Same school; you noted: mentor)                           |
++----------------------------------------------------------------------------------+
+```
+
+**Q3.** Posting text collapsed by default on Job detail.
+
+**Q4.** Statuses: interested, reached out or referred, applied, interviewing, offer, rejected,
+withdrawn, ghosted (set automatically after a period with no reply; a setting).
+
+**Q5.** Saved views: Follow-ups due; Applied, no reply in 10+ days; Interviewing; Deadlines in the
+next 7 days; Interested but not applied for over a week; Has a warm path; Interested. Marking a
+job Interested is one click or the `i` key on Today, Job detail, and Tracker.
+
+**Q6.** Declined proposals go to a Declined list you can reopen. Items leave the list after 30
+days; Career Hub doesn't propose the same change again for 90 days. Both are settings.
+
+**Q7.** The menu-bar count is follow-ups due plus new top jobs not yet reacted to. Any reaction
+clears a job from the count.
+
+**Further changes from the review:**
+
+- **Plan tab.** "This week's plan" moves out of Today to its own tab: the top bar is Today, Plan,
+  Tracker, System.
+- **One section at a time on Today.** A row of chips at the top: All, Top jobs, Exploration,
+  Follow-ups, Deadlines (keys 0 to 4). The choice is remembered between visits.
+- **Job summary.** Job detail opens with a short plain-English summary of what the job really is
+  (titles like "ML Engineer" are broad) and a role label such as "applied ML, computer vision".
+  Extraction writes it from the posting alone (CH-98).
+- **Tracker filters.** Filter chips by status (combine them, e.g. Interested + Applied) next to
+  the text filter. Saved views are stored filter combinations.
+- **Adjustable defaults.** Plan defaults (task lengths, working hours per weekday) are settings
+  (CH-104).

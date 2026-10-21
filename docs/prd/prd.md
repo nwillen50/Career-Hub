@@ -5,8 +5,12 @@
 > request that Nicholas approves. Where an accepted decision record in `docs/decisions/` refines
 > this document, the decision record wins until the PRD is updated to match.
 >
-> Pending wording change: CH-41 proposes that "Core data model" say tables are SQLAlchemy models,
-> with Pydantic at the edges (see ADR-0002).
+> **Updated Oct 21, 2026** with the decisions Nicholas made reviewing PRs #13 to #41 (CH-106,
+> covering the approved PRD tickets CH-41, CH-82, CH-88, and CH-92). The main changes: Apple
+> Calendar is the MVP calendar, with direct Google and Outlook sync moved to Post-MVP; job sources
+> are Greenhouse, Lever, Ashby, The Muse, and pasted links; resumes and transcripts can be any
+> common format; eligibility and job summaries are extracted; the interface gains a Plan tab; and a
+> built-in set of models is switched on with the user's own keys.
 >
 > Nicholas's notes from review are kept, marked with his name (typos fixed). Open questions
 > answered since sign-off are checked off, with the ticket that settled them.
@@ -21,9 +25,9 @@ It runs on your Mac. Sensitive data stays local and encrypted, and every model c
 one router that enforces privacy tiers across cloud and local models. It drafts and advises but
 never sends, submits, or applies on your behalf.
 
-The MVP is a local web app. **Today** is a daily digest, and **Tracker** is a sheets-like table of
-applications, contacts, and interactions. Job detail, a Conversation panel, and System status
-complete it, and a menu-bar icon makes sure nothing gets missed. A ranked shortlist (Milestone A)
+The MVP is a local web app. **Today** is a daily digest, **Plan** is the week's plan, and
+**Tracker** is a sheets-like table of applications, contacts, and interactions. Job detail, a
+Conversation panel, and System status complete it, and a menu-bar icon makes sure nothing gets missed. A ranked shortlist (Milestone A)
 arrives first, before the interface is built. News, Grad Schools, and a version others can install
 come later.
 
@@ -124,16 +128,16 @@ MVP includes a basic version of most capabilities, and later phases deepen them.
 
 | Capability | What it does | MVP | Post-MVP |
 | --- | --- | --- | --- |
-| Discover | Pulls postings from approved sources, removes duplicates, flags stale and ghost postings (reposted, or open unusually long) | Job-board feeds for a target company list, plus other selected sources that find jobs in fields of interest based on previous conversations and actions | More sources |
+| Discover | Pulls postings from approved sources, removes duplicates, flags stale and ghost postings (reposted, or open unusually long) | Greenhouse, Lever, and Ashby feeds for a target company list (seeded from lists the user adds, such as The Engine's resident companies); The Muse as the broad source; jobs the user adds by pasting a link from anywhere, including LinkedIn and Handshake. Posting age is shown, and postings older than about three weeks rank slightly lower | More applicant-tracking systems (Workday, Rippling, Workable); job-alert emails from LinkedIn and Handshake once mail is connected; a second broad source (Adzuna) if needed |
 | Explore | Adds one exploration pick a day by default (up to two): an adjacent role or company outside stated preferences. Reactions update an interest model, and the agent states what it has inferred so the user can confirm or correct it | One pick a day by default; inferred interests shown for confirmation | Number of picks and the interest model learn from feedback |
 | Source discovery | Proposes new sources based on the user's interests, conversations, and reactions. In the MVP it can only propose new configurations of existing source types (another company's job board, a new saved search); a new type of source is a code ticket. Nothing is added without the user's approval | Yes | — |
-| Understand | Turns each posting into structured fields (level, requirements, location, visa, pay, deadline) and adds company context | Yes | Deeper company research |
-| Prioritize | Hard filters, then a fit score with a written explanation, then ranking by fit, odds, and urgency | Yes | Scoring tuned by feedback |
-| Network | Who you know at each company, and the strongest warm path | From the LinkedIn connections export, plus alumni from lists the user provides and connections the user tags | Second-degree connections, past email contact |
-| Tailor | Which experiences to lead with, which gaps to address, suggested resume changes | Written tailoring notes | Generates resume variants in LaTeX for the user to accept |
+| Understand | Turns each posting into structured fields (level, requirements, location, visa, pay, deadline, degree required and preferred, degree fields, graduation window, work authorization, start date, required and preferred skills), a plain-English summary of what the job really is, and company context | Yes | Deeper company research |
+| Prioritize | Hard filters, then a fit score with a written explanation, then ranking by fit, odds, and urgency. Hard filters are only eligibility (a required degree level above the user's with no "or equivalent experience", a graduation window that excludes the user) and the user's explicit constraints. Scoring uses every job field plus the user's preferences, judges degree fields and skills generously (physics counts toward most engineering; recent grad equals new grad), and ignores preferred skills. Scoring starts once the profile is ready, and small profile edits don't trigger a re-score | Yes | Scoring tuned by feedback |
+| Network | Who you know at each company, and the strongest warm path | From the LinkedIn connections export, plus alumni from lists the user provides (any layout) and connections the user tags. Anyone known to share the user's school is highlighted, and each company links to LinkedIn's alumni search for the user to open | Second-degree connections, past email contact, contacts no longer in the LinkedIn export flagged |
+| Tailor | Which experiences to lead with, which gaps to address, suggested resume changes, and the posting's preferred skills to highlight | Written tailoring notes | Generates resume variants in LaTeX (for LaTeX resumes) for the user to accept |
 | Outreach | Drafts messages to contacts, with etiquette limits on how often to contact a person or company | — | Yes |
 | Track | Applications, contacts, interactions, and follow-up dates; the agent checks every run that nothing slips | Yes | Status detected from Gmail |
-| Plan | Builds a weekly plan from the time budget, deadlines, and recruiting timelines | Yes | Puts suggested blocks on the calendar after the user approves |
+| Plan | Builds a weekly plan from the time budget, deadlines, recruiting timelines, and free time | Yes, with every default (task lengths, working hours per weekday, daily share) adjustable in preferences | Puts suggested blocks on the calendar after the user approves |
 | Interview prep | Prep notes for a specific interview | — | Yes |
 | Relevant news | News about target companies and fields | — | Part of the News module |
 | Conversation | Talk with Career Hub to refine interests, preferences, and the scoring rubric, or ask why a job ranks where it does. Every change arrives as a proposal the user accepts or rejects | Scoped panel: preferences, rubric, ranking explanations | Full Ask: prep research and actions |
@@ -146,20 +150,27 @@ a menu-bar icon means nothing gets missed.
 ### Screens
 
 - **Today**, the daily digest, about 10 minutes. It shows at most:
-  - 5 new top jobs plus 1 exploration pick (up to 2), each with a one-line reason
-  - who to contact for those jobs
+  - 5 new top jobs plus 1 exploration pick (up to 2). Each card's headline is the title, company,
+    location, salary, and overall score (if it doesn't fit, salary is the part dropped). An
+    expandable section, closed by default, holds the reason, the rubric breakdown, a short summary
+    of the job, and who to contact
   - up to 5 follow-ups due, plus a "+N more overdue" link to Tracker
   - deadlines this week
-  - progress against the weekly plan
   - when the last successful run finished
-- **Tracker.** A sheets-like table of applications, contacts, and interactions. Sort, filter, edit
-  inline, pick a status from a dropdown, and set follow-up dates. Includes saved views such as
-  "Follow-ups due" and "Applied, no reply in 10+ days," plus CSV export.
-- **Job detail.** One job in full: the posting, the fit explanation, warm paths, tailoring notes,
-  and feedback buttons.
+
+  The user can show all sections or one at a time (Top jobs, Exploration, Follow-ups, Deadlines).
+- **Plan.** This week's plan and progress against it, on its own tab.
+- **Tracker.** A sheets-like table of applications, contacts, and interactions. Sort, filter by
+  status and text, edit inline, pick a status from a dropdown (interested, reached out or referred,
+  applied, interviewing, offer, rejected, withdrawn, ghosted), and set follow-up dates. Saved views:
+  Follow-ups due; Applied, no reply in 10+ days; Interviewing; Deadlines in the next 7 days;
+  Interested but not applied for over a week; Has a warm path; Interested. Plus CSV export.
+- **Job detail.** One job in full: a short summary of what the job is, the fit explanation, warm
+  paths, tailoring notes, the posting (collapsed by default), and feedback buttons.
 - **Conversation panel.** A side panel on Today and Job detail. Use it to refine interests,
   preferences, and the scoring rubric, or to ask why a job ranks where it does. Changes appear as
-  proposals with Accept and Reject.
+  proposals with Accept and Reject. Declined proposals stay in a list for 30 days and aren't
+  proposed again for 90.
 - **System status.** Last run, errors, source health, and this month's model spending.
 - **Profile and settings.** The MVP edits plain files. Post-MVP, this becomes a form.
 - **Ask** (Post-MVP). A plain-English chat pane for requests like "prep me for Acme" or "mark Acme
@@ -177,8 +188,8 @@ a menu-bar icon means nothing gets missed.
 
 The goal is to be impossible to miss without flooding the inbox:
 
-1. **Menu-bar icon** with a count of pending actions. It stays visible, unlike a notification
-   banner that disappears.
+1. **Menu-bar icon** with a count of pending actions: follow-ups due plus new top jobs not yet
+   reacted to. It stays visible, unlike a notification banner that disappears.
 2. **One macOS notification** each morning when the digest is ready. Clicking it opens Today.
 3. **Email to self, as an escalation only.** Sent if Today hasn't been opened in two days, plus an
    optional weekly summary. Off by default. The code restricts sending to the user's own address.
@@ -194,8 +205,10 @@ model.
 - Every screen has designed empty, loading, and error states.
 - If the nightly run fails, the menu-bar icon shows an error state and Today says what failed.
 - Keyboard shortcuts cover the daily loop: j and k to move, i for interested, x for not
-  interested, a for applied.
+  interested, a for applied. Interested is one click or key from Today, Job detail, and Tracker.
 - Meets WCAG AA contrast, works with VoiceOver, and follows the system's light or dark mode.
+- The visual design (look, type, color, spacing, navigation feel) is decided with Nicholas before
+  the interface is styled (CH-105); the wireframes are in `docs/design/wireframes.md`.
 
 ### The terminal
 
@@ -210,13 +223,14 @@ the layers below it, so every piece can be tested alone. News and Grad Schools w
 core and shared services.
 
 ```
-Interface        Today · Tracker · Job detail · Menu-bar icon
+Interface        Today · Plan · Tracker · Job detail · Menu-bar icon
 Modules          Jobs (MVP): Discover · Understand · Prioritize · Network · Advise · Plan
                  Later: News · Grad Schools · Colleges · Explore
-Shared services  Profile (resume, prefs) · Tracker store (apps, contacts)
+Shared services  Profile (resume, transcript, prefs) · Tracker store (apps, contacts)
                  Model router (privacy tiers) · Scheduler (launchd jobs)
-Providers        Job sources (ATS boards) · Calendar and mail (Google, Outlook)
-                 Network (LinkedIn export) · LLM providers (cloud and local)
+Providers        Job sources (ATS boards, The Muse, pasted links)
+                 Calendar (Apple; Google and Outlook later) · Mail (Google, Outlook; later)
+                 Network (LinkedIn export, alumni lists) · LLM providers (cloud and local)
 Core             Data models · encrypted SQLite (SQLCipher) · Keychain secrets · config · logging
 ```
 
@@ -261,11 +275,11 @@ read-only and as narrow as possible.
 
 | Interface | MVP providers | Later providers | Access needed |
 | --- | --- | --- | --- |
-| Job source | Public job-board feeds from Greenhouse, Lever, and Ashby for a target company list; one broad source; approved proposals of existing source types | Aggregators, "who's hiring" threads, new types of sources | Public data only |
-| Calendar | Google Calendar and Outlook (Microsoft Graph), merged | Others on request | Free/busy times only; event titles are not needed |
+| Job source | Public job-board feeds from Greenhouse, Lever, and Ashby for a target company list; The Muse as the broad source; jobs added by pasting a link; approved proposals of existing source types | Other applicant-tracking systems (Workday, Rippling, Workable), aggregators, "who's hiring" threads, job-alert emails, new types of sources | Public data only. LinkedIn and Handshake are never fetched or scraped |
+| Calendar | Apple Calendar (EventKit, on the Mac), which includes Google and Outlook calendars added to the Mac's Calendar app; exported calendar files | Direct Google Calendar and Outlook (Microsoft Graph) sync, free/busy only | Free/busy times only; event titles are not needed. Apple Calendar has no free/busy-only access, so Career Hub reads only start, end, and availability and never stores titles or other event details |
 | Mail | — | Gmail, then Outlook | Read-only, to detect application status and recruiter replies |
-| Network | LinkedIn data export (connections CSV), re-imported monthly | Alumni directories, contacts found in mail | A file the user downloads |
-| Models | Cloud APIs (Anthropic, OpenAI, Google) and local MLX or Ollama | Others as needed | API keys kept in the Keychain |
+| Network | LinkedIn data export (connections CSV), re-imported monthly; alumni lists in any common layout (CSV or Excel) | Alumni directories, contacts found in mail | A file the user downloads |
+| Models | A built-in set (Anthropic, OpenAI, Google, and local MLX or Ollama) that the user switches on with their own API keys; others can be added in settings | Others as needed | API keys kept in the Keychain |
 
 **LinkedIn constraint:** LinkedIn offers no personal API for this, and scraping it breaks its terms
 and puts the account at risk. The official data export is the supported path. This gap is the main
@@ -275,9 +289,15 @@ data-access risk (see Risks).
 from lists the user provides (a CSV, such as a club or career-office export where its terms allow
 it) and from connections the user tags as alumni. Scraping school directories is excluded.
 
-**Account setup:** each user registers their own Google Cloud and Microsoft apps for calendar and
-mail access. Google restricts apps left in testing mode, and their sign-ins can expire after about
-a week. The setup guide covers this, and step 8 starts with a spike on it.
+**LinkedIn and Handshake jobs:** neither offers a public jobs API to individuals, and scraping
+breaks their terms. Many of their postings come from Greenhouse, Lever, or Ashby, which the company
+feeds already cover. For any other job, the user pastes the link: Career Hub looks for the same
+posting on the company's own board, or stores the description the user pastes.
+
+**Account setup:** Apple Calendar needs no app registration: macOS asks once for permission to read
+calendars. Registering your own Google Cloud and Microsoft apps is needed only for mail and for the
+Post-MVP direct calendar sync. Google restricts apps left in testing mode, and their sign-ins can
+expire after about a week; the setup guide will cover this when those features are built.
 
 **Adding a source** means writing one adapter class with tests against saved sample responses. No
 other code changes.
@@ -300,7 +320,10 @@ depend on anyone remembering the rule.
 | Personal | Resume, profile, preferences | Cloud or local (this is what employers see anyway) |
 | Sensitive | Email bodies, calendar details, contacts' personal details | Local models only. Cloud calls get only minimal derived facts, such as "applied to Acme on Oct 3" |
 
-Transcripts, and recruiter names that appear in public postings, count as Personal.
+Transcripts, and recruiter names that appear in public postings, count as Personal. Before any
+Personal-tier call, the user's name and contact details (email, phone, links, and on transcripts
+student IDs, birth date, and address) are removed: the model doesn't need them. A provider whose
+terms allow training on API data, such as a free Gemini key, sees only Public data.
 
 Most sensitive work needs no model at all. Matching contacts to companies is a database join, and
 free time comes from free/busy data. A specific contact's details go to a cloud model only when the
@@ -316,6 +339,11 @@ user asks for an outreach draft to that person.
 | High stakes | Tailoring strategy and outreach drafts for the top 5–10 jobs, weekly strategy | Top-tier model |
 | Conversation | Preference and rubric changes, "why is this ranked here?" | Mid-tier model; sees at most Personal data; can only create proposals |
 
+Default routes come from the built-in model set and the providers the user has switched on: Public
+tasks go to the cheapest active model, Personal tasks to the cheapest active model that doesn't
+train on API data (with a stronger one as escalation), and Sensitive tasks stay local. The user can
+override any route in settings.
+
 ### Scoring rubric
 
 Fit scoring follows a rubric the user can read and change. It is a versioned file of criteria (for
@@ -327,13 +355,15 @@ version and runs `hub eval`, so the user can see whether ranking improved.
 
 ### Router requirements
 
-- **Providers:** Anthropic, OpenAI, Google, and local models, behind one interface. A thin in-house
-  adapter, optionally on top of LiteLLM.
+- **Providers:** Anthropic, OpenAI, Google, and local models, behind one interface: thin in-house
+  adapters over HTTPS, with no vendor SDKs or LiteLLM between the privacy check and the network
+  (ADR-0007).
 - **Validated output:** every response is checked against a Pydantic schema. If it fails, the call
-  is retried once, then escalated to a stronger model.
-- **Caching:** responses are cached by prompt and input, so reruns don't cost money.
+  is retried once, then escalated to a stronger model. Only validated answers are cached.
+- **Caching:** responses are cached by prompt and input, so reruns don't cost money. An entry
+  expires 30 days after it was last used, and the user can clear the cache.
 - **Cost tracking:** cost is logged per run, with a monthly budget that pauses non-essential calls
-  when reached.
+  when reached; essential calls pause at twice the budget (ADR-0020).
 - **Choosing models:** a new model earns a route by passing that task's evals at lower cost.
 
 ## Security
@@ -350,7 +380,7 @@ The design assumes four threats, each with a specific defense:
 | --- | --- |
 | Secrets | API keys and app sign-in tokens stored in the macOS Keychain through the `keyring` library. Never in config files, environment files, or logs |
 | Data at rest | SQLite encrypted with SQLCipher. Its key lives in the Keychain. FileVault encrypts the disk underneath |
-| Access scopes | Read-only access to mail and calendar; free/busy only where the provider supports it. The only send permission is the optional escalation email to the user |
+| Access scopes | Read-only access to mail and calendar; free/busy only where the provider supports it; where it doesn't (Apple Calendar), only event times and availability are read. The only send permission is the optional escalation email to the user |
 | Sending | The email sender accepts exactly one recipient, taken from settings. Tests prove any other address is rejected |
 | Prompt injection | Postings, emails, and web pages are untrusted data. The pipeline has no tools that send, delete, or submit, and model output is parsed as data, never run as instructions |
 | Local web app | Listens on the local machine only, requires a session token, checks the request's host and origin, and protects forms against cross-site requests |
@@ -362,19 +392,20 @@ The design assumes four threats, each with a specific defense:
 
 ## Core data model
 
-Fourteen entities hold everything, defined once as Pydantic models in `core/`. People, companies,
-and interactions are shared across modules. Job-specific entities belong to the Jobs module.
+Fourteen entities hold everything, defined once as SQLAlchemy models in `core/` (Pydantic
+validates model output, settings, and user files; ADR-0002). People, companies, and interactions
+are shared across modules. Job-specific entities belong to the Jobs module.
 
 | Entity | Key fields | Owner |
 | --- | --- | --- |
-| Profile | Identity, education, skills, interests (stated and inferred), hard constraints, timeline, weekly time budget, resume (read this), transcript | Core |
-| Company | Name, domains, ATS board IDs, size, industry, notes | Core |
-| Person | Name, company, title, how you know them, source (LinkedIn export, mail), last contact | Core |
+| Profile | Identity, education, skills, interests (stated and inferred), hard constraints, work modes (remote, hybrid, onsite), timeline, weekly time budget, resume and transcript (any common format, read into facts the user confirms) | Core |
+| Company | Name, aliases, domains, ATS board IDs, size, industry, notes. Names are matched loosely ("Microsoft", "Microsoft.com", and "Microsoft Corporation" are one company) | Core |
+| Person | Name, company, title, schools, how you know them, source (LinkedIn export, alumni list, mail), last contact | Core |
 | Interaction | Person, date, channel, summary, follow-up due | Core |
 | Source | Type, configuration, approval status, last fetch, health | Core |
 | Job | Company, title, URL, source, first seen, last seen, raw text, structured fields, status (new, stale, closed) | Jobs |
 | Assessment | Job, filter results, fit score, odds, urgency, explanation, model used, prompt version | Jobs |
-| Application | Job, date, resume variant, referrer, status, next step, follow-up due | Jobs |
+| Application | Job, date, resume variant, referrer, status (interested, reached out or referred, applied, interviewing, offer, rejected, withdrawn, ghosted), next step, follow-up due | Jobs |
 | Resume variant | Base resume version, changes applied, rendered PDF path | Jobs |
 | Feedback | Job, reaction, reason, date | Jobs |
 | Plan | Week, time budget, planned actions, completion | Jobs |
@@ -389,8 +420,9 @@ Rules that apply to every entity:
 - Raw source data is kept next to structured fields, so extraction can be redone when prompts
   improve.
 - Schema changes go through migrations (Alembic), never by hand.
-- **Resume:** the LaTeX resume is the base. Its content moves into a structured file that a LaTeX
-  template renders, so variants are small, readable diffs in git.
+- **Resume:** the resume can be any common format (PDF, Word, LaTeX, text). When it is LaTeX, its
+  content moves into a structured file that a LaTeX template renders, so variants are small,
+  readable diffs in git; other formats get tailoring notes but not generated variants.
 
 ## Evaluation and quality
 
@@ -433,19 +465,23 @@ Target dates are set once Nicholas confirms his weekly build hours.
   nightly backup
 - **Model router:** cloud and local providers, privacy tiers, validated output, caching, cost
   budget
-- **Profile:** profile and preference files with hard constraints; resume and transcript; LinkedIn
-  connections import; the scoring rubric file
-- **Sources:** job-board feeds for a target company list; one broad source; source discovery
-  limited to existing source types, with approval; deduplication; stale and ghost detection
-- **Matching:** extraction, hard filters, rubric-based fit score with explanation, urgency from
-  deadlines and recruiting timelines, one exploration pick a day by default
-- **Network:** who you know at each company, plus alumni from lists the user provides and
-  connections the user tags
+- **Profile:** profile and preference files with hard constraints; resume and transcript in common
+  formats (PDF, Word, LaTeX, text), read and turned into structured facts the user confirms;
+  LinkedIn connections import; the scoring rubric file
+- **Sources:** Greenhouse, Lever, and Ashby feeds for a target company list; The Muse as the broad
+  source; jobs added by pasting a link; source discovery limited to existing source types, with
+  approval; deduplication; stale and ghost detection
+- **Matching:** extraction including eligibility and a job summary, eligibility filters, rubric-based
+  fit score with explanation, urgency from deadlines and recruiting timelines, one exploration pick
+  a day by default
+- **Network:** who you know at each company, plus alumni from lists the user provides, connections
+  the user tags, and anyone known to share the user's school
 - **Advice:** written tailoring notes for the top jobs
-- **Planning:** free/busy from Google Calendar and Outlook, a time budget, a weekly plan
-- **Interface:** local web app with Today, Tracker, Job detail, Conversation panel, and System
-  status; menu-bar count and error state; morning notification; escalation email to self, off by
-  default
+- **Planning:** free/busy from Apple Calendar (including Google and Outlook accounts added on the
+  Mac) or calendar files, a time budget, a weekly plan
+- **Interface:** local web app with Today, Plan, Tracker, Job detail, Conversation panel, and
+  System status; menu-bar count and error state; morning notification; escalation email to self,
+  off by default
 - **Quality:** the evaluation set and `hub eval`
 - **Repo:** public GitHub repo with CI, docs, and a setup guide
 
@@ -480,7 +516,11 @@ module, then packaging so other people can use it.
    - Scoring and exploration picks tuned by feedback
    - LaTeX resume variants generated for the user to accept
    - Alumni from school directories, where their terms allow it
+   - Contacts missing from a newer LinkedIn export flagged as no longer connected (kept, never
+     deleted) and left out of warm paths
    - Suggested calendar blocks, added only after the user approves
+   - Direct Google Calendar and Outlook sync (free/busy only), for calendars not on the Mac
+   - Job-alert emails (LinkedIn, Handshake) and more applicant-tracking systems as sources
 2. **Interface**
    - Full dashboard
    - Profile and preferences as a form instead of files
@@ -511,10 +551,12 @@ and its tests pass before the next step starts.
    test writes and reads an encrypted record.
 2. **Model router:** providers, privacy tiers, schema validation, caching, cost log. *Done when* a
    Sensitive call to a cloud model is refused in a test.
-3. **Profile:** load the profile files, resume, transcript, LinkedIn connections export, alumni
-   lists, and the scoring rubric. *Done when* `hub profile show` prints a parsed profile.
-4. **First source:** one job-board adapter, normalization, deduplication, and the approval flow for
-   proposed sources. *Done when* one company's postings are in the database and a rerun adds no
+3. **Profile:** load the profile files, resume, transcript (any common format), LinkedIn
+   connections export, alumni lists, and the scoring rubric. *Done when* `hub profile show` prints
+   a parsed profile.
+4. **Sources:** the first job-board adapter (Greenhouse), normalization, deduplication, and the
+   approval flow for proposed sources; then Lever, Ashby, The Muse, pasted links, and the target
+   company list. *Done when* one company's postings are in the database and a rerun adds no
    duplicates.
 5. **Understand:** extraction into structured fields, plus the extraction evals. *Done when* field
    accuracy is measured.
@@ -523,20 +565,22 @@ and its tests pass before the next step starts.
    produce a baseline and the report is readable. **Milestone A: ranked shortlist.**
 7. **Network:** match connections and alumni lists to companies. *Done when* each ranked job lists
    known contacts.
-8. **Advise and plan:** tailoring notes, calendar providers, weekly plan. *Starts with* a spike on
-   Google and Microsoft app setup. *Done when* a plan is generated from real free/busy data.
-9. **Interface:** web app (Today, Tracker, Job detail, Conversation panel, System status), menu-bar
-   helper, notification, optional email. *Starts with* wireframes and a spike on macOS
-   notifications. *Done when* the user completes a daily review without a terminal.
+8. **Advise and plan:** tailoring notes, calendar providers (Apple Calendar, calendar files),
+   weekly plan. *Starts with* a spike on Apple Calendar access from the background job. *Done when*
+   a plan is generated from real free/busy data.
+9. **Interface:** web app (Today, Plan, Tracker, Job detail, Conversation panel, System status),
+   menu-bar helper, notification, optional email. *Starts with* wireframes (done, CH-32), a visual
+   design direction agreed with Nicholas (CH-105), and a spike on macOS notifications. *Done when*
+   the user completes a daily review without a terminal.
 10. **Schedule:** harden the launchd jobs (power and idle conditions, retries, failure alerts) and
     run the full overnight pipeline. *Done when* 5 consecutive nightly runs succeed.
     **Milestone B: full MVP.**
 
 ### Practices
 
-- **Stack:** Python 3.12+, uv, Pydantic, SQLModel or plain SQL on SQLCipher, Alembic, FastAPI with
-  Jinja templates and HTMX, Typer for developer commands, pytest, Ruff, mypy, rumps for the menu
-  bar. *(ADR-0002 settles the storage layer on SQLAlchemy typed models.)*
+- **Stack:** Python 3.12+, uv, Pydantic, SQLAlchemy typed models on SQLCipher (ADR-0002),
+  Alembic, FastAPI with Jinja templates and HTMX, Typer for developer commands, pytest, Ruff, mypy,
+  rumps for the menu bar.
 - **Repo layout:**
   - `core/`, `llm/`, `providers/`, `profile/`
   - `modules/jobs/` with `discover/`, `understand/`, `prioritize/`, `network/`, `advise/`, and
@@ -548,7 +592,8 @@ and its tests pass before the next step starts.
 - **Tests:** unit tests on saved sample data (no real accounts in CI). Recorded HTTP responses for
   providers. Model calls replaced by fixtures, except in `hub eval`.
 - **GitHub:** public repo, MIT license (decided in CH-8), CI running lint, types, tests, and the
-  secret scan on every PR. Small PRs, one step or sub-step each.
+  secret scan on every PR. Small PRs, one step or sub-step each. A ruleset protects `main`: changes
+  arrive only through pull requests whose checks pass, with no force pushes or deletion.
 
 ## Risks and open questions
 
@@ -559,8 +604,9 @@ MVP has to be useful within weeks, not months.
 | --- | --- | --- |
 | Building competes with searching | Peak recruiting passes before the tool helps | Milestone A delivers a ranked shortlist after step 6, while the interface is built |
 | MVP keeps growing | Milestones slip | Milestone A ships first. New ideas go to the backlog, and Priya decides with Nicholas |
-| Limited data access (LinkedIn, alumni, some job boards) | Gaps in coverage | Official exports, public feeds, and user-provided alumni lists; a manual "add job" link |
-| Account setup friction (app registration, expiring test sign-ins) | Calendar features break or setup stalls | Step-by-step setup guide; spike at the start of step 8 |
+| Limited data access (LinkedIn, Handshake, alumni, some job boards) | Gaps in coverage | Official exports, public feeds, and user-provided alumni lists; pasting a job link from anywhere; companies on unsupported applicant-tracking systems are listed so the gap is visible |
+| Account setup friction (app registration, expiring test sign-ins) | Calendar features break or setup stalls | The MVP calendar is Apple Calendar, which needs no app registration; direct Google and Microsoft sync is Post-MVP. Step-by-step setup guide |
+| Filters too strict | Good jobs never shown | Only eligibility and explicit constraints filter; loose matching for company names, titles, and places; anything uncertain is shown with a flag, not hidden |
 | SQLCipher doesn't work cleanly with SQLAlchemy and Alembic | Encryption delayed | Spike in step 1; fallback to an encrypted APFS volume. *(Resolved: it works, ADR-0001.)* |
 | Ranking feels wrong | User stops trusting the digest | Evaluation set, rubric, explanations, weekly spot checks |
 | Model costs creep up | Budget overrun | Caching, cheap models first, a hard monthly budget |
@@ -569,8 +615,8 @@ MVP has to be useful within weeks, not months.
 
 ### Open questions
 
-- [ ] Which broad job source to use for the MVP (decide after checking which ones offer
-      terms-compliant access; spike CH-10)
+- [x] Broad job source for the MVP: The Muse (CH-10, Oct 21; its terms are checked when the
+      adapter is built, CH-95)
 - [x] License: MIT (CH-8)
 - [x] Exploration share: 1 pick a day by default, up to 2
 - [x] Hobbies: its own module
@@ -578,3 +624,4 @@ MVP has to be useful within weeks, not months.
 - [x] Recruiter names from public postings: Personal tier
 - [x] Weekly build hours: Claude builds overnight, midnight to 8 a.m. Eastern (CH-5)
 - [ ] Which alumni lists (clubs, career office) are available to import (CH-9)
+- [ ] The interface's visual design: look, type, color, navigation (CH-105)

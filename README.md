@@ -7,7 +7,10 @@ week around the time you actually have.
 It runs on your Mac. Your data stays on your machine, encrypted. It drafts and advises, but it never
 sends, submits, or applies on your behalf.
 
-> **Status:** early build, step 1 of 10 (repo and core). Nothing here is usable yet.
+> **Status (Oct 21, 2026):** steps 1 to 8 are built and merged, so the code for Milestone A (a ranked
+> nightly shortlist) exists. Nothing has run on real data or a real Mac yet. Next: the follow-ups
+> from the Oct 21 review (more job sources, eligibility and job summaries, a built-in model set,
+> Apple Calendar), then step 9, the interface. The live status is on the project board.
 
 ## How this project is built
 
@@ -15,40 +18,77 @@ Career Hub is built **bottom-up**: each module runs and passes its own tests bef
 on top of it. The plan, scope, and design live in the [PRD](docs/prd/prd.md); every
 piece of work is a ticket (`CH-1`, `CH-2`, ...) on the project board.
 
-| Step | What | Milestone |
+| Step | What | Milestone | State |
+| --- | --- | --- | --- |
+| 1 | Repo and core: data models, encrypted storage, secrets, settings, logging | A | Built |
+| 2 | Model router: providers, privacy tiers, validation, caching, cost | A | Built |
+| 3 | Profile: resume, transcript, preferences, LinkedIn connections, scoring rubric | A | Built |
+| 4 | Job sources (Greenhouse now; Lever, Ashby, The Muse, pasted links next), deduplication | A | Built, more to come |
+| 5 | Understand: postings into structured fields | A | Built |
+| 6 | Prioritize: filters, scoring, explanations, nightly shortlist | **A: ranked shortlist** | Built |
+| 7 | Network: who you know at each company | B | Built |
+| 8 | Advise and plan: tailoring notes, calendar, weekly plan | B | Built |
+| 9 | Interface: local web app and menu-bar icon | B | Wireframes agreed |
+| 10 | Schedule: hardened nightly runs | **B: full MVP** | Not started (a basic launchd job exists) |
+
+## What it does today
+
+From the terminal (the web app comes in step 9), `hub` can:
+
+| Command | What it does |
+| --- | --- |
+| `hub profile show` | Print your parsed profile, preferences, and what's missing (never resume or transcript text) |
+| `hub sources add`, `list`, `approve`, `reject`, `disable` | Propose a job source and decide on it; nothing is fetched until you approve |
+| `hub ingest greenhouse --company <board>` | Fetch one approved company's postings |
+| `hub nightly` | Run the whole pipeline once: ingest, extract, filter, score, tailor, write the shortlist page (with warm paths), back up |
+| `hub shortlist build` | Write the shortlist page to your data folder |
+| `hub paths <company>` | Who you know at a company, strongest first, with reasons |
+| `hub people find`, `tag`, `import-alumni` | Find people, record how you know them, import an alumni list |
+| `hub plan` | Suggested blocks for the next 7 days from your free time and time budget |
+| `hub schedule install` | Write the nightly launchd job and print the command that starts it |
+
+## Models and cost
+
+Every model call goes through one router that enforces privacy tiers: job postings (Public) can go
+to any model, your profile and resume (Personal) only to models that don't train on API data, and
+anything Sensitive stays on your Mac. Your name and contact details are removed before any model
+sees your profile or resume.
+
+You bring your own API keys, stored in the macOS Keychain. A typical low-cost setup:
+
+| Task | Model | Why |
 | --- | --- | --- |
-| 1 | Repo and core: data models, encrypted storage, secrets, settings, logging | A |
-| 2 | Model router: providers, privacy tiers, validation, caching, cost | A |
-| 3 | Profile: resume, preferences, LinkedIn connections, scoring rubric | A |
-| 4 | First job source, deduplication | A |
-| 5 | Understand: postings into structured fields | A |
-| 6 | Prioritize: filters, scoring, explanations, nightly shortlist | **A: ranked shortlist** |
-| 7 | Network: who you know at each company | B |
-| 8 | Advise and plan: tailoring notes, calendar, weekly plan | B |
-| 9 | Interface: local web app and menu-bar icon | B |
-| 10 | Schedule: hardened nightly runs | **B: full MVP** |
+| Reading postings | Gemini (free tier) | Postings are public, so a free key that may train on data is fine |
+| Scoring jobs, tailoring notes | Claude Haiku | Cheap (well under $2 a month here), doesn't train on API data |
+| Fallback for everything | A local model through Ollama | Free and private; runs overnight |
+
+A monthly budget setting caps spending. A built-in model catalog and `hub models` commands are
+planned so this becomes a few commands instead of a settings file.
 
 ## Repository layout
 
 ```
 src/careerhub/        the application, one package per layer
   core/               data models, encrypted storage, secrets, settings, logging (step 1)
-  llm/                the model router: privacy tiers, providers (step 2)
-  profile/            profile and preference files, resume, LinkedIn import (step 3)
+  llm/                the model router: privacy tiers, providers, cache, cost log (step 2)
+  profile/            profile and preference files, resume, transcript, LinkedIn import (step 3)
+  modules/jobs/       find, store, understand, filter, score, and tailor postings (steps 4 to 6, 8)
   modules/network/    alumni import, people tags, warm paths (step 7)
-  modules/plan/       free time from calendar files, the weekly plan (step 8)
-  modules/jobs/       find, store, and (later) understand and rank postings (steps 4 to 6)
+  modules/plan/       free time from calendars, the weekly plan (step 8)
   prompts/            versioned prompt files, one per model task
   web/                pages for the user: the nightly shortlist now, the web app later (step 9)
+  pipeline.py         hub nightly: runs every stage once
+  schedule.py         the launchd job for the nightly run
 tests/                tests, mirroring src/
+evals/                evaluation sets and samples for hub eval
 spikes/               short experiments that answer one question before we commit to a design
 docs/prd/             the product requirements (prd.md) and the team (team.md)
 docs/decisions/       architecture decision records (why things are the way they are)
+docs/design/          wireframes for the interface
 CLAUDE.md             instructions every Claude session follows: team, workflow, rules
 ```
 
-Packages for later steps (`llm/`, `providers/`, `profile/`, `modules/jobs/`, `web/`, `menubar/`)
-are added when their step starts, not before.
+Packages for later steps (`menubar/`, the web app) are added when their step starts, not before.
 
 ## Development
 
@@ -62,13 +102,17 @@ uv run ruff check .          # lint
 uv run mypy                  # type-check
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how work flows from ticket to merge.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how work flows from ticket to merge. `main` only changes
+through pull requests whose checks pass.
 
 ## Privacy
 
 - Personal data lives in `~/Library/Application Support/CareerHub`, never in this repository.
+  Your input files go in its `inputs/` folder (`resume/`, `transcript/`, `linkedin/`).
 - The database is encrypted with SQLCipher; its key lives in the macOS Keychain.
   See [ADR-0001](docs/decisions/0001-encrypted-storage.md).
+- Model calls follow privacy tiers enforced in code, with tests (see "Models and cost").
+- Career Hub never logs in to or scrapes LinkedIn or Handshake.
 - A secret scanner runs before every commit and in CI.
 
 ## License
