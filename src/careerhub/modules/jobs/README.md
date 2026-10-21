@@ -7,6 +7,7 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | `store` | `NormalizedJob`, `store_jobs`: upsert, close missing, link duplicates | CH-59 | Built |
 | `sources` | Propose, approve, reject, disable sources; `require_approved` | CH-61 | Built |
 | `extract` | `JobFields` and `extract_and_save`: posting text into structured fields | CH-62 | Built |
+| `evals` | `run_extraction_eval`: per-field accuracy against hand-checked postings | CH-63 | Built |
 | `greenhouse` | Fetch a company's public board; `hub ingest greenhouse` | CH-60 | Built |
 
 An adapter turns its feed into `NormalizedJob`s and calls `store_jobs(session, source, jobs)` with
@@ -35,3 +36,9 @@ See [ADR-0013](../../../../docs/decisions/0013-greenhouse-adapter.md).
 validates the answer, and saves it in `job.structured_fields` with the prompt version. A job already
 extracted with this version is skipped. See
 [ADR-0014](../../../../docs/decisions/0014-job-extraction.md).
+
+## Extraction evals
+
+`run_extraction_eval(router, load_cases(path), routes)` measures accuracy for level, locations,
+visa sponsorship, and deadline and lists every miss. File format and scoring rules:
+[`evals/README.md`](../../../../evals/README.md). The real hand-checked set is CH-65 (Nicholas).
