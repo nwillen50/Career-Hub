@@ -13,6 +13,7 @@ that supersedes the old one.
 | [0005](0005-response-cache.md) | Response cache keyed by provider, model, and prompt hash; checked after privacy | Accepted |
 | [0006](0006-cost-log-and-budget.md) | Cost log per call, monthly budget setting, essential calls exempt | Accepted |
 | [0007](0007-real-providers.md) | Real providers as thin httpx adapters; local must be localhost | Accepted |
+| [0008](0008-profile-files.md) | Profile files: Markdown front matter and YAML, strict models, errors without values | Accepted |
 
 ## Template
 
