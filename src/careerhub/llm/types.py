@@ -30,6 +30,8 @@ class LLMRequest:
     tier: PrivacyTier
     system: str | None = None
     max_tokens: int = 1024
+    #: Essential calls keep running after the monthly budget is reached; others are paused.
+    essential: bool = False
 
 
 @dataclass(frozen=True)

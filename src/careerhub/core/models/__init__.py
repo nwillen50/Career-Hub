@@ -20,6 +20,7 @@ from careerhub.core.models.core_tables import (
     Source,
 )
 from careerhub.core.models.llm_cache import LLMCacheEntry
+from careerhub.core.models.llm_usage import LLMUsage
 
 __all__ = [
     "NAMING_CONVENTION",
@@ -27,6 +28,7 @@ __all__ = [
     "Company",
     "Interaction",
     "LLMCacheEntry",
+    "LLMUsage",
     "Person",
     "Proposal",
     "RunLog",

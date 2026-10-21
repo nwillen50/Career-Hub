@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from careerhub.llm.cache import ResponseCache
+from careerhub.llm.cost import CostLog
 from careerhub.llm.provider import Destination, Provider
 from careerhub.llm.types import LLMRequest, LLMResponse, PrivacyTier
 
@@ -47,9 +48,18 @@ def check_allowed(tier: PrivacyTier, provider: Provider) -> None:
 class Router:
     """Sends requests to named providers, after the privacy check."""
 
-    def __init__(self, providers: Iterable[Provider], cache: ResponseCache | None = None) -> None:
-        """Register providers by name (duplicates are an error); optionally add a cache."""
+    def __init__(
+        self,
+        providers: Iterable[Provider],
+        cache: ResponseCache | None = None,
+        costs: CostLog | None = None,
+    ) -> None:
+        """Register providers by name (duplicates are an error).
+
+        A `cache` answers repeated calls; a `costs` log records spending and enforces the budget.
+        """
         self._cache = cache
+        self._costs = costs
         self._providers: dict[str, Provider] = {}
         for provider in providers:
             if provider.name in self._providers:
@@ -67,7 +77,8 @@ class Router:
         """Check privacy, then answer from the cache or send `request` to the provider.
 
         The privacy check always runs first, so a cached answer is never served to a provider
-        that the request's tier forbids.
+        that the request's tier forbids. The budget check comes after the cache, because a hit
+        is free. Raises `BudgetExceeded` for a non-essential cloud call over budget.
         """
         chosen = self.provider(provider)
         check_allowed(request.tier, chosen)
@@ -75,7 +86,11 @@ class Router:
             hit = self._cache.get(chosen, request)
             if hit is not None:
                 return hit
+        if self._costs is not None:
+            self._costs.check_budget(chosen, request.essential)
         response = chosen.complete(request)
+        if self._costs is not None:
+            self._costs.record(chosen, response)
         if self._cache is not None:
             self._cache.put(chosen, request, response)
         return response
