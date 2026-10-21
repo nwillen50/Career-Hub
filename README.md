@@ -35,6 +35,7 @@ src/careerhub/        the application, one package per layer
   core/               data models, encrypted storage, secrets, settings, logging (step 1)
   llm/                the model router: privacy tiers, providers (step 2)
   profile/            profile and preference files, resume, LinkedIn import (step 3)
+  modules/network/    alumni import, people tags, warm paths (step 7)
   modules/jobs/       find, store, and (later) understand and rank postings (steps 4 to 6)
   prompts/            versioned prompt files, one per model task
   web/                pages for the user: the nightly shortlist now, the web app later (step 9)
