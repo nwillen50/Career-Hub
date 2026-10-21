@@ -67,13 +67,16 @@ def test_budget_pauses_non_essential_cloud_calls(sessions: sessionmaker[Session]
     assert len(provider.requests) == 1
 
 
-def test_essential_calls_and_local_models_continue_over_budget(
+def test_essential_calls_and_local_models_continue_over_budget_up_to_a_ceiling(
     sessions: sessionmaker[Session],
 ) -> None:
     local = FakeProvider("local")
-    router = Router([cloud(), local], costs=CostLog(sessions, 0.0, PRICES))
-    router.complete(ask("a", essential=True), "cloud")
-    router.complete(ask("b"), "local")
+    router = Router([cloud(), local], costs=CostLog(sessions, 2.0, PRICES))
+    router.complete(ask("a", essential=True), "cloud")  # $2: the budget is reached
+    router.complete(ask("b", essential=True), "cloud")  # essential: allowed up to 2x ($4)
+    router.complete(ask("c"), "local")  # local is always free
+    with pytest.raises(BudgetExceeded, match="essential"):
+        router.complete(ask("d", essential=True), "cloud")  # $4 spent: the ceiling
 
 
 def test_cache_hits_are_free_and_allowed_over_budget(sessions: sessionmaker[Session]) -> None:
