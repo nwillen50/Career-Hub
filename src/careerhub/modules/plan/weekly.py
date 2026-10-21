@@ -80,7 +80,8 @@ def plan_week(
     gaps = sorted(free, key=lambda gap: gap.start)
     cursors = [gap.start for gap in gaps]
     per_day: dict[date, int] = {}
-    daily_cap = int(budget_minutes * DAILY_SHARE)
+    # The cap spreads work across days, but must never be smaller than the longest task.
+    daily_cap = max(int(budget_minutes * DAILY_SHARE), *(t.minutes for t in tasks), 0)
     ordered = sorted(
         tasks, key=lambda t: (t.due is None, t.due or datetime.max.replace(tzinfo=UTC), -t.priority)
     )

@@ -30,8 +30,10 @@ PROMPT_VERSION = 1
 MAX_POSTING_CHARS = 6_000
 
 
-class ScoringError(Exception):
+class ScoringError(ValueError):
     """The model's answer didn't cover the rubric correctly. The message has no model text."""
+
+    safe_message = True
 
 
 class CriterionScore(BaseModel):
@@ -134,7 +136,11 @@ def score_job(
     ):
         return None
     answer, response = complete_validated_detailed(
-        router, build_request(job, doc, rubric), ScoreAnswer, routes
+        router,
+        build_request(job, doc, rubric),
+        ScoreAnswer,
+        routes,
+        check=lambda parsed: combine(rubric, parsed),
     )
     assessment.fit_score = combine(rubric, answer)
     assessment.criteria_scores = [item.model_dump() for item in answer.criteria]

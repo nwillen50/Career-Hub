@@ -37,6 +37,12 @@ class IcsCalendar:
         except ValueError:
             raise IcsError("The calendar file is not valid iCalendar data.") from None
         self._zone = zone
+        # One event without a usable start must not make the whole calendar unreadable.
+        self._calendar.subcomponents = [
+            part
+            for part in self._calendar.subcomponents
+            if part.name != "VEVENT" or _has_usable_start(part)
+        ]
 
     @classmethod
     def from_file(cls, path: Path, zone: tzinfo) -> IcsCalendar:
@@ -48,14 +54,20 @@ class IcsCalendar:
 
     def busy(self, start: datetime, end: datetime) -> list[Interval]:
         """Return merged busy intervals overlapping [start, end), clipped to it."""
-        events = recurring_ical_events.of(self._calendar).between(start, end)
+        try:
+            events = recurring_ical_events.of(self._calendar).between(start, end)
+        except (KeyError, ValueError, TypeError, AttributeError):
+            raise IcsError("The calendar file has events that can't be read.") from None
         found: list[Interval] = []
         for event in events:
             if str(event.get("TRANSP", "OPAQUE")).upper() == "TRANSPARENT":
                 continue
             if str(event.get("STATUS", "")).upper() == "CANCELLED":
                 continue
-            span = self._span(event.start, event.end)
+            try:
+                span = self._span(event.start, event.end)
+            except (KeyError, ValueError, TypeError, AttributeError):
+                continue  # one malformed event must not hide the rest of the calendar
             low, high = max(span.start, start), min(span.end, end)
             if high > low:  # the library can return events that only touch the range
                 found.append(Interval(low, high))
@@ -73,3 +85,11 @@ class IcsCalendar:
                 else value.replace(tzinfo=self._zone).astimezone(UTC)
             )
         return datetime.combine(value, time(0, 0), self._zone).astimezone(UTC)
+
+
+def _has_usable_start(event: icalendar.Event) -> bool:
+    """Say whether an event has a start time we can read."""
+    try:
+        return "DTSTART" in event and event.start is not None
+    except (KeyError, ValueError, TypeError, AttributeError):
+        return False

@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, cast
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from careerhub.core.models import Company, Job, Source, utcnow
@@ -135,7 +135,20 @@ def only_visible_copies[Q](query: Q) -> Q:
     """
     original = aliased(Job)
     select_query: Any = query  # SQLAlchemy's Select is generic over its columns
+    sibling = aliased(Job)
+    older_open_copy = (
+        select(sibling.id)
+        .where(
+            sibling.duplicate_of_id == Job.duplicate_of_id,
+            sibling.id < Job.id,
+            sibling.status != "closed",
+        )
+        .exists()
+    )
     visible = select_query.outerjoin(original, original.id == Job.duplicate_of_id).where(
-        or_(Job.duplicate_of_id.is_(None), original.status == "closed")
+        or_(
+            Job.duplicate_of_id.is_(None),
+            and_(original.status == "closed", ~older_open_copy),  # one copy stands in
+        )
     )
     return cast(Q, visible)
