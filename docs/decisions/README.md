@@ -12,6 +12,7 @@ that supersedes the old one.
 | [0004](0004-core-tables-match-prd.md) | Core tables follow the PRD's data model; JSON for list fields; proposals end `rejected` | Accepted |
 | [0005](0005-response-cache.md) | Response cache keyed by provider, model, and prompt hash; checked after privacy | Accepted |
 | [0006](0006-cost-log-and-budget.md) | Cost log per call, monthly budget setting, essential calls exempt | Accepted |
+| [0007](0007-real-providers.md) | Real providers as thin httpx adapters; local must be localhost | Accepted |
 
 ## Template
 
