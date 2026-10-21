@@ -6,7 +6,7 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | --- | --- | --- | --- |
 | `store` | `NormalizedJob`, `store_jobs`: upsert, close missing, link duplicates | CH-59 | Built |
 | `sources` | Propose, approve, reject, disable sources; `require_approved` | CH-61 | Built |
-| Greenhouse adapter, `hub ingest` | Fetch a company's public board | CH-60 | Planned |
+| `greenhouse` | Fetch a company's public board; `hub ingest greenhouse` | CH-60 | Built |
 
 An adapter turns its feed into `NormalizedJob`s and calls `store_jobs(session, source, jobs)` with
 the source's **complete** listing. A rerun adds no duplicates; postings that disappear are marked
@@ -19,3 +19,10 @@ Sources start `proposed`. Only `approve_source` (via `hub sources approve <id>`)
 and fetching code must call `require_approved` first. Commands: `hub sources list`,
 `hub sources add <kind> <name> <url>`, `hub sources approve|reject|disable <id>`.
 See [ADR-0012](../../../../docs/decisions/0012-source-approval.md).
+
+## Greenhouse
+
+`hub sources add greenhouse Acme https://boards.greenhouse.io/acme`, then
+`hub sources approve <id>`, then `hub ingest greenhouse --company acme`. A failed fetch changes
+nothing (jobs are never closed by a bad answer) and marks the source `failing`.
+See [ADR-0013](../../../../docs/decisions/0013-greenhouse-adapter.md).
