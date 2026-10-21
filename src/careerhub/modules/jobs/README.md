@@ -7,6 +7,7 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | `store` | `NormalizedJob`, `store_jobs`: upsert, close missing, link duplicates | CH-59 | Built |
 | `sources` | Propose, approve, reject, disable sources; `require_approved` | CH-61 | Built |
 | `extract` | `JobFields` and `extract_and_save`: posting text into structured fields | CH-62 | Built |
+| `rank_evals` | `run_ranking_eval`: labeled postings through the whole pipeline | CH-68 | Built |
 | `scoring` | `score_job`, `ranked_jobs`: rubric scores with explanations | CH-67 | Built |
 | `filters` | Hard filters (companies, title words, locations, salary) with reasons | CH-66 | Built |
 | `evals` | `run_extraction_eval`: per-field accuracy against hand-checked postings | CH-63 | Built |
@@ -59,3 +60,11 @@ criterion (0 to 10) and explain; the code computes the 0-100 fit score and saves
 `Assessment` with the model, prompt version, and rubric version. Only filtered-in jobs are scored.
 `ranked_jobs(session)` lists open, original jobs best first. See
 [ADR-0017](../../../../docs/decisions/0017-rubric-scoring.md).
+
+## Ranking evals
+
+`run_ranking_eval(router, load_labeled(path), doc, rubric, constraints, extract_routes,
+score_routes)` runs great/okay/no labeled postings through extraction, filters, and scoring in a
+scratch in-memory database and reports whether the PRD rule holds (no great filtered out, at most
+one "no" in the top 10). See [ADR-0018](../../../../docs/decisions/0018-ranking-eval.md) and
+[`evals/README.md`](../../../../evals/README.md).

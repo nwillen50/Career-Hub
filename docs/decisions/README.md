@@ -23,6 +23,7 @@ that supersedes the old one.
 | [0015](0015-router-from-settings.md) | Router built from settings: providers, task routes, Keychain keys, budget | Accepted |
 | [0016](0016-hard-filters-and-assessment.md) | Assessment table; hard filters reject only on known facts, with reasons | Accepted |
 | [0017](0017-rubric-scoring.md) | Rubric scoring: model rates criteria, code computes the score; Personal tier | Accepted |
+| [0018](0018-ranking-eval.md) | Ranking eval runs the full pipeline in a scratch database; PRD pass rule | Accepted |
 
 ## Template
 

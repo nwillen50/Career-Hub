@@ -1,0 +1,28 @@
+# Made-up labeled postings in the ranking-eval format. The real set (about 30 postings, labeled by
+# Nicholas, CH-7) goes in evals/ranking/real.yaml.
+#
+# Each case is a posting (as in the extraction eval) plus:
+#   label: great | okay | no
+#   reason: one line on why you labeled it that way
+cases:
+  - id: rank-1
+    company: Northwind Labs
+    title: Machine Learning Engineer, New Grad
+    location: Boston, MA
+    label: great
+    reason: New grad ML role in my city.
+    text: Build machine learning systems in Python on a small team. Open to 2027 graduates.
+  - id: rank-2
+    company: Contoso Analytics
+    title: Data Analyst
+    location: Boston, MA
+    label: okay
+    reason: Right city, less technical than I want.
+    text: Analyze product data with SQL and dashboards. 0-2 years of experience.
+  - id: rank-3
+    company: Fabrikam
+    title: Senior Sales Director
+    location: Dallas, TX
+    label: no
+    reason: Senior, sales, wrong city.
+    text: Lead a regional sales team. 10+ years of experience required.

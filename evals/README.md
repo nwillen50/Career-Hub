@@ -26,3 +26,11 @@ print(report.summary())
 ```
 
 A `hub eval extract` command arrives with CH-64, which builds the router from settings.
+
+## `ranking/`
+
+- `sample.yaml`: three made-up labeled postings. `real.yaml` (CH-7, Nicholas) will hold about 30.
+- Each case: `id`, `company`, `title`, `location`, `text`, `label` (`great`, `okay`, or `no`), and a
+  one-line `reason`. An unquoted `no` is fine.
+- Passing means no `great` posting is filtered out and at most one `no` is in the top 10. Also
+  reported: how often label pairs are in the right order, and the mean score per label.
