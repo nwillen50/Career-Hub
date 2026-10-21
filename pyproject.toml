@@ -13,6 +13,8 @@ dependencies = [
     "pydantic>=2.7,<3",
     "httpx>=0.27,<1",
     "pyyaml>=6,<7",
+    "icalendar>=6,<7",
+    "recurring-ical-events>=3,<4",
 ]
 
 [project.scripts]
@@ -25,6 +27,7 @@ dev = [
     "mypy>=1.11",
     "pre-commit>=3.7",
     "types-pyyaml>=6",
+    "types-icalendar>=6",
 ]
 
 [build-system]
@@ -58,4 +61,9 @@ files = ["src"]
 
 [[tool.mypy.overrides]]
 module = ["sqlcipher3", "sqlcipher3.*"]
+ignore_missing_imports = true
+
+# recurring-ical-events ships no type information; it's used in one module (modules/plan/ics.py).
+[[tool.mypy.overrides]]
+module = ["recurring_ical_events"]
 ignore_missing_imports = true
