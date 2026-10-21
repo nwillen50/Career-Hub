@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from careerhub.core.paths import data_dir
 from careerhub.profile.models import Preferences, ProfileDoc
@@ -55,9 +55,9 @@ def load_profile_doc(path: Path | None = None) -> ProfileDoc | None:
             f"{path.name} must start with a line of three dashes, YAML fields, "
             "then another line of three dashes."
         )
-    fields = _parse_yaml(match.group(1), path.name)
+    fields = parse_yaml(match.group(1), path.name)
     fields["about"] = match.group(2).strip()
-    return _validate(ProfileDoc, fields, path.name)
+    return validate_model(ProfileDoc, fields, path.name)
 
 
 def load_preferences(path: Path | None = None) -> Preferences | None:
@@ -65,12 +65,12 @@ def load_preferences(path: Path | None = None) -> Preferences | None:
     path = path or preferences_path()
     if not path.exists():
         return None
-    return _validate(
-        Preferences, _parse_yaml(path.read_text(encoding="utf-8"), path.name), path.name
+    return validate_model(
+        Preferences, parse_yaml(path.read_text(encoding="utf-8"), path.name), path.name
     )
 
 
-def _parse_yaml(text: str, filename: str) -> dict[str, Any]:
+def parse_yaml(text: str, filename: str) -> dict[str, Any]:
     """Parse YAML safely into a dict (an empty file is an empty dict)."""
     try:
         data = yaml.safe_load(text)
@@ -85,7 +85,7 @@ def _parse_yaml(text: str, filename: str) -> dict[str, Any]:
     return {str(key): value for key, value in data.items()}
 
 
-def _validate[ModelT: (ProfileDoc, Preferences)](
+def validate_model[ModelT: BaseModel](
     model: type[ModelT], fields: dict[str, Any], filename: str
 ) -> ModelT:
     """Build `model` from `fields`, reporting problems by field name only."""

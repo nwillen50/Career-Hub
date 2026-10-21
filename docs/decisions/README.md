@@ -14,6 +14,7 @@ that supersedes the old one.
 | [0006](0006-cost-log-and-budget.md) | Cost log per call, monthly budget setting, essential calls exempt | Accepted |
 | [0007](0007-real-providers.md) | Real providers as thin httpx adapters; local must be localhost | Accepted |
 | [0008](0008-profile-files.md) | Profile files: Markdown front matter and YAML, strict models, errors without values | Accepted |
+| [0009](0009-profile-assembly.md) | Profile assembly: missing inputs reported, invalid ones fatal; `hub profile show` | Accepted |
 
 ## Template
 
