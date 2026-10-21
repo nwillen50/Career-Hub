@@ -26,6 +26,7 @@ that supersedes the old one.
 | [0018](0018-ranking-eval.md) | Ranking eval runs the full pipeline in a scratch database; PRD pass rule | Accepted |
 | [0019](0019-shortlist-page.md) | Shortlist page: static, escaped, http(s) links only, error and empty states | Accepted |
 | [0020](0020-nightly-run.md) | Nightly run: keep going on failures, fail only when nothing worked; 2x ceiling on essential spend | Accepted |
+| [0021](0021-launchd-schedule.md) | launchd: write the job file, user starts it; runs the venv's Python | Accepted |
 
 ## Template
 

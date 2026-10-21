@@ -1,0 +1,86 @@
+"""Runs the nightly pipeline on a schedule using launchd, macOS's own scheduler (step 6).
+
+`render_plist` builds the launchd job as a property list; `install_plist` writes it to
+`~/Library/LaunchAgents`. Career Hub **writes the file but does not load it**: starting a
+recurring job on the user's Mac is the user's call, so `hub schedule install` prints the
+`launchctl` command to run. Everything here is plain text and file writing, so it is tested on any
+system; loading and running the job needs a Mac (CH-71 notes).
+
+launchd runs a job that was due while the Mac slept as soon as it wakes, so a closed laptop at
+the scheduled time only delays the run.
+"""
+
+from __future__ import annotations
+
+import os
+import plistlib
+import re
+import sys
+from pathlib import Path
+
+from careerhub.core.paths import data_dir
+
+LABEL = "com.careerhub.nightly"
+_CLOCK = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+
+
+def parse_clock(value: str) -> tuple[int, int]:
+    """Turn "02:00" into (2, 0). Raises ValueError for anything but a 24-hour HH:MM time."""
+    match = _CLOCK.match(value)
+    if match is None:
+        raise ValueError("The run time must be a 24-hour time like 02:00.")
+    return int(match.group(1)), int(match.group(2))
+
+
+def logs_dir() -> Path:
+    """Return the folder for the job's output, inside the private data folder."""
+    folder = data_dir() / "logs"
+    folder.mkdir(mode=0o700, exist_ok=True)
+    return folder
+
+
+def render_plist(run_time: str, python: str | None = None, logs: Path | None = None) -> bytes:
+    """Build the launchd property list that runs `hub nightly` every day at `run_time`."""
+    hour, minute = parse_clock(run_time)
+    logs = logs or logs_dir()
+    job = {
+        "Label": LABEL,
+        # The venv's own Python, so the job doesn't depend on the shell's PATH.
+        "ProgramArguments": [python or sys.executable, "-m", "careerhub.cli", "nightly"],
+        "StartCalendarInterval": {"Hour": hour, "Minute": minute},
+        "RunAtLoad": False,
+        "StandardOutPath": str(logs / "nightly.out.log"),
+        "StandardErrorPath": str(logs / "nightly.err.log"),
+        # Be a polite background job.
+        "ProcessType": "Background",
+        "LowPriorityIO": True,
+        "Nice": 10,
+    }
+    return plistlib.dumps(job)
+
+
+def agents_dir() -> Path:
+    """Return the user's launch agents folder (macOS)."""
+    return Path.home() / "Library" / "LaunchAgents"
+
+
+def install_plist(run_time: str, folder: Path | None = None) -> Path:
+    """Write the plist (replacing an older one for this job) and return its path.
+
+    It is *not* loaded; the caller shows the user the `launchctl` command.
+    """
+    folder = folder or agents_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{LABEL}.plist"
+    path.write_bytes(render_plist(run_time))
+    os.chmod(path, 0o644)  # launchd requires agents not to be writable by others
+    return path
+
+
+def launchctl_commands(path: Path) -> tuple[str, str]:
+    """Return the commands to start and to stop the job, for the user to run."""
+    domain = f"gui/{os.getuid()}"
+    return (
+        f"launchctl bootstrap {domain} {path}",
+        f"launchctl bootout {domain}/{LABEL}",
+    )
