@@ -12,6 +12,7 @@ See [ADR-0003](../../../docs/decisions/0003-router-contract.md).
 | `validated` | `complete_validated`: Pydantic-checked output, one retry, then escalate | CH-49 | Built |
 | `cache` | Response cache in the encrypted database | CH-50 | Built |
 | `cost` | Cost log and the monthly budget | CH-51 | Built |
+| `setup` | `build_router(settings, store, sessions)` and `routes_for` | CH-64 | Built |
 | `providers` | Anthropic, OpenAI, Google, and local adapters | CH-52 | Built |
 
 ## The privacy rule
@@ -59,3 +60,23 @@ server on localhost) each take a name and model; cloud ones also take an API key
 Keychain as `api-key-<provider name>` (for example `api-key-anthropic`); read one with
 `load_api_key(store, name)`. HTTP errors say only the status code. Tests use a mock transport.
 See [ADR-0007](../../../docs/decisions/0007-real-providers.md).
+
+## Configuring models
+
+In `settings.json` (data folder), list `providers` and map each task to an ordered list of them:
+
+```json
+{
+  "monthly_budget_usd": 20,
+  "providers": [
+    {"name": "claude-cheap", "kind": "anthropic", "model": "<model id>",
+     "input_per_mtok": 1.0, "output_per_mtok": 5.0},
+    {"name": "local-llama", "kind": "local", "model": "llama3"}
+  ],
+  "model_routes": {"extract": ["claude-cheap", "local-llama"]}
+}
+```
+
+Keys are never in this file: store each cloud provider's key in the Keychain as
+`api-key-<provider name>`. `build_router(...)` leaves out cloud providers with no key and lists
+them in `problems`. See [ADR-0015](../../../docs/decisions/0015-router-from-settings.md).
