@@ -29,6 +29,7 @@ that supersedes the old one.
 | [0021](0021-launchd-schedule.md) | launchd: write the job file, user starts it; runs the venv's Python | Accepted |
 | [0022](0022-alumni-and-tags.md) | Alumni CSV import and tagging; user's words never overwritten | Accepted |
 | [0023](0023-warm-path-rules.md) | Warm-path ranking: transparent points, user's words first | Accepted |
+| [0024](0024-tailoring-notes.md) | Tailoring notes: advice only, Personal tier, contact details removed | Accepted |
 
 ## Template
 

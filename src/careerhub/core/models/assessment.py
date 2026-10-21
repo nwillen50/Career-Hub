@@ -30,6 +30,8 @@ class Assessment(TimestampMixin, Base):
     #: Per-criterion scores: [{"name": ..., "score": 0-10, "reason": ...}].
     criteria_scores: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     explanation: Mapped[str | None] = mapped_column(Text)
+    #: Tailoring notes for the job: {"notes": {...}, "prompt_version": n, "resume_sha256": ...}.
+    tailoring: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     model_used: Mapped[str | None] = mapped_column(String(100))
     prompt_version: Mapped[int | None] = mapped_column()
     rubric_version: Mapped[int | None] = mapped_column()

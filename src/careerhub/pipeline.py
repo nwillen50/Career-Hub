@@ -41,11 +41,13 @@ from careerhub.modules.jobs import (
 )
 from careerhub.modules.jobs.extract import extract_and_save
 from careerhub.modules.jobs.filters import assess_filters
-from careerhub.modules.jobs.scoring import ScoringError, score_job
+from careerhub.modules.jobs.scoring import ScoringError, ranked_jobs, score_job
+from careerhub.modules.jobs.tailoring import tailor_job
 from careerhub.profile.files import load_preferences, load_profile_doc
-from careerhub.profile.models import HardConstraints
+from careerhub.profile.inputs import find_resume
+from careerhub.profile.models import HardConstraints, ProfileDoc
 from careerhub.profile.rubric import load_rubric
-from careerhub.web.shortlist import write_shortlist
+from careerhub.web.shortlist import MAX_JOBS, write_shortlist
 
 
 @dataclass
@@ -58,6 +60,7 @@ class NightlyReport:
     extracted: int = 0
     filtered_out: int = 0
     scored: int = 0
+    tailored: int = 0
     problems: list[str] = field(default_factory=list)
     shortlist_path: str | None = None
 
@@ -66,7 +69,8 @@ class NightlyReport:
         lines = [
             f"Sources: {self.sources_ok} fetched, {self.sources_failed} failed. "
             f"{self.new_jobs} new jobs.",
-            f"Understood {self.extracted}, filtered out {self.filtered_out}, scored {self.scored}.",
+            f"Understood {self.extracted}, filtered out {self.filtered_out}, scored {self.scored}, "
+            f"tailored {self.tailored}.",
         ]
         if self.shortlist_path:
             lines.append(f"Shortlist: {self.shortlist_path}")
@@ -201,3 +205,44 @@ def _understand_and_rank(
             failures += 1
     if failures:
         report.problems.append(f"{failures} jobs could not be understood or scored")
+    if doc is not None and not budget_hit:
+        _tailor_top_jobs(session, setup, settings, doc, report)
+
+
+def _tailor_top_jobs(
+    session: Session,
+    setup: RouterSetup,
+    settings: Settings,
+    doc: ProfileDoc,
+    report: NightlyReport,
+) -> None:
+    """Write tailoring notes for the shortlist's jobs, if a 'tailor' route and a resume exist.
+
+    Optional: with no 'tailor' route configured this does nothing and says nothing.
+    """
+    try:
+        routes = routes_for(settings, "tailor", setup.built)
+    except NoRoute:
+        return
+    resume, _ = find_resume()
+    if resume is None:
+        report.problems.append("tailoring skipped: no LaTeX resume found in inputs/resume")
+        return
+    source = resume.text()
+    failures = 0
+    for job, _assessment in ranked_jobs(session, MAX_JOBS):
+        try:
+            if tailor_job(session, setup.router, job, doc, source, routes):
+                report.tailored += 1
+        except BudgetExceeded:
+            report.problems.append("monthly budget reached: tailoring paused")
+            return
+        except PrivacyViolation:
+            report.problems.append(
+                "tailoring skipped: a 'tailor' provider may not see Personal data"
+            )
+            return
+        except (ValidationFailed, ProviderError):
+            failures += 1
+    if failures:
+        report.problems.append(f"{failures} jobs could not be tailored")
