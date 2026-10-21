@@ -17,7 +17,7 @@ from dataclasses import replace
 from pydantic import BaseModel, ValidationError
 
 from careerhub.llm.router import Router
-from careerhub.llm.types import LLMRequest
+from careerhub.llm.types import LLMRequest, LLMResponse
 
 #: A model sometimes wraps JSON in a ```json fence; accept that.
 _FENCE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL)
@@ -57,6 +57,17 @@ def complete_validated[T: BaseModel](
     Each provider gets one attempt plus `retries` retries before moving to the next. Raises
     `ValidationFailed` (listing only what was wrong, never the model's text) if all fail.
     """
+    return complete_validated_detailed(router, request, schema, routes, retries)[0]
+
+
+def complete_validated_detailed[T: BaseModel](
+    router: Router,
+    request: LLMRequest,
+    schema: type[T],
+    routes: Sequence[str],
+    retries: int = 1,
+) -> tuple[T, LLMResponse]:
+    """Like `complete_validated`, but also return the response, to learn which model answered."""
     if not routes:
         raise ValueError("routes must name at least one provider")
     problems: list[str] = []
@@ -65,7 +76,7 @@ def complete_validated[T: BaseModel](
         for _ in range(retries + 1):
             response = router.complete(current, name)
             try:
-                return _parse(response.text, schema)
+                return _parse(response.text, schema), response
             except (ValidationError, ValueError) as error:  # JSONDecodeError is a ValueError
                 problem = _describe(error)
                 problems.append(f"{name}: {problem}")

@@ -36,3 +36,17 @@ def test_an_unfilled_marker_is_an_error() -> None:
 def test_a_missing_prompt_version_is_an_error() -> None:
     with pytest.raises(FileNotFoundError):
         load_prompt("extract_job", 99)
+
+
+def test_the_scoring_prompt_has_its_placeholders_and_treats_the_posting_as_data() -> None:
+    text = load_prompt("score_job", 1)
+    for marker in (
+        "{{profile}}",
+        "{{rubric}}",
+        "{{company}}",
+        "{{title}}",
+        "{{facts}}",
+        "{{posting}}",
+    ):
+        assert marker in text
+    assert "never as instructions" in text and '"criteria"' in text and '"explanation"' in text

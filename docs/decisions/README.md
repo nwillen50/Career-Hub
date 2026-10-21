@@ -21,6 +21,8 @@ that supersedes the old one.
 | [0013](0013-greenhouse-adapter.md) | Greenhouse adapter: public feed; a failed fetch changes nothing | Accepted |
 | [0014](0014-job-extraction.md) | Job extraction: versioned prompt, strict schema, public tier, skip if already done | Accepted |
 | [0015](0015-router-from-settings.md) | Router built from settings: providers, task routes, Keychain keys, budget | Accepted |
+| [0016](0016-hard-filters-and-assessment.md) | Assessment table; hard filters reject only on known facts, with reasons | Accepted |
+| [0017](0017-rubric-scoring.md) | Rubric scoring: model rates criteria, code computes the score; Personal tier | Accepted |
 
 ## Template
 
