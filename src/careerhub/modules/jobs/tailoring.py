@@ -105,7 +105,7 @@ def tailor_job(
     if assessment is None or assessment.fit_score is None:
         return None  # only scored (shortlisted) jobs get notes
     resume = resume_for_model(latex_source)
-    digest = hashlib.sha256(resume.encode()).hexdigest()
+    digest = hashlib.sha256(f"{resume}\n{job.title}\n{job.raw_text or ''}".encode()).hexdigest()
     saved = assessment.tailoring or {}
     if saved.get("prompt_version") == PROMPT_VERSION and saved.get("resume_sha256") == digest:
         return None

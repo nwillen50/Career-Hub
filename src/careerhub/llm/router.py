@@ -15,7 +15,7 @@ on its own, so a privacy rule can't be bypassed by "retry elsewhere".
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from careerhub.llm.cache import ResponseCache
 from careerhub.llm.cost import CostLog
@@ -73,24 +73,33 @@ class Router:
         except KeyError:
             raise UnknownProvider(name) from None
 
-    def complete(self, request: LLMRequest, provider: str) -> LLMResponse:
+    def complete(
+        self,
+        request: LLMRequest,
+        provider: str,
+        accept: Callable[[LLMResponse], bool] | None = None,
+    ) -> LLMResponse:
         """Check privacy, then answer from the cache or send `request` to the provider.
 
         The privacy check always runs first, so a cached answer is never served to a provider
         that the request's tier forbids. The budget check comes after the cache, because a hit
         is free. Raises `BudgetExceeded` for a non-essential cloud call over budget.
+
+        `accept` lets a caller say whether an answer is usable (for example, valid JSON). Only
+        accepted answers are saved in the cache, and a cached answer that isn't accepted is
+        ignored and replaced, so one bad answer can't be replayed on every later run.
         """
         chosen = self.provider(provider)
         check_allowed(request.tier, chosen)
         if self._cache is not None:
             hit = self._cache.get(chosen, request)
-            if hit is not None:
+            if hit is not None and (accept is None or accept(hit)):
                 return hit
         if self._costs is not None:
             self._costs.check_budget(chosen, request.essential)
         response = chosen.complete(request)
         if self._costs is not None:
             self._costs.record(chosen, response)
-        if self._cache is not None:
+        if self._cache is not None and (accept is None or accept(response)):
             self._cache.put(chosen, request, response)
         return response

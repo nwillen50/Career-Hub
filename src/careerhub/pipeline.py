@@ -42,6 +42,7 @@ from careerhub.modules.jobs import (
 from careerhub.modules.jobs.extract import extract_and_save
 from careerhub.modules.jobs.filters import assess_filters
 from careerhub.modules.jobs.scoring import ScoringError, ranked_jobs, score_job
+from careerhub.modules.jobs.store import only_visible_copies
 from careerhub.modules.jobs.tailoring import tailor_job
 from careerhub.profile.files import load_preferences, load_profile_doc
 from careerhub.profile.inputs import find_resume
@@ -126,7 +127,7 @@ def _run(
 ) -> None:
     sessions = session_factory(engine)
     setup = build_router(settings, store, sessions, client, run_id)
-    report.problems += [f"provider unavailable: {p}" for p in setup.problems]
+    report.problems += [f"provider: {p}" for p in setup.problems]
     for source in approved_sources(session, "greenhouse"):
         try:
             result = ingest_greenhouse(session, source, client)
@@ -137,9 +138,7 @@ def _run(
             report.problems.append(f"source {source.id} failed: {type(caught).__name__}")
     jobs = list(
         session.scalars(
-            select(Job)
-            .where(Job.status != "closed", Job.duplicate_of_id.is_(None))
-            .order_by(Job.id)
+            only_visible_copies(select(Job).where(Job.status != "closed")).order_by(Job.id)
         )
     )
     _understand_and_rank(session, setup, settings, jobs, report)

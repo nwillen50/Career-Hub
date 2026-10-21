@@ -14,6 +14,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from careerhub.core.files import write_private
 from careerhub.core.paths import data_dir
 
 #: File name of the settings file inside the data folder.
@@ -117,6 +118,5 @@ def load_settings(path: Path | None = None) -> Settings:
 def save_settings(settings: Settings, path: Path | None = None) -> Path:
     """Write settings to `path` (default: the data folder), readable only by the user."""
     path = path or settings_path()
-    path.write_text(settings.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    path.chmod(0o600)
+    write_private(path, settings.model_dump_json(indent=2) + "\n")
     return path

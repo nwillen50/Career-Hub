@@ -70,7 +70,7 @@ def import_alumni(session: Session, path: Path) -> AlumniReport:
                 )
             )
             created += 1
-        elif tag in (person.how_known or ""):
+        elif tag in _notes(person.how_known):
             unchanged += 1
         else:
             person.how_known = f"{person.how_known}; {tag}" if person.how_known else tag
@@ -121,3 +121,8 @@ def _find(session: Session, name: str, company: Company, email: str, url: str) -
             Person.company_id == company.id,
         )
     ).first()
+
+
+def _notes(how_known: str | None) -> list[str]:
+    """Split `how_known` into its `;`-separated notes (so tags match whole, not by substring)."""
+    return [note.strip() for note in (how_known or "").split(";") if note.strip()]

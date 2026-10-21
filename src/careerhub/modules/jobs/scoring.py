@@ -9,6 +9,8 @@ version, and rubric version, and a job already scored with the same versions is 
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,6 +20,7 @@ from sqlalchemy.orm import Session
 from careerhub.core.models import Assessment, Job
 from careerhub.llm import LLMRequest, PrivacyTier, Router
 from careerhub.llm.validated import complete_validated_detailed
+from careerhub.modules.jobs.store import only_visible_copies
 from careerhub.profile.models import ProfileDoc
 from careerhub.profile.rubric import Rubric
 from careerhub.prompts import load_prompt, render
@@ -84,6 +87,16 @@ def combine(rubric: Rubric, answer: ScoreAnswer) -> float:
     return round(weighted / total * 10, 1)
 
 
+def input_hash(job: Job, doc: ProfileDoc) -> str:
+    """Hash what a score depends on besides the prompt and rubric: profile, posting, and facts."""
+    material = json.dumps(
+        [profile_text(doc), job.title, job.raw_text or "", job.structured_fields.get("fields", {})],
+        sort_keys=True,
+        default=str,
+    )
+    return hashlib.sha256(material.encode()).hexdigest()
+
+
 def build_request(job: Job, doc: ProfileDoc, rubric: Rubric) -> LLMRequest:
     """Build the (PERSONAL tier) request for one job."""
     fields = job.structured_fields.get("fields", {})
@@ -112,10 +125,12 @@ def score_job(
     assessment = session.scalars(select(Assessment).where(Assessment.job_id == job.id)).first()
     if assessment is None or not assessment.filter_passed:
         return None  # run the filters first; filtered jobs are not scored
+    digest = input_hash(job, doc)
     if (
         assessment.fit_score is not None
         and assessment.prompt_version == PROMPT_VERSION
         and assessment.rubric_version == rubric.version
+        and assessment.input_hash == digest
     ):
         return None
     answer, response = complete_validated_detailed(
@@ -127,6 +142,7 @@ def score_job(
     assessment.model_used = f"{response.provider}:{response.model}"
     assessment.prompt_version = PROMPT_VERSION
     assessment.rubric_version = rubric.version
+    assessment.input_hash = digest
     session.commit()
     return assessment
 
@@ -140,9 +156,7 @@ def ranked_jobs(session: Session, limit: int = 20) -> list[tuple[Job, Assessment
             Assessment.filter_passed.is_(True),
             Assessment.fit_score.is_not(None),
             Job.status != "closed",
-            Job.duplicate_of_id.is_(None),
         )
-        .order_by(Assessment.fit_score.desc(), Job.id)
-        .limit(limit)
     )
+    query = only_visible_copies(query).order_by(Assessment.fit_score.desc(), Job.id).limit(limit)
     return [(job, assessment) for job, assessment in session.execute(query)]
