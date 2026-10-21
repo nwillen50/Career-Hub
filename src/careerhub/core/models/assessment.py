@@ -35,3 +35,5 @@ class Assessment(TimestampMixin, Base):
     model_used: Mapped[str | None] = mapped_column(String(100))
     prompt_version: Mapped[int | None] = mapped_column()
     rubric_version: Mapped[int | None] = mapped_column()
+    #: Hash of everything the score was based on (profile, posting, facts); a change means re-score.
+    input_hash: Mapped[str | None] = mapped_column(String(64))

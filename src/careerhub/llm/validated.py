@@ -33,6 +33,15 @@ def _parse[T: BaseModel](text: str, schema: type[T]) -> T:
     return schema.model_validate_json(fenced.group(1) if fenced else text)
 
 
+def _is_valid(text: str, schema: type[BaseModel]) -> bool:
+    """Say whether `text` parses as `schema` (used to keep bad answers out of the cache)."""
+    try:
+        _parse(text, schema)
+    except (ValidationError, ValueError):
+        return False
+    return True
+
+
 def _describe(error: Exception) -> str:
     """Say what was wrong without echoing any of the model's text (it may quote personal data)."""
     if isinstance(error, ValidationError):
@@ -74,7 +83,7 @@ def complete_validated_detailed[T: BaseModel](
     for name in routes:
         current = request
         for _ in range(retries + 1):
-            response = router.complete(current, name)
+            response = router.complete(current, name, accept=lambda r: _is_valid(r.text, schema))
             try:
                 return _parse(response.text, schema), response
             except (ValidationError, ValueError) as error:  # JSONDecodeError is a ValueError

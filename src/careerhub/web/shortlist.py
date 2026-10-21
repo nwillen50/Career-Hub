@@ -10,7 +10,6 @@ empty and error states.
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -21,6 +20,7 @@ from urllib.parse import urlparse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from careerhub.core.files import write_private
 from careerhub.core.models import Assessment, RunLog
 from careerhub.core.paths import data_dir
 from careerhub.modules.jobs.scoring import ranked_jobs
@@ -245,7 +245,6 @@ def write_shortlist(session: Session, now: datetime, path: Path | None = None) -
     path.parent.mkdir(parents=True, exist_ok=True)
     html = render_shortlist(gather_shortlist(session), now)
     temporary = path.with_suffix(".tmp")
-    temporary.write_text(html, encoding="utf-8")
-    os.chmod(temporary, 0o600)
+    write_private(temporary, html)
     temporary.replace(path)  # swap in whole, so a reader never sees a half-written page
     return path

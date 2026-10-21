@@ -80,6 +80,11 @@ def build_router(
             continue
         if config.input_per_mtok is not None and config.output_per_mtok is not None:
             prices[config.name] = Price(config.input_per_mtok, config.output_per_mtok)
+        elif config.kind != "local":
+            problems.append(
+                f"{config.name!r} has no prices (input_per_mtok, output_per_mtok), so its spending "
+                "is not counted toward the monthly budget."
+            )
     costs = CostLog(sessions, settings.monthly_budget_usd, prices, run_id)
     router = Router(providers, cache=ResponseCache(sessions), costs=costs)
     return RouterSetup(router, tuple(p.name for p in providers), problems)

@@ -9,6 +9,7 @@ with the prompt version, and a posting already extracted with this version is sk
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Sequence
 from datetime import date
 from typing import Literal
@@ -47,6 +48,12 @@ class JobFields(BaseModel):
     required_skills: list[str] = Field(default_factory=list, max_length=10)
 
 
+def posting_hash(job: Job) -> str:
+    """Hash the posting as the model sees it, so changed text means re-extraction."""
+    material = "\n".join([job.title, job.location or "", job.raw_text or ""])
+    return hashlib.sha256(material.encode()).hexdigest()
+
+
 def build_request(job: Job, company_name: str) -> LLMRequest:
     """Build the model request for one posting (tier PUBLIC; essential for the shortlist)."""
     text = (job.raw_text or "")[:MAX_POSTING_CHARS]
@@ -76,12 +83,18 @@ def extract_and_save(
 ) -> JobFields | None:
     """Extract and store a job's fields; returns None if this prompt version already did."""
     saved = job.structured_fields
-    if saved.get("prompt_version") == PROMPT_VERSION and "fields" in saved:
+    digest = posting_hash(job)
+    if (
+        saved.get("prompt_version") == PROMPT_VERSION
+        and saved.get("text_sha256") == digest
+        and "fields" in saved
+    ):
         return None
     fields = extract_fields(router, job, routes)
     job.structured_fields = {
         "fields": fields.model_dump(mode="json"),
         "prompt_version": PROMPT_VERSION,
+        "text_sha256": digest,
         "extracted_at": utcnow().isoformat(),
     }
     session.commit()

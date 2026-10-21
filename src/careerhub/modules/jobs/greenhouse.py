@@ -11,16 +11,19 @@ like "every job disappeared".
 from __future__ import annotations
 
 import html
+import re
 from html.parser import HTMLParser
 from typing import Any
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from careerhub.core.models import Source, utcnow
+from careerhub.core.models import Job, Source, utcnow
 from careerhub.modules.jobs.sources import require_approved
 from careerhub.modules.jobs.store import IngestReport, NormalizedJob, store_jobs
 
+_BOARD_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 API_BASE = "https://boards-api.greenhouse.io/v1/boards"
 KIND = "greenhouse"
 TIMEOUT_SECONDS = 30.0
@@ -58,6 +61,8 @@ def board_token(source: Source) -> str:
     token = source.config.get("board", "").strip()
     if not token:
         raise FetchError(f"Source {source.id} has no 'board' in its config.")
+    if not _BOARD_NAME.match(token):
+        raise FetchError(f"Source {source.id} has an invalid 'board' name (letters, digits, - _).")
     return token
 
 
@@ -105,8 +110,24 @@ def ingest_greenhouse(
             source.health = "failing"
             session.commit()
         raise
+    if not jobs and _has_open_jobs(session, source):
+        # An empty answer for a board that had jobs is more likely a glitch than a company that
+        # closed every role; closing everything would blank the shortlist.
+        source.health = "failing"
+        session.commit()
+        raise FetchError("Greenhouse listed no jobs for a board that had open jobs; kept them.")
     report = store_jobs(session, source, jobs)
     source.health = "ok"
     source.last_fetched_at = utcnow()
     session.commit()
     return report
+
+
+def _has_open_jobs(session: Session, source: Source) -> bool:
+    """Say whether `source` has any job not yet closed."""
+    return (
+        session.scalars(
+            select(Job.id).where(Job.source_id == source.id, Job.status != "closed").limit(1)
+        ).first()
+        is not None
+    )

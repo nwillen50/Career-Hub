@@ -16,10 +16,10 @@ import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session, aliased
 
 from careerhub.core.models import Company, Job, Source, utcnow
 from careerhub.core.names import company_key
@@ -125,3 +125,17 @@ def _company(session: Session, name: str) -> Company:
         session.add(company)
         session.flush()
     return company
+
+
+def only_visible_copies[Q](query: Q) -> Q:
+    """Limit a query on `Job` to one copy of each job.
+
+    A posting linked to an earlier one from another source (`duplicate_of_id`) is hidden, unless
+    that original has closed: then the copy is the only open one and must stay visible.
+    """
+    original = aliased(Job)
+    select_query: Any = query  # SQLAlchemy's Select is generic over its columns
+    visible = select_query.outerjoin(original, original.id == Job.duplicate_of_id).where(
+        or_(Job.duplicate_of_id.is_(None), original.status == "closed")
+    )
+    return cast(Q, visible)
