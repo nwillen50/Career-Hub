@@ -280,6 +280,8 @@ def _add_job(
         return 1
     print(f"Added #{result.job.id} {result.job.title}: {result.how}. Run `hub nightly` to rank it.")
     return 0
+
+
 def _targets(args: list[str]) -> int:
     """Run a `hub targets ...` command on `targets.yaml` (no network, no database)."""
     try:
