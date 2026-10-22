@@ -72,6 +72,16 @@ fails, it is treated as a glitch and the jobs stay open. Ashby has no such addre
 `empty_listing_backstop_nights` (default 3) empty nights in a row its jobs close anyway.
 See [ADR-0035](../../../../docs/decisions/0035-closed-vs-glitch.md).
 
+## Target companies
+
+`hub targets import docs/seeds/engine-resident-companies.yaml` adds The Engine's 137 resident
+companies (public list) to `targets.yaml` in your data folder, all **disabled**; importing again
+changes nothing and never touches a company you already have. `hub targets list` shows them;
+`hub targets enable <name>` / `disable <name>` follow or stop following one;
+`hub targets enable-matching` follows the ones whose sectors match your interests in `profile.md`
+(whole words: "robotics" matches "AUTONOMOUS SYSTEMS / ROBOTICS"). Finding each company's job board
+is the next ticket.
+
 ## Greenhouse
 
 `hub sources add greenhouse Acme https://boards.greenhouse.io/acme`, then
