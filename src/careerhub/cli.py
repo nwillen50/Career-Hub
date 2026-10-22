@@ -33,6 +33,7 @@ from careerhub.modules.network import (
     UnknownPerson,
     find_people,
     import_alumni,
+    preview_alumni,
     tag_person,
     warm_paths,
 )
@@ -54,7 +55,8 @@ USAGE = """Usage:
   hub paths <company>                        (who you know there, strongest first)
   hub people find <text>                     (by name or company)
   hub people tag <id> <how you know them>
-  hub people import-alumni <file.csv>
+  hub people import-alumni <file> [--group G] [--sheet S] [--map field=Header] [--preview]
+                                             (CSV, TSV or Excel; also `hub alumni import`)
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
   hub cache clear [--expired]               (delete saved model answers; prints how many)
@@ -86,8 +88,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _with_session(store, lambda s: _people_find(s, " ".join(args[2:])))
         if args[:2] == ["people", "tag"] and len(args) >= 4 and args[2].isdigit():
             return _with_session(store, lambda s: _people_tag(s, int(args[2]), " ".join(args[3:])))
-        if args[:2] == ["people", "import-alumni"] and len(args) == 3:
-            return _with_session(store, lambda s: _people_import(s, Path(args[2])))
+        if args[:2] in (["people", "import-alumni"], ["alumni", "import"]) and len(args) >= 3:
+            return _with_session(store, lambda s: _people_import(s, Path(args[2]), args[3:]))
         if args == ["schedule", "install"]:
             return _schedule_install()
         if args == ["nightly"]:
@@ -202,11 +204,51 @@ def _people_tag(session: Session, person_id: int, how_known: str) -> int:
     return 0
 
 
-def _people_import(session: Session, path: Path) -> int:
-    report = import_alumni(session, path)
+def _people_import(session: Session, path: Path, options: list[str] | None = None) -> int:
+    """Import (or with --preview, only describe) an alumni list; see `modules/network/alumni.py`."""
+    group, sheet, overrides, preview = None, None, {}, False
+    words = list(options or [])
+    while words:
+        flag = words.pop(0)
+        if flag == "--preview":
+            preview = True
+        elif flag in ("--group", "--sheet", "--map") and words:
+            value = words.pop(0)
+            if flag == "--group":
+                group = value
+            elif flag == "--sheet":
+                sheet = value
+            elif "=" in value:
+                key, _, header = value.partition("=")
+                overrides[key.strip()] = header
+            else:
+                print("--map takes field=Header, for example --map company='Current Employer'.")
+                return 2
+        else:
+            print(USAGE)
+            return 2
+    try:
+        if preview:
+            shown = preview_alumni(session, path, group, sheet, overrides)
+            print(f"Header found on row {shown.header_row}. Columns:")
+            for name, header in shown.mapping.items():
+                print(f"  {header!r} -> {name}")
+            for header in shown.ignored:
+                print(f"  {header!r} -> ignored")
+            report = shown.report
+            print(
+                f"Would add {report.created}, tag {report.tagged}, leave {report.unchanged}, "
+                f"skip {report.skipped}."
+            )
+            return 0
+        report = import_alumni(session, path, group, sheet, overrides)
+    except ProfileFileError as error:
+        print(error)
+        return 1
+    missing = f" (missing {' or '.join(report.skipped_for)})" if report.skipped_for else ""
     print(
         f"{report.created} added, {report.tagged} tagged as alumni, {report.unchanged} unchanged, "
-        f"{report.skipped} rows skipped (missing name, company, or group)."
+        f"{report.skipped} rows skipped{missing}."
     )
     return 0
 

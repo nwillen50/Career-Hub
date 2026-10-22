@@ -38,6 +38,7 @@ that supersedes the old one.
 | [0031](0031-profile-extraction.md) | Profile extraction: redacted, validated, saved as pending facts keyed by file hash | Accepted |
 | [0032](0032-accepting-extracted-facts.md) | Extracted facts count only when accepted; profile.md wins; newest accepted set per document | Accepted |
 | [0033](0033-company-names.md) | Company key ignores legal suffixes and web endings; one create/find path; migration merges duplicates | Accepted |
+| [0038](0038-alumni-layouts.md) | Alumni lists in any layout: sniffed delimiter, Excel, synonym columns, preview | Accepted |
 
 ## Template
 

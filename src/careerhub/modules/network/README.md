@@ -28,3 +28,14 @@ tag is added to what you wrote, never replacing it. See
 `hub paths <company>` lists who you know there, strongest first, with the reasons. Points: your own
 words in `how_known` 3, an imported alumni group 2, a LinkedIn connection 1, contact in the last year
 1, a recruiter title 1. See [ADR-0023](../../../../docs/decisions/0023-warm-path-rules.md).
+
+## Alumni lists in any layout (CH-100)
+
+`hub alumni import <file> --group "Example Physics"` (alias `hub people import-alumni`) reads CSV
+(comma, semicolon, tab, or pipe), TSV, or Excel (`--sheet` to pick a sheet). Title rows above the
+header are skipped, and columns are matched by synonym ("Employer", "Current Company",
+"Organisation" are all the company). Only a name (or first and last name) and a company are required;
+the group comes from a Group column or `--group`. Add `--preview` first: it prints how each column
+was mapped (or "ignored") and how many people would be added, tagged, or skipped, with no names and no
+changes. `--map company='Current Employer'` overrides one mapping. The synonym table is `SYNONYMS` in
+`layouts.py`. See [ADR-0038](../../../../docs/decisions/0038-alumni-layouts.md).
