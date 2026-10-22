@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import getpass
 import sys
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
@@ -16,6 +18,13 @@ from careerhub.core.models import utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore, SecretsError
 from careerhub.core.settings import SettingsError, load_settings
 from careerhub.core.storage import StorageError, open_database, session_factory
+from careerhub.llm.commands import (
+    models_add,
+    models_add_custom,
+    models_list,
+    models_remove,
+    models_routes,
+)
 from careerhub.modules.jobs import (
     FetchError,
     SourceNotApproved,
@@ -53,6 +62,11 @@ USAGE = """Usage:
   hub people import-alumni <file.csv>
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
+  hub models list | routes
+  hub models add <anthropic|openai|gemini --tier free|paid|local|preset>   (asks for the key)
+  hub models remove <same names>
+  hub models add-custom <name> <kind> <model> [--base-url U] [--input N] [--output N]
+                        [--trains-on-data]
   hub shortlist build                        (write the shortlist page)
   hub sources list
   hub sources add <kind> <name> <url>     (saved as proposed; nothing is fetched yet)
@@ -83,6 +97,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _schedule_install()
         if args == ["nightly"]:
             return _nightly(store)
+        if args[:1] == ["models"] and len(args) >= 2:
+            return _models(store, args[1:])
         if args == ["shortlist", "build"]:
             return _with_session(store, _shortlist_build)
         if args[:2] == ["sources", "list"] and len(args) == 2:
@@ -212,6 +228,55 @@ def _nightly(store: KeyStore) -> int:
     report = run_nightly(engine, store)
     print(report.summary())
     return 1 if any(p.startswith("run failed") for p in report.problems) else 0
+
+
+def _flags(args: list[str]) -> tuple[list[str], dict[str, str | bool]] | None:
+    """Split `args` into plain words and `--flag value` pairs; None if a flag is malformed."""
+    words: list[str] = []
+    flags: dict[str, str | bool] = {}
+    i = 0
+    while i < len(args):
+        if args[i] == "--trains-on-data":
+            flags["trains_on_data"] = True
+        elif args[i].startswith("--"):
+            if i + 1 >= len(args):
+                return None
+            flags[args[i][2:].replace("-", "_")] = args[i + 1]
+            i += 1
+        else:
+            words.append(args[i])
+        i += 1
+    return words, flags
+
+
+def _models(store: KeyStore, args: list[str]) -> int:
+    """Run a `hub models ...` command."""
+    parsed = _flags(args[1:])
+    if parsed is None:
+        print(USAGE)
+        return 2
+    words, flags = parsed
+    tier = flags.get("tier")
+    tier = tier if isinstance(tier, str) else None
+    secret = lambda prompt: getpass.getpass(prompt)  # noqa: E731  (hidden input, never echoed)
+    if args[0] == "list" and not words:
+        return models_list(store, date.today())
+    if args[0] == "routes" and not words:
+        return models_routes(load_settings(), store)
+    if args[0] in ("add", "remove") and len(words) == 1:
+        if args[0] == "add":
+            return models_add(store, words[0], tier, secret)
+        return models_remove(store, words[0], tier, input)
+    if args[0] == "add-custom" and len(words) == 3:
+        options: dict[str, str | bool] = {
+            "name": words[0],
+            "kind": words[1],
+            "model": words[2],
+            **flags,
+        }
+        return models_add_custom(store, load_settings(), options, secret)
+    print(USAGE)
+    return 2
 
 
 def _shortlist_build(session: Session) -> int:
