@@ -19,7 +19,7 @@ from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
 from sqlalchemy.orm import Session
 
-from careerhub.modules.jobs.scoring import ranked_jobs
+from careerhub.modules.jobs.scoring import current_internship_penalty, ranked_jobs
 from careerhub.modules.network import warm_paths
 from careerhub.modules.plan.freebusy import Interval
 
@@ -137,7 +137,7 @@ def end_of_day(day: date, zone: tzinfo) -> datetime:
 def build_tasks(session: Session, zone: tzinfo, limit: int = 5) -> list[PlanTask]:
     """Turn the shortlist into tasks: apply to each job, and reach out first if you know someone."""
     tasks: list[PlanTask] = []
-    for job, assessment in ranked_jobs(session, limit):
+    for job, assessment in ranked_jobs(session, limit, current_internship_penalty()):
         score = assessment.fit_score or 0.0
         due = _deadline(job.structured_fields, zone)
         label = f"{job.title} at {job.company.name}"

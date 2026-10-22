@@ -23,6 +23,7 @@ from careerhub.llm.validated import complete_validated_detailed
 from careerhub.modules.jobs.store import only_visible_copies
 from careerhub.profile.extract import ProfileFacts
 from careerhub.profile.facts import accepted_facts, facts_text
+from careerhub.profile.files import ProfileFileError, load_preferences
 from careerhub.profile.models import ProfileDoc
 from careerhub.profile.redact import personal_text
 from careerhub.profile.rubric import Rubric
@@ -171,8 +172,32 @@ def score_job(
     return assessment
 
 
-def ranked_jobs(session: Session, limit: int = 20) -> list[tuple[Job, Assessment]]:
-    """Return open, original (not duplicate) jobs that passed the filters, best score first."""
+#: One point of `internship_rank_penalty` (a 0 to 10 scale) is this many fit-score points (of 100).
+PENALTY_SCALE = 10
+
+
+def is_internship(job: Job) -> bool:
+    """Say whether extraction found this job to be an internship."""
+    return bool(job.structured_fields.get("fields", {}).get("level") == "internship")
+
+
+def current_internship_penalty() -> float:
+    """Return the user's `internship_rank_penalty` (0 when unset or the file is unusable)."""
+    try:
+        preferences = load_preferences()
+    except ProfileFileError:
+        return 0.0
+    return preferences.internship_rank_penalty if preferences else 0.0
+
+
+def ranked_jobs(
+    session: Session, limit: int = 20, internship_penalty: float = 0.0
+) -> list[tuple[Job, Assessment]]:
+    """Return open, original (not duplicate) jobs that passed the filters, best score first.
+
+    `internship_penalty` (0 to 10) ranks internships a little lower. It only changes the order:
+    the stored fit score is never touched.
+    """
     query = (
         select(Job, Assessment)
         .join(Assessment, Assessment.job_id == Job.id)
@@ -182,5 +207,14 @@ def ranked_jobs(session: Session, limit: int = 20) -> list[tuple[Job, Assessment
             Job.status != "closed",
         )
     )
-    query = only_visible_copies(query).order_by(Assessment.fit_score.desc(), Job.id).limit(limit)
-    return [(job, assessment) for job, assessment in session.execute(query)]
+    query = only_visible_copies(query).order_by(Assessment.fit_score.desc(), Job.id)
+    if internship_penalty <= 0:
+        return [(job, assessment) for job, assessment in session.execute(query.limit(limit))]
+    rows = [(job, assessment) for job, assessment in session.execute(query)]
+
+    def adjusted(row: tuple[Job, Assessment]) -> tuple[float, int]:
+        job, assessment = row
+        score = assessment.fit_score or 0.0
+        return (-(score - internship_penalty * PENALTY_SCALE * is_internship(job)), job.id)
+
+    return sorted(rows, key=adjusted)[:limit]
