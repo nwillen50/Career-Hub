@@ -47,6 +47,9 @@ def merge_companies(session: Session, keep: Company, drop: Company) -> None:
         job.company_id = keep.id
     for person in session.scalars(select(Person).where(Person.company_id == drop.id)):
         person.company_id = keep.id
+    keep.notes = "\n".join(t for t in (keep.notes, drop.notes) if t) or None
+    keep.size = keep.size or drop.size
+    keep.industry = keep.industry or drop.industry
     keep.domains = sorted({*keep.domains, *drop.domains})
     keep.ats_board_ids = {**drop.ats_board_ids, **keep.ats_board_ids}
     session.flush()

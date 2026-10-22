@@ -16,6 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 
 from careerhub.core.names import company_key
+from careerhub.modules.jobs.store import dedupe_key
 
 revision: str = "e6bfbacbea9b"
 down_revision: str | None = "e8414035bd90"
@@ -55,6 +56,23 @@ def upgrade() -> None:
             gone = bind.execute(
                 sa.text("SELECT domains, ats_board_ids FROM company WHERE id = :i"), {"i": other}
             ).one()
+            extra = bind.execute(
+                sa.text(
+                    "SELECT notes, size, industry FROM company WHERE id IN (:a, :b) "
+                    "ORDER BY id = :a DESC"
+                ),
+                {"a": keep, "b": other},
+            ).fetchall()
+            (kept_notes, kept_size, kept_industry), (gone_notes, gone_size, gone_industry) = extra
+            bind.execute(
+                sa.text("UPDATE company SET notes = :n, size = :s, industry = :d WHERE id = :i"),
+                {
+                    "n": "\n".join(t for t in (kept_notes, gone_notes) if t) or None,
+                    "s": kept_size or gone_size,
+                    "d": kept_industry or gone_industry,
+                    "i": keep,
+                },
+            )
             domains = sorted({*_load(kept[0], []), *_load(gone[0], [])})  # type: ignore[misc]
             boards: dict[str, str] = {**_load(gone[1], {}), **_load(kept[1], {})}  # type: ignore[dict-item]
             bind.execute(
@@ -62,9 +80,27 @@ def upgrade() -> None:
                 {"d": json.dumps(domains), "b": json.dumps(boards), "i": keep},
             )
             bind.execute(sa.text("DELETE FROM company WHERE id = :i"), {"i": other})
+    # Two phases: a row's new key can equal another row's old key, and name_key is unique.
+    for ids in groups.values():
+        bind.execute(
+            sa.text("UPDATE company SET name_key = :k WHERE id = :i"),
+            {"k": f"__migrating {ids[0]}", "i": ids[0]},
+        )
     for key, ids in groups.items():
         bind.execute(
             sa.text("UPDATE company SET name_key = :k WHERE id = :i"), {"k": key, "i": ids[0]}
+        )
+    # Postings of the same job at two sources are linked by a hash that now uses company_key.
+    jobs = bind.execute(
+        sa.text(
+            "SELECT job.id, company.name, job.title, job.location FROM job "
+            "JOIN company ON company.id = job.company_id"
+        )
+    ).fetchall()
+    for job_id, company_name, title, location in jobs:
+        bind.execute(
+            sa.text("UPDATE job SET dedupe_key = :k WHERE id = :i"),
+            {"k": dedupe_key(company_name, title, location), "i": job_id},
         )
 
 

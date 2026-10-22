@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session, aliased
 
 from careerhub.core.companies import get_or_create_company
 from careerhub.core.models import Company, Job, Source, utcnow
+from careerhub.core.names import company_key
 
 
 @dataclass(frozen=True)
@@ -56,7 +57,7 @@ def _squash(text: str | None) -> str:
 
 def dedupe_key(company_name: str, title: str, location: str | None) -> str:
     """Return the hash that two postings of the same job share, whatever their source."""
-    parts = "|".join((_squash(company_name), _squash(title), _squash(location)))
+    parts = "|".join((company_key(company_name), _squash(title), _squash(location)))
     return hashlib.sha256(parts.encode()).hexdigest()
 
 

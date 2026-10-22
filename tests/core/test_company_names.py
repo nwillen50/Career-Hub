@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.companies import find_companies, get_or_create_company
 from careerhub.core.migrate import _config, migrate
-from careerhub.core.models import Company, Person, Source
+from careerhub.core.models import Company, Person, Source, utcnow
 from careerhub.core.names import company_key
 from careerhub.core.secrets import new_database_key
 from careerhub.core.storage import open_engine, session_factory
@@ -137,3 +137,98 @@ def test_the_migration_recomputes_keys_and_merges_duplicates(tmp_path: Path) -> 
         assert kept.ats_board_ids == {"greenhouse": "msft"}
         ada = session.scalars(select(Person).where(Person.full_name == "Ada")).one()
         assert ada.company_id == kept.id
+
+
+def old_database(tmp_path: Path, companies: list[Company]):  # type: ignore[no-untyped-def]
+    engine = open_engine(tmp_path / "old.db", new_database_key())
+    config = _config()
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "e8414035bd90")
+    with session_factory(engine)() as session:
+        session.add_all(companies)
+        session.commit()
+    return engine
+
+
+def test_the_migration_survives_a_new_key_equal_to_another_rows_old_key(tmp_path: Path) -> None:
+    engine = old_database(
+        tmp_path,
+        [Company(name="Foo-Inc", name_key="foo-inc"), Company(name="Foo Inc", name_key="foo inc")],
+    )
+    migrate(engine)  # used to raise IntegrityError on the unique name_key
+    with session_factory(engine)() as session:
+        assert [c.name_key for c in session.scalars(select(Company))] == ["foo inc", "foo"]
+
+
+def test_merging_keeps_the_notes_size_and_industry_of_the_dropped_company(tmp_path: Path) -> None:
+    engine = old_database(
+        tmp_path,
+        [
+            Company(name="Microsoft", name_key="microsoft", notes="mine"),
+            Company(
+                name="Microsoft Corporation",
+                name_key="microsoft corporation",
+                notes="my manager is Ada",
+                size="10000+",
+                industry="Software",
+            ),
+        ],
+    )
+    migrate(engine)
+    with session_factory(engine)() as session:
+        kept = session.scalars(select(Company)).one()
+        assert kept.notes == "mine\nmy manager is Ada"
+        assert (kept.size, kept.industry) == ("10000+", "Software")
+
+
+def test_merge_companies_also_keeps_notes(session: Session) -> None:
+    from careerhub.core.companies import merge_companies
+
+    keep, drop = (
+        Company(name="A", name_key="a"),
+        Company(name="B", name_key="b", notes="n", size="5"),
+    )
+    session.add_all([keep, drop])
+    session.flush()
+    merge_companies(session, keep, drop)
+    assert (keep.notes, keep.size) == ("n", "5")
+
+
+def test_the_same_job_at_two_sources_links_whatever_the_company_spelling() -> None:
+    from careerhub.modules.jobs import dedupe_key
+
+    assert dedupe_key("Microsoft Corp.", "Engineer", "WA") == dedupe_key(
+        "Microsoft", "Engineer", "WA"
+    )
+
+
+def test_the_migration_recomputes_the_dedupe_keys_of_stored_jobs(tmp_path: Path) -> None:
+    from careerhub.core.models import Job
+    from careerhub.modules.jobs import dedupe_key
+
+    engine = old_database(tmp_path, [Company(name="Microsoft Corp.", name_key="microsoft corp.")])
+    with session_factory(engine)() as session:
+        company = session.scalars(select(Company)).one()
+        source = Source(kind="greenhouse", name="s", url="u", status="approved")
+        session.add(source)
+        session.flush()
+        session.add(
+            Job(
+                company_id=company.id,
+                source_id=source.id,
+                external_id="1",
+                title="Engineer",
+                url="u",
+                location="WA",
+                dedupe_key="stale",
+                first_seen_at=utcnow(),
+                last_seen_at=utcnow(),
+            )
+        )
+        session.commit()
+    migrate(engine)
+    with session_factory(engine)() as session:
+        assert session.scalars(select(Job)).one().dedupe_key == dedupe_key(
+            "Microsoft", "Engineer", "WA"
+        )
