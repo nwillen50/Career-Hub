@@ -97,3 +97,43 @@ def test_a_text_resume_is_read_without_latex_mangling(tmp_path: Path) -> None:
     resume, _ = find_resume(tmp_path)
     assert resume is not None and resume.text() == "Saved 50% of costs {fast}"
     assert latex_to_text("Saved 50% of costs") == "Saved 50"  # LaTeX treats % as a comment
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Date of Birth: 04 March 2001",
+        "D.O.B. 03/04/2001",
+        "Born: 03/04/2001",
+        "Birth date (MM/DD/YYYY): 03/04/2001",
+        "DOB 2001-03-04",
+    ],
+)
+def test_more_birth_date_forms_are_removed(text: str) -> None:
+    assert "2001" not in redact_identity_numbers(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "University ID: A12345678",
+        "Student Identification Number: U12345678",
+        "Campus ID U1234567",
+        "UID: 123456",
+        "SSN on file 123456789.",
+        "Ref A12345678 end",
+    ],
+)
+def test_more_id_forms_are_removed(text: str) -> None:
+    out = redact_identity_numbers(text)
+    assert not any(ch.isdigit() for ch in out), out
+
+
+def test_ssn_with_unicode_dashes_is_removed() -> None:
+    assert "6789" not in redact_identity_numbers("123‑45–6789")
+
+
+def test_a_course_line_keeps_its_grade_and_credits() -> None:
+    line = "PHYS 101 General Physics 4 A- 2023 Dr. Lee"
+    assert transcript_text(line, "X Y Z") == line
+    assert "3.65" in transcript_text("Cumulative GPA 3.65", "X Y Z")
