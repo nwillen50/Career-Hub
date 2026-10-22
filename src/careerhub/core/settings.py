@@ -47,6 +47,17 @@ class ProviderSetting(BaseModel):
     output_per_mtok: float | None = Field(default=None, ge=0)
 
 
+class PresetOverride(BaseModel):
+    """Changes to a catalog preset. Only these fields can change; privacy fields can't."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model: str | None = Field(default=None, min_length=1)
+    base_url: str | None = None
+    input_per_mtok: float | None = Field(default=None, ge=0)
+    output_per_mtok: float | None = Field(default=None, ge=0)
+
+
 class Settings(BaseModel):
     """Every user setting, with its default. Unknown names are rejected to catch typos."""
 
@@ -59,12 +70,16 @@ class Settings(BaseModel):
     #: Most the model router may spend on cloud models in a calendar month, in US dollars. When
     #: it is reached, calls not marked essential are paused (PRD, "Cost tracking").
     monthly_budget_usd: float = Field(default=20.0, ge=0)
+    #: Days a saved model answer is kept after it was last used (using it resets the clock).
+    cache_ttl_days: int = Field(default=30, ge=1, le=3650)
     #: Your timezone (an IANA name such as "America/New_York"), for working hours and calendars.
     timezone: str = "America/New_York"
     #: Calendar files (.ics) whose busy time the weekly plan avoids. Only times are read.
     calendar_files: tuple[str, ...] = ()
     #: The models Career Hub may use. Empty until the user adds some.
     providers: tuple[ProviderSetting, ...] = ()
+    #: Changes to built-in catalog presets by preset name, e.g. a newer model id or new prices.
+    preset_overrides: dict[str, PresetOverride] = Field(default_factory=dict)
     #: Which providers handle each task, in order: the first is tried, later ones are escalations.
     #: Example: {"extract": ["claude-cheap", "claude-strong"]}.
     model_routes: dict[str, tuple[str, ...]] = Field(default_factory=dict)
@@ -80,7 +95,9 @@ class Settings(BaseModel):
         for task, route in self.model_routes.items():
             if not route:
                 raise ValueError(f"route {task!r} names no providers")
-            unknown = [name for name in route if name not in names]
+            from careerhub.llm.catalog import preset_names  # lazy: llm imports this module
+
+            unknown = [name for name in route if name not in names and name not in preset_names()]
             if unknown:
                 raise ValueError(f"route {task!r} names unknown providers: {', '.join(unknown)}")
         return self
