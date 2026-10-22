@@ -74,3 +74,10 @@ See [ADR-0002](../../../docs/decisions/0002-data-models-and-migrations.md) for t
 - To change the schema, edit the models, then run
   `uv run python -m careerhub.core.migrate new "what changed"` and read the file it writes. The
   steps are in [`migrations/README.md`](migrations/README.md).
+
+## Company names (`names.py`, `companies.py`)
+
+`company_key` makes "Microsoft", "Microsoft.com", and "Microsoft Corporation" one key (legal words,
+web endings, "the", and punctuation are ignored; a short built-in alias list covers Google/Alphabet
+and similar). Every importer uses `get_or_create_company`; lookups use `find_companies`, which
+matches whole words only and reports ambiguity. See [ADR-0033](../../../docs/decisions/0033-company-names.md).

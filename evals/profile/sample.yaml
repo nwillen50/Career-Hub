@@ -1,0 +1,31 @@
+# Hand-written, made-up resumes and transcripts with the facts a good reading must find.
+# Format: cases: [{id, kind (resume|transcript), text, expected: {gpa, skills, schools,
+# organizations, course_codes}}]. Lists are matched ignoring case; missing items lower the score.
+cases:
+  - id: resume-intern
+    kind: resume
+    text: |
+      Software Engineering Intern, Acme Robotics, Jun 2025 - Aug 2025
+      - Built a Python tool that saved the team 10 hours a week.
+      Teaching Assistant, Example University, Sep 2024 - May 2025
+      B.S. Computer Science, Example University, May 2026
+      Skills: Python, SQL, Git
+    expected:
+      gpa: null
+      skills: [Python, SQL, Git]
+      schools: [Example University]
+      organizations: [Acme Robotics, Example University]
+      course_codes: []
+  - id: transcript-basic
+    kind: transcript
+    text: |
+      Example University, Official Transcript
+      CS 101 Intro to Programming A Fall 2023
+      MATH 220 Linear Algebra B+ Spring 2024
+      Cumulative GPA 3.65
+    expected:
+      gpa: 3.65
+      skills: []
+      schools: [Example University]
+      organizations: []
+      course_codes: [CS 101, MATH 220]

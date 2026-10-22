@@ -53,7 +53,7 @@ def test_reimport_changes_nothing(tmp_path: Path, session: Session) -> None:
 def test_an_existing_connection_gets_the_tag_added_without_losing_the_users_words(
     tmp_path: Path, session: Session
 ) -> None:
-    company = Company(name="Acme Corp", name_key="acme corp")
+    company = Company(name="Acme Corp", name_key="acme")
     known = Person(
         full_name="ada sample",
         company=company,
@@ -98,7 +98,7 @@ def test_a_file_without_the_needed_columns_is_an_error(tmp_path: Path, session: 
 
 
 def test_find_and_tag_people(session: Session) -> None:
-    company = Company(name="Acme Corp", name_key="acme corp")
+    company = Company(name="Acme Corp", name_key="acme")
     person = Person(full_name="Ada Sample", company=company)
     session.add_all([company, person])
     session.commit()
