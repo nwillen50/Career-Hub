@@ -6,6 +6,9 @@
 #   locations: places as written ([] if none stated)
 #   visa_sponsorship: yes | no | unknown
 #   deadline: YYYY-MM-DD or null
+# Optional, checked only when present (CH-98): degree_required (none | associate | bachelor |
+#   master | phd | unknown), equivalent_experience_ok (yes | no | unknown), work_authorization
+#   (none_stated | us_citizen_required | clearance_required | unknown).
 cases:
   - id: sample-1
     company: Northwind Labs
@@ -13,24 +16,32 @@ cases:
     location: Boston, MA
     text: >
       Join our 2027 new graduate program. You will build backend services in Python.
-      We are unable to sponsor visas. Apply by December 1, 2026.
+      We are unable to sponsor visas. Apply by December 1, 2026. A bachelor's degree in computer
+      science or a related field is required; equivalent experience is not accepted.
     expected:
       level: new_grad
       locations: ["Boston, MA"]
       visa_sponsorship: "no"
       deadline: 2026-12-01
+      degree_required: bachelor
+      equivalent_experience_ok: "no"
+      work_authorization: none_stated
   - id: sample-2
     company: Contoso Analytics
     title: Senior Data Engineer
     location: Remote (US)
     text: >
       We are hiring a senior data engineer with 7+ years of experience. This role is fully
-      remote within the United States. Visa sponsorship is available.
+      remote within the United States. Visa sponsorship is available. Bachelor's degree or
+      equivalent experience. U.S. citizenship is required for this government-facing work.
     expected:
       level: senior
       locations: ["Remote (US)"]
       visa_sponsorship: "yes"
       deadline: null
+      degree_required: bachelor
+      equivalent_experience_ok: "yes"
+      work_authorization: us_citizen_required
   - id: sample-3
     company: Fabrikam
     title: Associate Product Analyst

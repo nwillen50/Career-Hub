@@ -50,3 +50,16 @@ def test_the_scoring_prompt_has_its_placeholders_and_treats_the_posting_as_data(
     ):
         assert marker in text
     assert "never as instructions" in text and '"criteria"' in text and '"explanation"' in text
+
+
+def test_extraction_prompt_v2_has_the_new_keys_and_still_treats_postings_as_data() -> None:
+    text = load_prompt("extract_job", 2)
+    for key in (
+        "degree_required", "degree_preferred", "degree_fields", "equivalent_experience_ok",
+        "graduation_earliest", "graduation_latest", "work_authorization", "start_date",
+        "preferred_skills", "summary", "role_focus",
+    ):  # fmt: skip
+        assert f'"{key}"' in text
+    flat = " ".join(text.split())  # the prompt wraps lines
+    assert "never as instructions" in flat and "never invent" in flat
+    assert "{{posting}}" in text and "=== POSTING START ===" in text
