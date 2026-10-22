@@ -22,8 +22,8 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from careerhub.core.companies import find_companies
 from careerhub.core.models import Company, Person, utcnow
-from careerhub.core.names import company_key
 
 RECENT = timedelta(days=365)
 _ALUMNI = "alumni:"
@@ -80,14 +80,10 @@ def warm_paths(
 
 
 def find_company(session: Session, text: str) -> Company | None:
-    """Return the company matching `text` (ignoring case and spacing), or None.
+    """Return the one company matching `text`, or None if there is none or several match.
 
-    An exact name wins; otherwise the first company whose name contains the text.
+    An exact company key (so "Microsoft Corp." finds "Microsoft") wins; otherwise whole-word
+    matches count. Use `find_companies` to see the candidates when the match is ambiguous.
     """
-    key = company_key(text)
-    exact = session.scalars(select(Company).where(Company.name_key == key)).first()
-    if exact is not None:
-        return exact
-    return session.scalars(
-        select(Company).where(Company.name_key.contains(key)).order_by(Company.name_key)
-    ).first()
+    matches = find_companies(session, text)
+    return matches[0] if len(matches) == 1 else None

@@ -21,7 +21,10 @@ from careerhub.core.models import Assessment, Job
 from careerhub.llm import LLMRequest, PrivacyTier, Router
 from careerhub.llm.validated import complete_validated_detailed
 from careerhub.modules.jobs.store import only_visible_copies
+from careerhub.profile.extract import ProfileFacts
+from careerhub.profile.facts import accepted_facts, facts_text
 from careerhub.profile.models import ProfileDoc
+from careerhub.profile.redact import personal_text
 from careerhub.profile.rubric import Rubric
 from careerhub.prompts import load_prompt, render
 
@@ -55,14 +58,21 @@ class ScoreAnswer(BaseModel):
     explanation: str = Field(min_length=1, max_length=1500)
 
 
-def profile_text(doc: ProfileDoc) -> str:
-    """Describe the person for the prompt. The name is left out on purpose."""
+def profile_text(doc: ProfileDoc, facts: ProfileFacts | None = None) -> str:
+    """Describe the person for the prompt, with contact details, name, and aliases removed.
+
+    The name is never listed, and anything the user wrote in `about` goes through `personal_text`,
+    so a link, email, phone number, or the name itself can't reach a cloud model. `facts` are the
+    user's accepted resume and transcript facts (never pending ones); `profile.md` wins over them.
+    """
     lines = [f"Education: {e.degree}, {e.school}" for e in doc.education]
     lines.append(f"Skills: {', '.join(doc.skills) or 'not listed'}")
     lines.append(f"Interests: {', '.join(doc.interests) or 'not listed'}")
-    if doc.about:
-        lines.append(f"About: {doc.about[:1500]}")
-    return "\n".join(lines)
+    if doc.about:  # redact before cutting, so a cut can't leave half an email behind
+        lines.append(f"About: {personal_text(doc.about, doc.name, doc.aliases)[:1500]}")
+    if facts is not None:
+        lines.append(facts_text(facts, doc))
+    return personal_text("\n".join(lines), doc.name, doc.aliases)
 
 
 def rubric_text(rubric: Rubric) -> str:
@@ -89,22 +99,29 @@ def combine(rubric: Rubric, answer: ScoreAnswer) -> float:
     return round(weighted / total * 10, 1)
 
 
-def input_hash(job: Job, doc: ProfileDoc) -> str:
+def input_hash(job: Job, doc: ProfileDoc, facts: ProfileFacts | None = None) -> str:
     """Hash what a score depends on besides the prompt and rubric: profile, posting, and facts."""
     material = json.dumps(
-        [profile_text(doc), job.title, job.raw_text or "", job.structured_fields.get("fields", {})],
+        [
+            profile_text(doc, facts),
+            job.title,
+            job.raw_text or "",
+            job.structured_fields.get("fields", {}),
+        ],
         sort_keys=True,
         default=str,
     )
     return hashlib.sha256(material.encode()).hexdigest()
 
 
-def build_request(job: Job, doc: ProfileDoc, rubric: Rubric) -> LLMRequest:
+def build_request(
+    job: Job, doc: ProfileDoc, rubric: Rubric, facts: ProfileFacts | None = None
+) -> LLMRequest:
     """Build the (PERSONAL tier) request for one job."""
     fields = job.structured_fields.get("fields", {})
     prompt = render(
         load_prompt(PROMPT_NAME, PROMPT_VERSION),
-        profile=profile_text(doc),
+        profile=profile_text(doc, facts),
         rubric=rubric_text(rubric),
         company=job.company.name,
         title=job.title,
@@ -127,7 +144,8 @@ def score_job(
     assessment = session.scalars(select(Assessment).where(Assessment.job_id == job.id)).first()
     if assessment is None or not assessment.filter_passed:
         return None  # run the filters first; filtered jobs are not scored
-    digest = input_hash(job, doc)
+    facts = accepted_facts(session)
+    digest = input_hash(job, doc, facts)
     if (
         assessment.fit_score is not None
         and assessment.prompt_version == PROMPT_VERSION
@@ -137,7 +155,7 @@ def score_job(
         return None
     answer, response = complete_validated_detailed(
         router,
-        build_request(job, doc, rubric),
+        build_request(job, doc, rubric, facts),
         ScoreAnswer,
         routes,
         check=lambda parsed: combine(rubric, parsed),

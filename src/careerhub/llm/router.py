@@ -60,6 +60,8 @@ class Router:
         """
         self._cache = cache
         self._costs = costs
+        #: Providers skipped because they were down, rate limited, or over budget ("name: Type").
+        self.skipped: list[str] = []
         self._providers: dict[str, Provider] = {}
         for provider in providers:
             if provider.name in self._providers:
