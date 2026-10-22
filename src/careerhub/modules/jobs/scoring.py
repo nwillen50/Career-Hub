@@ -22,6 +22,7 @@ from careerhub.llm import LLMRequest, PrivacyTier, Router
 from careerhub.llm.validated import complete_validated_detailed
 from careerhub.modules.jobs.store import only_visible_copies
 from careerhub.profile.models import ProfileDoc
+from careerhub.profile.redact import personal_text
 from careerhub.profile.rubric import Rubric
 from careerhub.prompts import load_prompt, render
 
@@ -56,13 +57,17 @@ class ScoreAnswer(BaseModel):
 
 
 def profile_text(doc: ProfileDoc) -> str:
-    """Describe the person for the prompt. The name is left out on purpose."""
+    """Describe the person for the prompt, with contact details, name, and aliases removed.
+
+    The name is never listed, and anything the user wrote in `about` goes through `personal_text`,
+    so a link, email, phone number, or the name itself can't reach a cloud model.
+    """
     lines = [f"Education: {e.degree}, {e.school}" for e in doc.education]
     lines.append(f"Skills: {', '.join(doc.skills) or 'not listed'}")
     lines.append(f"Interests: {', '.join(doc.interests) or 'not listed'}")
-    if doc.about:
-        lines.append(f"About: {doc.about[:1500]}")
-    return "\n".join(lines)
+    if doc.about:  # redact before cutting, so a cut can't leave half an email behind
+        lines.append(f"About: {personal_text(doc.about, doc.name, doc.aliases)[:1500]}")
+    return personal_text("\n".join(lines), doc.name, doc.aliases)
 
 
 def rubric_text(rubric: Rubric) -> str:

@@ -21,9 +21,10 @@ from careerhub.llm.fake import FakeProvider
 from careerhub.modules.jobs import NormalizedJob, store_jobs
 from careerhub.modules.jobs.filters import assess_filters
 from careerhub.modules.jobs.scoring import ranked_jobs, score_job
-from careerhub.modules.jobs.tailoring import build_request, redact_contacts, resume_for_model
+from careerhub.modules.jobs.tailoring import build_request, resume_for_model
 from careerhub.modules.plan import IcsCalendar, Interval, PlanTask, plan_week
 from careerhub.profile.models import HardConstraints, ProfileDoc
+from careerhub.profile.redact import redact_contacts
 from careerhub.profile.rubric import Criterion, Rubric
 
 NY = ZoneInfo("America/New_York")

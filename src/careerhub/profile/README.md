@@ -66,6 +66,14 @@ criteria:
 
 See [ADR-0009](../../../docs/decisions/0009-profile-assembly.md).
 
+## Text sent to models (`redact.py`)
+
+Anything of the user's own that goes into a Personal-tier prompt (profile text, resume, and later
+profile extraction) passes through `personal_text`: emails, links, and phone numbers become
+`[email]`, `[link]`, `[phone]`, and the name becomes `[name]`. Names match whole words only. List
+nicknames and handles in `profile.md` front matter under `aliases:` (for example `["Nick",
+"nwillen50"]`) and they are removed too.
+
 ## Reading documents (`documents.py`)
 
 `read_document(path)` returns a document's text, format, page count, and problems. It reads `.tex`,
