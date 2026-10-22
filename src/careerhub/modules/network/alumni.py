@@ -20,8 +20,8 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from careerhub.core.companies import get_or_create_company
 from careerhub.core.models import Company, Person
-from careerhub.core.names import company_key
 from careerhub.profile.files import ProfileFileError
 
 ORIGIN = "alumni_list"
@@ -97,12 +97,10 @@ def _rows(path: Path) -> list[dict[str, str]]:
 
 
 def _company(session: Session, name: str) -> Company:
-    key = company_key(name)
-    company = session.scalars(select(Company).where(Company.name_key == key)).first()
+    company = get_or_create_company(session, name)
     if company is None:
-        company = Company(name=" ".join(name.split()), name_key=key)
-        session.add(company)
-        session.flush()
+        company = get_or_create_company(session, "unknown company")
+    assert company is not None
     return company
 
 

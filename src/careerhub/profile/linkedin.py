@@ -12,15 +12,14 @@ know them" written by the user are never touched, and nobody is ever deleted.
 from __future__ import annotations
 
 import csv
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from careerhub.core.companies import get_or_create_company
 from careerhub.core.models import Company, Person
-from careerhub.core.names import company_key
 from careerhub.core.paths import data_dir
 from careerhub.profile.files import ProfileFileError
 
@@ -104,15 +103,7 @@ def _read_rows(path: Path) -> list[dict[str, str]]:
 
 def _get_or_create_company(session: Session, name: str) -> Company | None:
     """Return the company called `name` (creating it), or None for a blank name."""
-    key = company_key(name)
-    if not key:
-        return None
-    company = session.scalars(select(Company).where(Company.name_key == key)).first()
-    if company is None:
-        company = Company(name=re.sub(r"\s+", " ", name).strip(), name_key=key)
-        session.add(company)
-        session.flush()
-    return company
+    return get_or_create_company(session, name)
 
 
 def _find_person(session: Session, name: str, url: str, company: Company | None) -> Person | None:
