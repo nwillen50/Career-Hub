@@ -6,6 +6,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from careerhub.core.models import Company, Person
+from careerhub.modules.network.schools import school_key
 
 
 class UnknownPerson(KeyError):
@@ -25,11 +26,23 @@ def find_people(session: Session, text: str, limit: int = 20) -> list[Person]:
     return list(session.scalars(query))
 
 
-def tag_person(session: Session, person_id: int, how_known: str) -> Person:
-    """Set how the user knows `person_id` (replaces the old text, e.g. "former manager")."""
+def tag_person(
+    session: Session, person_id: int, how_known: str, school: str | None = None
+) -> Person:
+    """Set how the user knows `person_id` (replaces the old text, e.g. "former manager").
+
+    With `school`, also record a school this person attended (added to the ones already known).
+    """
     person = session.get(Person, person_id)
     if person is None:
         raise UnknownPerson(person_id)
-    person.how_known = how_known.strip() or None
+    if how_known.strip() or school is None:
+        person.how_known = how_known.strip() or None
+    if (
+        school
+        and school.strip()
+        and school_key(school) not in {school_key(s) for s in person.schools or []}
+    ):
+        person.schools = [*(person.schools or []), " ".join(school.split())]
     session.commit()
     return person

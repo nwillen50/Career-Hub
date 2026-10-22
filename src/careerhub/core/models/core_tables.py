@@ -72,6 +72,8 @@ class Person(TimestampMixin, Base):
     how_known: Mapped[str | None] = mapped_column(String(500))
     last_contact_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     notes: Mapped[str | None] = mapped_column(Text)
+    #: Schools this person is known to have attended, from imports and tagging (never scraped).
+    schools: Mapped[list[str] | None] = mapped_column(JSON)
 
     company: Mapped[Company | None] = relationship(back_populates="people")
     interactions: Mapped[list[Interaction]] = relationship(back_populates="person")

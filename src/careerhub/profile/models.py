@@ -84,3 +84,5 @@ class Preferences(_Strict):
     #: Your work authorization, if you want citizenship-required jobs checked. Unset: they are
     #: only marked uncertain.
     work_authorization: Literal["us_citizen", "work_authorized", "needs_sponsorship"] | None = None
+    #: Other names for a school, by its canonical name: {"Tufts University": ["Jumbo U"]}.
+    school_aliases: dict[str, list[str]] = Field(default_factory=dict)

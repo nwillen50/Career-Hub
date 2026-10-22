@@ -30,12 +30,13 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
     "title": ("title", "jobtitle", "position", "role", "currenttitle", "currentposition"),
     "email": ("email", "emailaddress", "mail", "primaryemail"),
     "url": ("url", "linkedin", "linkedinurl", "profile", "profileurl", "linkedinprofile"),
-    "group": ("group", "club", "school", "program", "programme", "organizationtype", "affiliation"),
+    "group": ("group", "club", "program", "programme", "organizationtype", "affiliation"),
+    "school": ("school", "college", "university", "almamater", "institution", "alumniof"),
     "class_year": ("classyear", "graduationyear", "gradyear", "class", "year", "cohort"),
     "major": ("major", "degree", "concentration", "fieldofstudy"),
     "location": ("location", "city", "region", "metro"),
 }  # fmt: skip
-EXTRA_FIELDS = ("class_year", "major", "location")
+EXTRA_FIELDS = ("class_year", "major", "location")  # kept in a new person's notes
 HEADER_SEARCH_ROWS = 30
 MAX_ROWS = 50_000
 

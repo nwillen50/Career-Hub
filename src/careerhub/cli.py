@@ -55,7 +55,7 @@ USAGE = """Usage:
   hub plan                                   (suggested blocks for the next 7 days)
   hub paths <company>                        (who you know there, strongest first)
   hub people find <text>                     (by name or company)
-  hub people tag <id> <how you know them>
+  hub people tag <id> [--school 'Tufts University'] <how you know them>
   hub people import-alumni <file> [--group G] [--sheet S] [--map field=Header] [--preview]
                                              (CSV, TSV or Excel; also `hub alumni import`)
   hub schedule install                       (write the nightly launchd job; prints how to start it)
@@ -92,7 +92,13 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
         if args[:2] == ["people", "find"] and len(args) >= 3:
             return _with_session(store, lambda s: _people_find(s, " ".join(args[2:])))
         if args[:2] == ["people", "tag"] and len(args) >= 4 and args[2].isdigit():
-            return _with_session(store, lambda s: _people_tag(s, int(args[2]), " ".join(args[3:])))
+            rest = args[3:]
+            school = None
+            if rest[0] == "--school" and len(rest) >= 2:
+                school, rest = rest[1], rest[2:]
+            return _with_session(
+                store, lambda s: _people_tag(s, int(args[2]), " ".join(rest), school)
+            )
         if args[:2] in (["people", "import-alumni"], ["alumni", "import"]) and len(args) >= 3:
             return _with_session(store, lambda s: _people_import(s, Path(args[2]), args[3:]))
         if args == ["schedule", "install"]:
@@ -199,13 +205,14 @@ def _people_find(session: Session, text: str) -> int:
     return 0
 
 
-def _people_tag(session: Session, person_id: int, how_known: str) -> int:
+def _people_tag(session: Session, person_id: int, how_known: str, school: str | None = None) -> int:
     try:
-        person = tag_person(session, person_id, how_known)
+        person = tag_person(session, person_id, how_known, school)
     except UnknownPerson:
         print(f"No person with id {person_id}.")
         return 1
-    print(f"{person.full_name}: {person.how_known or '(cleared)'}")
+    shown = f" (school: {', '.join(person.schools)})" if school and person.schools else ""
+    print(f"{person.full_name}: {person.how_known or '(cleared)'}{shown}")
     return 0
 
 

@@ -17,7 +17,8 @@ from sqlalchemy.orm import Session
 from careerhub.profile.facts import accepted_facts
 from careerhub.profile.files import ProfileFileError, load_preferences, load_profile_doc
 
-_NOISE = frozenset({"university", "univ", "college", "the", "of", "at", "in", "and", "school"})
+# "College" is kept: Boston College and Boston University are different schools.
+_NOISE = frozenset({"university", "univ", "the", "of", "at", "in", "and"})
 #: Abbreviations and short names, as school keys (already normalized).
 BUILT_IN_ALIASES = {
     "mit": "massachusetts institute technology",
