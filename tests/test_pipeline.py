@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import select
 
 from careerhub.core.migrate import migrate
-from careerhub.core.models import Assessment, Job, RunLog
+from careerhub.core.models import Assessment, Job, LLMCacheEntry, ProfileExtraction, RunLog
 from careerhub.core.secrets import InMemoryKeyStore, new_database_key
 from careerhub.core.settings import Settings
 from careerhub.core.storage import open_engine, session_factory
@@ -43,6 +43,7 @@ SETTINGS = Settings.model_validate(
     }
 )
 TAILOR = json.dumps({"lead_with": ["Your ML project"], "gaps": [], "resume_suggestions": []})
+FACTS = json.dumps({"skills": ["Python"], "courses": [{"title": "Intro", "grade": "A"}]})
 EXTRACT = json.dumps({"level": "new_grad", "locations": ["Boston, MA"]})
 SCORE = json.dumps(
     {"criteria": [{"name": "field", "score": 8, "reason": "fits"}], "explanation": "Good fit."}
@@ -56,7 +57,9 @@ def handler(board_status: int = 200, model_ok: bool = True, tokens: int = 0):  #
         if not model_ok:
             return httpx.Response(500)
         prompt = json.loads(request.content)["messages"][-1]["content"]
-        if "extract structured facts" in prompt:
+        if "Document type:" in prompt:
+            text = FACTS
+        elif "extract structured facts" in prompt:
             text = EXTRACT
         elif "tailor their job application" in prompt:
             text = TAILOR
@@ -84,6 +87,7 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
     (tmp_path / "profile" / "rubric.yaml").write_text(
         "version: 1\ncriteria:\n  - {name: field, weight: 1, description: d}\n"
     )
+    (tmp_path / "profile" / "ready.json").write_text('{"since": "2026-10-01"}')  # scoring is on
     engine = open_engine(tmp_path / "t.db", new_database_key())
     migrate(engine)
     with session_factory(engine)() as session:
@@ -231,7 +235,7 @@ def test_tailoring_is_silently_off_without_a_route_and_noted_without_a_resume(en
         }
     )
     report = run_nightly(engine, InMemoryKeyStore(), settings, handler(), NOW)
-    assert any("no LaTeX resume" in p for p in report.problems)
+    assert any("no resume" in p for p in report.problems)
 
 
 def test_notes_are_shown_in_the_summary() -> None:
@@ -239,3 +243,53 @@ def test_notes_are_shown_in_the_summary() -> None:
 
     report = NightlyReport(notes=["Acme: all 7 jobs closed"])
     assert "Note: Acme: all 7 jobs closed" in report.summary()
+
+
+def test_the_nightly_run_prunes_expired_saved_answers_and_reports_the_count(env: Any) -> None:
+    engine, _ = env
+    old = datetime(2025, 1, 1, tzinfo=UTC)
+    with session_factory(engine)() as session:
+        session.add(
+            LLMCacheEntry(
+                provider="p", model="m", prompt_hash="h", response_text="x", last_used_at=old
+            )
+        )
+        session.commit()
+    report = run_nightly(engine, InMemoryKeyStore(), SETTINGS, handler(), NOW)
+    assert report.cache_pruned == 1
+    assert "Removed 1 expired saved answers." in report.summary()
+
+
+def test_a_new_resume_is_read_into_pending_facts_once(env: Any) -> None:
+    engine, data = env
+    (data / "inputs" / "resume").mkdir(parents=True)
+    (data / "inputs" / "resume" / "resume.txt").write_text("Built a Python tool.", encoding="utf-8")
+    settings = Settings.model_validate(
+        {
+            "providers": [{"name": "local", "kind": "local", "model": "m"}],
+            "model_routes": {
+                "extract": ["local"],
+                "score": ["local"],
+                "profile_extract": ["local"],
+            },
+        }
+    )
+    first = run_nightly(engine, InMemoryKeyStore(), settings, handler(), NOW)
+    assert first.profile_facts == 1 and "facts are waiting for review" in first.summary()
+    again = run_nightly(engine, InMemoryKeyStore(), settings, handler(), NOW)
+    assert again.profile_facts == 0
+    with session_factory(engine)() as session:
+        row = session.scalars(select(ProfileExtraction)).one()
+        assert (row.kind, row.status, row.facts["skills"]) == ("resume", "pending", ["Python"])
+
+
+def test_scoring_and_tailoring_wait_until_the_profile_is_switched_on(env: Any) -> None:
+    engine, data = env
+    (data / "profile" / "ready.json").unlink()
+    report = run_nightly(engine, InMemoryKeyStore(), SETTINGS, handler(), NOW)
+    assert report.extracted == 2 and report.scored == 0 and report.tailored == 0
+    assert any("scoring starts when your profile is ready" in n for n in report.notes)
+    assert "Note: scoring starts" in report.summary()
+    assert report.filtered_out == 1  # filtering still ran
+    page = (data / "shortlist" / "index.html").read_text(encoding="utf-8")
+    assert "Scoring starts when your profile is ready" in page

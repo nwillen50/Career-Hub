@@ -12,6 +12,9 @@ Format (see the comment at the top of `sample.yaml`): a list of `cases`, each wi
 `title`, `location`, the posting `text`, and `expected` answers for `level`, `locations`,
 `visa_sponsorship`, and `deadline`.
 
+Optional expected values (CH-98): `degree_required`, `equivalent_experience_ok`, and
+`work_authorization` are scored only for cases that state them.
+
 Scoring (`careerhub.modules.jobs.evals`): `level`, `visa_sponsorship`, and `deadline` must match
 exactly (no deadline expected means none found); `locations` must match as a set, ignoring case,
 spacing, and order. A case the model can't answer validly counts as wrong on every field.
@@ -34,3 +37,9 @@ A `hub eval extract` command arrives with CH-64, which builds the router from se
   one-line `reason`. An unquoted `no` is fine.
 - Passing means no `great` posting is filtered out and at most one `no` is in the top 10. Also
   reported: how often label pairs are in the right order, and the mean score per label.
+
+## `profile/`
+
+`sample.yaml`: made-up resumes and transcripts with the facts a good reading must find (GPA,
+skills, schools, organizations, course codes). `careerhub.profile.evals.run_profile_eval` reports
+the share of expected items found per field and lists the misses.

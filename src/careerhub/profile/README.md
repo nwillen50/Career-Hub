@@ -31,7 +31,9 @@ Anything else Career Hub should know.
 ```yaml
 hard_constraints:
   locations: ["Boston, MA"]     # empty means anywhere
-  remote_ok: true
+  remote_ok: true     # fully remote jobs pass from anywhere
+  hybrid_ok: true     # hybrid jobs pass only in one of your locations
+  onsite_ok: true     # onsite jobs pass only in one of your locations
   min_salary_usd: 90000
   excluded_companies: [Acme]
   excluded_title_words: [senior]
@@ -65,3 +67,75 @@ criteria:
 ```
 
 See [ADR-0009](../../../docs/decisions/0009-profile-assembly.md).
+
+## Preferences added by CH-113
+
+`preferences.yaml` also takes `also_qualified_fields: [...]` (fields you count as your own),
+`internship_rank_penalty: 1` (0 to 10; ranks internships lower without changing scores), and
+`work_authorization: us_citizen | work_authorized | needs_sponsorship` (so jobs that require US
+citizenship can be checked; unset, they are only marked uncertain). `eligibility.py` reads your
+highest degree and expected graduation date from `profile.md` and your accepted facts.
+
+## Reading documents (`documents.py`)
+
+`read_document(path)` returns a document's text, format, page count, and problems. It reads `.tex`,
+`.pdf`, `.docx`, `.txt`, and `.md` anywhere, and `.doc`, `.rtf`, `.odt` on a Mac (through
+`textutil`). `.pages` and scanned PDFs come back with a problem that says what to do. It never
+raises on a bad file and never quotes the document in a problem. `inputs/resume/` and `inputs/transcript/`
+each take one file of any supported type. See [ADR-0030](../../../docs/decisions/0030-document-reader.md).
+
+## Text sent to models (`redact.py`)
+
+Anything of the user's own that goes into a Personal-tier prompt (profile text, resume, and later
+profile extraction) passes through `personal_text`: emails, links, and phone numbers become
+`[email]`, `[link]`, `[phone]`, and the name becomes `[name]`. Names match whole words only. List
+nicknames and handles in `profile.md` front matter under `aliases:` (for example `["Nick",
+"nwillen50"]`) and they are removed too.
+
+`redact.transcript_text` is for transcripts: it also removes student ID numbers, birth dates,
+SSN-shaped numbers, and street addresses before contacts and the name. `hub profile show` reports
+only each document's format, page count, and character count, plus any reader problems.
+
+## Understanding the documents (`extract.py`)
+
+The nightly run (when a `profile_extract` route exists) reads the current resume and transcript with
+a Personal-tier model after redaction, and saves what it found as **pending** facts, keyed by the
+file's hash so an unchanged file is never read twice. Nothing counts until the user accepts it
+(review commands: CH-110). See [ADR-0031](../../../docs/decisions/0031-profile-extraction.md).
+
+### Reviewing facts (`facts.py`)
+
+`hub profile facts` lists what was read; `hub profile facts accept <n|all>` or `reject <n>` decides.
+Accepted facts (newest per document) are added to the profile text for scoring and tailoring, after
+redaction; what you typed in `profile.md` wins. See
+[ADR-0032](../../../docs/decisions/0032-accepting-extracted-facts.md).
+
+## Readiness (`readiness.py`)
+
+Scoring and tailoring stay off until `hub profile ready` passes its checklist (education with an
+expected graduation, at least 5 skills, interests or About, a readable resume, locations in
+`preferences.yaml`, a rubric; accepted resume facts count). `hub profile ready --off` switches it off
+again while you make big changes. Until it is on, `hub nightly` still ingests, reads, and filters, and
+the shortlist page says what is missing. See [ADR-0037](../../../docs/decisions/0037-profile-readiness.md).
+
+## The weekly plan's settings (`plan:` in `preferences.yaml`)
+
+Every field is optional; these are the defaults, and `hub plan` shows which values are yours:
+
+```yaml
+plan:
+  apply_minutes: 90        # time set aside per application (10 to 480)
+  outreach_minutes: 30     # per outreach message (5 to 240)
+  daily_share: 0.5         # most of the weekly budget one day may take (0 to 1)
+  min_gap_minutes: 30      # free gaps shorter than this are ignored
+  tasks_per_plan: 5        # how many shortlisted jobs the plan covers (1 to 20)
+  working_hours:
+    start: "09:00"         # 24-hour HH:MM, every day...
+    end: "21:00"
+    weekdays:              # ...unless a weekday says otherwise (mon..sun)
+      sat: {start: "11:00", end: "17:00"}
+      sun: off             # a day off: nothing is planned
+```
+
+Bad values are rejected with the field name (never the value). The working window has one source of
+truth: nothing else has its own default hours.

@@ -15,6 +15,10 @@ dependencies = [
     "pyyaml>=6,<7",
     "icalendar>=6,<7",
     "recurring-ical-events>=3,<4",
+    "pyobjc-framework-EventKit>=10; sys_platform == 'darwin'",
+    "pypdfium2>=5.14.0",
+    "python-docx>=1.2.0",
+    "openpyxl>=3.1.5",
 ]
 
 [project.scripts]
@@ -65,5 +69,15 @@ ignore_missing_imports = true
 
 # recurring-ical-events ships no type information; it's used in one module (modules/plan/ics.py).
 [[tool.mypy.overrides]]
-module = ["recurring_ical_events"]
+module = ["recurring_ical_events", "EventKit", "Foundation"]
+ignore_missing_imports = true
+
+# pypdfium2 has no type stubs; it's used in one module (profile/documents.py).
+[[tool.mypy.overrides]]
+module = ["pypdfium2"]
+ignore_missing_imports = true
+
+# openpyxl has no type stubs here; it is used in one module (modules/network/layouts.py).
+[[tool.mypy.overrides]]
+module = ["openpyxl", "openpyxl.*"]
 ignore_missing_imports = true
