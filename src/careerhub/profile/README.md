@@ -117,3 +117,25 @@ expected graduation, at least 5 skills, interests or About, a readable resume, l
 `preferences.yaml`, a rubric; accepted resume facts count). `hub profile ready --off` switches it off
 again while you make big changes. Until it is on, `hub nightly` still ingests, reads, and filters, and
 the shortlist page says what is missing. See [ADR-0037](../../../docs/decisions/0037-profile-readiness.md).
+
+## The weekly plan's settings (`plan:` in `preferences.yaml`)
+
+Every field is optional; these are the defaults, and `hub plan` shows which values are yours:
+
+```yaml
+plan:
+  apply_minutes: 90        # time set aside per application (10 to 480)
+  outreach_minutes: 30     # per outreach message (5 to 240)
+  daily_share: 0.5         # most of the weekly budget one day may take (0 to 1)
+  min_gap_minutes: 30      # free gaps shorter than this are ignored
+  tasks_per_plan: 5        # how many shortlisted jobs the plan covers (1 to 20)
+  working_hours:
+    start: "09:00"         # 24-hour HH:MM, every day...
+    end: "21:00"
+    weekdays:              # ...unless a weekday says otherwise (mon..sun)
+      sat: {start: "11:00", end: "17:00"}
+      sun: off             # a day off: nothing is planned
+```
+
+Bad values are rejected with the field name (never the value). The working window has one source of
+truth: nothing else has its own default hours.

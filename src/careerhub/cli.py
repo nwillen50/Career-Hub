@@ -43,7 +43,7 @@ from careerhub.pipeline import run_nightly
 from careerhub.profile.extract import ProfileFacts
 from careerhub.profile.facts import UnknownExtraction, decide, facts_text, pending
 from careerhub.profile.files import ProfileFileError, load_preferences
-from careerhub.profile.models import ProfileDoc
+from careerhub.profile.models import PlanSettings, Preferences, ProfileDoc
 from careerhub.profile.profile import Profile, format_profile, load_profile
 from careerhub.profile.readiness import current_readiness, missing_items, set_scoring
 from careerhub.schedule import install_plist, launchctl_commands
@@ -144,19 +144,54 @@ def _with_session(store: KeyStore, action: Callable[[Session], int]) -> int:
         return action(session)
 
 
+PLAN_NUMBERS = (
+    "apply_minutes",
+    "outreach_minutes",
+    "daily_share",
+    "min_gap_minutes",
+    "tasks_per_plan",
+)
+
+
+def _plan_sources(preferences: Preferences | None) -> str:
+    """Say which plan values come from preferences.yaml and which are defaults."""
+    chosen = preferences.plan if preferences else PlanSettings()
+    mine = set(chosen.model_fields_set)
+    parts = []
+    for name in (
+        "apply_minutes",
+        "outreach_minutes",
+        "daily_share",
+        "min_gap_minutes",
+        "tasks_per_plan",
+    ):
+        origin = "yours" if name in mine else "default"
+        parts.append(f"{name.replace('_', ' ')} {getattr(chosen, name)} ({origin})")
+    hours = chosen.working_hours
+    parts.append(
+        f"hours {hours.start}-{hours.end}"
+        f"{' with weekday changes' if hours.weekdays else ''} "
+        f"({'yours' if 'working_hours' in mine else 'default'})"
+    )
+    return "  Plan settings: " + "; ".join(parts) + "."
+
+
 def _plan(session: Session) -> int:
     """Print the suggested week. It only suggests: nothing is written to a calendar."""
     settings = load_settings()
     preferences = load_preferences()
     budget = preferences.weekly_time_budget_hours if preferences else 5.0
     try:
-        plan = suggest_week(session, settings, budget, utcnow())
+        plan = suggest_week(
+            session, settings, budget, utcnow(), preferences.plan if preferences else None
+        )
     except IcsError as error:
         print(f"Can't read a calendar file: {error}")
         return 1
     zone = ZoneInfo(settings.timezone)
     hours, minutes = divmod(plan.planned_minutes, 60)
     print(f"Suggested plan ({hours}h{minutes:02d}m of {budget:g}h):")
+    print(_plan_sources(preferences))
     for block in plan.blocks:
         when = block.start.astimezone(zone)
         print(f"  {when:%a %b %d %H:%M}-{block.end.astimezone(zone):%H:%M}  {block.task.title}")

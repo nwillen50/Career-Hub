@@ -6,10 +6,11 @@ ignored constraint. All of this is Personal data (PRD, privacy tiers).
 
 from __future__ import annotations
 
-from datetime import date
+import re
+from datetime import date, time
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class _Strict(BaseModel):
@@ -68,6 +69,81 @@ class Timeline(_Strict):
     latest_start: date | None = None
 
 
+Weekday = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+WEEKDAYS: tuple[Weekday, ...] = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+_HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+def _parse_time(value: str) -> time:
+    if not _HHMM.match(value):
+        raise ValueError("times must be 24-hour like 09:00")
+    return time(int(value[:2]), int(value[3:]))
+
+
+class DayHours(_Strict):
+    """A working window within one day, as 24-hour HH:MM."""
+
+    start: str = "09:00"
+    end: str = "21:00"
+
+    @model_validator(mode="after")
+    def _check(self) -> DayHours:
+        if _parse_time(self.start) >= _parse_time(self.end):
+            raise ValueError("working hours must start before they end")
+        return self
+
+    @property
+    def window(self) -> tuple[time, time]:
+        """The window as (start, end) times."""
+        return _parse_time(self.start), _parse_time(self.end)
+
+
+class WorkingHours(_Strict):
+    """When the plan may schedule things: one window for every day, with per-weekday changes."""
+
+    start: str = "09:00"
+    end: str = "21:00"
+    #: Per-weekday overrides: {"sat": {"start": "11:00", "end": "17:00"}, "sun": "off"}. A day set
+    #: to off (or null) gets nothing planned.
+    weekdays: dict[Weekday, DayHours | None] = Field(default_factory=dict)
+
+    @field_validator("weekdays", mode="before")
+    @classmethod
+    def _days_off(cls, value: object) -> object:
+        """Read `off`, `false`, and `null` as a day off (YAML turns a bare `off` into false)."""
+        if isinstance(value, dict):
+            return {
+                k: None if v in (None, False, "off", "day off", "none") else v
+                for k, v in value.items()
+            }
+        return value
+
+    @model_validator(mode="after")
+    def _check(self) -> WorkingHours:
+        DayHours(start=self.start, end=self.end)  # validates the default window
+        return self
+
+    def for_day(self, day: Weekday) -> tuple[time, time] | None:
+        """Return the (start, end) for a weekday, or None for a day off."""
+        if day in self.weekdays:
+            hours = self.weekdays[day]
+            return hours.window if hours is not None else None
+        return DayHours(start=self.start, end=self.end).window
+
+
+class PlanSettings(_Strict):
+    """Every default of the weekly plan; each field is optional (these are the defaults)."""
+
+    apply_minutes: int = Field(default=90, ge=10, le=480)
+    outreach_minutes: int = Field(default=30, ge=5, le=240)
+    #: The most one day may take of the weekly time budget (0.5 is half).
+    daily_share: float = Field(default=0.5, gt=0, le=1)
+    #: Free gaps shorter than this many minutes are not used.
+    min_gap_minutes: int = Field(default=30, ge=5, le=240)
+    tasks_per_plan: int = Field(default=5, ge=1, le=20)
+    working_hours: WorkingHours = Field(default_factory=WorkingHours)
+
+
 class Preferences(_Strict):
     """The contents of `preferences.yaml`."""
 
@@ -75,6 +151,8 @@ class Preferences(_Strict):
     timeline: Timeline = Field(default_factory=Timeline)
     #: Hours per week the user can put into the job search (feeds the weekly plan).
     weekly_time_budget_hours: float = Field(default=5.0, gt=0, le=80)
+    #: How the weekly plan is built; every field is optional.
+    plan: PlanSettings = Field(default_factory=PlanSettings)
     #: Fields of study the user counts as their own, beyond their degree (for example a physics
     #: major listing "electrical engineering"). Degree field is never a filter; it helps scoring.
     also_qualified_fields: list[str] = Field(default_factory=list)
