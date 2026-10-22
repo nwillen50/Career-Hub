@@ -6,10 +6,12 @@ response text may contain personal data, so this table lives only in the encrypt
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from careerhub.core.models.base import Base, TimestampMixin
+from careerhub.core.models.base import Base, TimestampMixin, UTCDateTime, utcnow
 
 
 class LLMCacheEntry(TimestampMixin, Base):
@@ -28,3 +30,5 @@ class LLMCacheEntry(TimestampMixin, Base):
     response_text: Mapped[str] = mapped_column(Text)
     input_tokens: Mapped[int] = mapped_column(default=0)
     output_tokens: Mapped[int] = mapped_column(default=0)
+    #: When the answer was last saved or used. An entry expires `cache_ttl_days` after this.
+    last_used_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, nullable=False)
