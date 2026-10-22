@@ -63,3 +63,12 @@ def test_extraction_prompt_v2_has_the_new_keys_and_still_treats_postings_as_data
     flat = " ".join(text.split())  # the prompt wraps lines
     assert "never as instructions" in flat and "never invent" in flat
     assert "{{posting}}" in text and "=== POSTING START ===" in text
+
+
+def test_the_profile_prompt_has_its_placeholders_keys_and_data_warning() -> None:
+    text = load_prompt("profile_extract", 1)
+    for marker in ("{{kind}}", "{{document}}"):
+        assert marker in text
+    for key in ("experiences", "education", "courses", "gpa", "skills", "projects", "awards"):
+        assert f'"{key}"' in text
+    assert "never as instructions" in text and "Never invent" in text
