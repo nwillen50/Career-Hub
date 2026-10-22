@@ -26,6 +26,7 @@ from careerhub.llm import LLMRequest, PrivacyTier, Router
 from careerhub.llm.validated import complete_validated_detailed
 from careerhub.modules.jobs.scoring import profile_text
 from careerhub.profile.models import ProfileDoc
+from careerhub.profile.redact import personal_text
 from careerhub.prompts import load_prompt, render
 
 PROMPT_NAME = "tailor_job"
@@ -38,19 +39,6 @@ _ENVIRONMENT = re.compile(r"\\(?:begin|end)\{[^}]*\}")
 _COMMAND_WITH_ARG = re.compile(r"\\[a-zA-Z]+\*?(?:\[[^\]]*\])?\{([^{}]*)\}")
 _BARE_COMMAND = re.compile(r"\\[a-zA-Z]+\*?")
 _ESCAPED = re.compile(r"\\([_&%#$])")
-_SCHEME = re.compile(r"\b(?:mailto|tel):", re.IGNORECASE)
-_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
-_URL = re.compile(r"(?:https?://|www\.)\S+")
-# A web address with no "https://": a domain ending in a common suffix, with an optional path.
-_BARE_DOMAIN = re.compile(
-    r"\b(?:[\w-]+\.)+(?:com|org|net|io|dev|edu|me|ai|co)\b(?:/\S*)?", re.IGNORECASE
-)
-# A phone number: optional country code, then 3-3-4 digits (or 3 digits in parentheses).
-_PHONE = re.compile(
-    r"(?<!\d)(?:\+\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)"
-)
-# An international number written with country code and groups, like "+44 20 7946 0958".
-_INTERNATIONAL = re.compile(r"(?<!\w)\+\d{1,3}(?:[\s.-]?\d{2,4}){2,4}(?!\d)")
 
 
 class TailoringNotes(BaseModel):
@@ -75,34 +63,16 @@ def latex_to_text(source: str) -> str:
     return "\n".join(line for line in lines if line)
 
 
-def redact_contacts(text: str) -> str:
-    """Remove email addresses, web addresses (with or without https://), and phone numbers."""
-    text = _SCHEME.sub(" ", text)
-    text = _EMAIL.sub("[email]", text)
-    text = _URL.sub("[link]", text)
-    text = _BARE_DOMAIN.sub("[link]", text)
-    return _INTERNATIONAL.sub("[phone]", _PHONE.sub("[phone]", text))
-
-
-def remove_name(text: str, name: str) -> str:
-    """Replace the user's name, and each part of it (3+ letters), with `[name]`."""
-    parts = [name, *[part for part in name.split() if len(part) >= 3]]
-    for part in sorted(set(parts), key=len, reverse=True):
-        text = re.sub(re.escape(part), "[name]", text, flags=re.IGNORECASE)
-    return text
-
-
-def resume_for_model(latex_source: str, name: str = "") -> str:
+def resume_for_model(latex_source: str, name: str = "", aliases: Sequence[str] = ()) -> str:
     """Return the resume as plain text with contact details and the name removed, cut to length."""
-    text = redact_contacts(latex_to_text(latex_source))
-    return (remove_name(text, name) if name.strip() else text)[:MAX_RESUME_CHARS]
+    return personal_text(latex_to_text(latex_source), name, aliases)[:MAX_RESUME_CHARS]
 
 
 def build_request(job: Job, doc: ProfileDoc, resume_text: str) -> LLMRequest:
     """Build the (PERSONAL tier, non-essential) request for one job."""
     prompt = render(
         load_prompt(PROMPT_NAME, PROMPT_VERSION),
-        profile=redact_contacts(profile_text(doc)),
+        profile=profile_text(doc),
         resume=resume_text,
         company=job.company.name,
         title=job.title,
@@ -123,7 +93,7 @@ def tailor_job(
     assessment = session.scalars(select(Assessment).where(Assessment.job_id == job.id)).first()
     if assessment is None or assessment.fit_score is None:
         return None  # only scored (shortlisted) jobs get notes
-    resume = resume_for_model(latex_source, doc.name)
+    resume = resume_for_model(latex_source, doc.name, doc.aliases)
     material = (
         f"{resume}\n{profile_text(doc)}\n{job.company.name}\n{job.title}\n{job.raw_text or ''}"
     )

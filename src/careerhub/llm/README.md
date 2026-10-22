@@ -43,8 +43,11 @@ a Sensitive call can never escalate to a cloud provider. If everything fails it 
 `Router(providers, cache=ResponseCache(sessions))` answers a repeated call from the encrypted
 database (`llm_cache` table). The key is provider, model, and a hash of the system text, prompt,
 and token limit; the prompt itself is never stored. The privacy check runs *before* the lookup,
-and a hit comes back with `cached=True` so the cost log (CH-51) can count it as free. There is no
-expiry yet; a changed prompt or model is a different key. See
+and a hit comes back with `cached=True` so the cost log (CH-51) can count it as free. A changed prompt
+or model is a different key. Entries expire `cache_ttl_days` (setting, default 30) after they were
+last *used*, so a hit resets the clock; an expired entry is a miss. The nightly run prunes expired
+entries and reports the count, and `hub cache clear [--expired]` deletes all entries or only the
+expired ones. See
 [ADR-0005](../../../docs/decisions/0005-response-cache.md).
 
 ## Cost and budget
