@@ -76,11 +76,11 @@ def test_nobody_is_deleted_when_missing_from_a_new_export(tmp_path: Path, sessio
 
 
 def test_companies_match_ignoring_case_and_spacing(tmp_path: Path, session: Session) -> None:
-    session.add(Company(name="Acme Corp", name_key="acme corp"))
+    session.add(Company(name="Acme Corp", name_key="acme"))
     session.commit()
     import_connections(session, csv_file(tmp_path, ROW_A.replace("Acme  Corp", "ACME corp")))
     assert len(session.scalars(select(Company)).all()) == 1
-    assert company_key("  Acme   Corp ") == "acme corp"
+    assert company_key("  Acme   Corp ") == "acme"
 
 
 def test_rows_without_a_name_are_skipped_and_blank_company_is_none(

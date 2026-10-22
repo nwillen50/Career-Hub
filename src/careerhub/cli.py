@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from sqlalchemy.orm import Session
 
+from careerhub.core.companies import find_companies
 from careerhub.core.migrate import migrate
 from careerhub.core.models import utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore, SecretsError
@@ -39,7 +40,6 @@ from careerhub.modules.jobs import (
 )
 from careerhub.modules.network import (
     UnknownPerson,
-    find_company,
     find_people,
     import_alumni,
     tag_person,
@@ -171,10 +171,15 @@ def _plan(session: Session) -> int:
 
 
 def _paths(session: Session, company_text: str) -> int:
-    company = find_company(session, company_text)
-    if company is None:
+    matches = find_companies(session, company_text)
+    if len(matches) > 1:
+        print(f"{company_text!r} matches several companies; be more specific:")
+        print("\n".join(f"  {c.name}" for c in matches))
+        return 1
+    if not matches:
         print(f"No company matching {company_text!r}.")
         return 1
+    company = matches[0]
     paths = warm_paths(session, company.id, limit=10)
     print(f"{company.name}:")
     for path in paths:
