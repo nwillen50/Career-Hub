@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -128,9 +129,21 @@ def test_lever_uses_its_own_per_job_address(session: Session) -> None:
     assert "/v0/postings/acme/p1" in board.requests
 
 
+@pytest.fixture
+def next_day(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+    """Call it to move the clock the ingest code sees forward one day."""
+    now = [datetime(2026, 10, 1, 6, tzinfo=UTC)]
+    monkeypatch.setattr("careerhub.modules.jobs.ingest.utcnow", lambda: now[0])
+
+    def advance() -> None:
+        now[0] += timedelta(days=1)
+
+    return advance
+
+
 def test_ashby_has_no_per_job_address_so_only_the_backstop_closes_after_three_nights(
-    session: Session,
-) -> None:
+    session: Session, next_day
+) -> None:  # type: ignore[no-untyped-def]
     source = approved(session, "ashby")
     listing = {"jobs": [{"id": "a1", "title": "Dev", "jobUrl": "https://a/1"}]}
     ingest_ashby(session, source, Board(listing).client())
@@ -140,21 +153,24 @@ def test_ashby_has_no_per_job_address_so_only_the_backstop_closes_after_three_ni
             ingest_ashby(session, source, empty.client())
         assert statuses(session) == {"new"} and source.health == "failing"
         assert source.config["empty_streak"] == str(night)
+        next_day()
     report = ingest_ashby(session, source, empty.client())
     assert statuses(session) == {"closed"} and source.health == "ok"
     assert "3 nights in a row" in (report.note or "") and "empty_streak" not in source.config
     assert all("/jobs/" not in p for p in empty.requests)
 
 
-def test_a_non_empty_night_resets_the_count(session: Session) -> None:
+def test_a_non_empty_night_resets_the_count(session: Session, next_day) -> None:  # type: ignore[no-untyped-def]
     source = approved(session, "ashby")
     listing = {"jobs": [{"id": "a1", "title": "Dev", "jobUrl": "https://a/1"}]}
     ingest_ashby(session, source, Board(listing).client())
     with pytest.raises(FetchError):
         ingest_ashby(session, source, Board({"jobs": []}).client())
+    next_day()
     ingest_ashby(session, source, Board(listing).client())
     assert "empty_streak" not in source.config
     for _ in range(2):
+        next_day()
         with pytest.raises(FetchError):
             ingest_ashby(session, source, Board({"jobs": []}).client())
     assert statuses(session) == {"new"}  # only two empty nights since the reset
@@ -189,3 +205,36 @@ def test_the_setting_is_validated() -> None:
     for bad in (0, 31):
         with pytest.raises(ValueError):
             Settings(empty_listing_backstop_nights=bad)
+
+
+def test_jobs_confirmed_still_live_are_never_closed_by_the_backstop(session: Session) -> None:
+    source = approved(session)
+    ingest_greenhouse(session, source, Board(GH_BOARD).client())
+    board = Board({"jobs": []}, per_job={str(i): 200 for i in range(1, 6)})
+    for _ in range(4):
+        with pytest.raises(FetchError):
+            ingest_greenhouse(session, source, board.client())
+    assert statuses(session) == {"new"}
+
+
+def test_several_runs_in_one_day_count_as_one_night(session: Session) -> None:
+    source = approved(session, "ashby")
+    listing = {"jobs": [{"id": "a1", "title": "Dev", "jobUrl": "https://a/1"}]}
+    ingest_ashby(session, source, Board(listing).client())
+    empty = Board({"jobs": []})
+    for _ in range(5):  # five manual runs on the same day
+        with pytest.raises(FetchError):
+            ingest_ashby(session, source, empty.client())
+    assert statuses(session) == {"new"} and source.config["empty_streak"] == "1"
+
+
+def test_an_odd_job_id_is_never_put_in_a_request_path(session: Session) -> None:
+    from careerhub.modules.jobs.greenhouse import job_is_gone
+
+    source = approved(session)
+    ingest_greenhouse(session, source, Board(GH_BOARD).client())
+    job = session.scalars(select(Job)).first()
+    assert job is not None
+    job.external_id = "1/../../other?x=1#"
+    board = Board({"jobs": []})
+    assert job_is_gone(source, job, board.client()) is None and board.requests == []

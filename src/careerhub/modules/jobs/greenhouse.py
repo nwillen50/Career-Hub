@@ -25,6 +25,7 @@ from careerhub.modules.jobs.store import IngestReport, NormalizedJob
 
 _BOARD_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 API_BASE = "https://boards-api.greenhouse.io/v1/boards"
+_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 KIND = "greenhouse"
 TIMEOUT_SECONDS = 30.0
 
@@ -100,6 +101,8 @@ def job_is_gone(source: Source, job: Job, client: httpx.Client | None = None) ->
 
     None means the check itself failed (an error or an unexpected status), which is not an answer.
     """
+    if not _SAFE_ID.match(job.external_id):
+        return None  # never put an odd id into a request path
     http = client or httpx.Client(timeout=TIMEOUT_SECONDS)
     try:
         reply = http.get(f"{API_BASE}/{board_token(source)}/jobs/{job.external_id}")

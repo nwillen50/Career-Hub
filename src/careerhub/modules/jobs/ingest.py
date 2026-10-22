@@ -10,7 +10,7 @@ one approved source). `ingest_source` runs it, stores the result, and keeps the 
   job is closed; if any is still there, or a check fails, it is a glitch (jobs stay open, source
   `failing`). Systems with no per-job address rely on the backstop: after
   `empty_listing_backstop_nights` empty nights in a row the jobs are closed anyway and the nightly
-  summary says so. Any non-empty listing resets the count.
+  summary says so. Any non-empty listing resets the count. Only one empty listing per calendar day counts, and a job the system says is still listed never counts toward the backstop.
 """
 
 from __future__ import annotations
@@ -32,6 +32,8 @@ GoneCheck = Callable[[Source, Job, httpx.Client | None], bool | None]
 #: How many open jobs are checked one by one when a board suddenly lists nothing.
 SPOT_CHECKS = 3
 STREAK_KEY = "empty_streak"
+STREAK_DATE_KEY = "empty_streak_date"
+_STREAK_KEYS = (STREAK_KEY, STREAK_DATE_KEY)
 
 
 class FetchError(Exception):
@@ -64,7 +66,7 @@ def ingest_source(
     if not partial and not jobs and _has_open_jobs(session, source):
         note = _settle_empty_listing(session, source, label, client, check_gone, backstop_nights)
     elif source.config.get(STREAK_KEY):
-        source.config = {k: v for k, v in source.config.items() if k != STREAK_KEY}
+        source.config = {k: v for k, v in source.config.items() if k not in _STREAK_KEYS}
     report = store_jobs(session, source, jobs, partial=partial)
     source.health = "ok"
     source.last_fetched_at = utcnow()
@@ -96,19 +98,25 @@ def _settle_empty_listing(
     if answers and all(answer is True for answer in answers):
         _reset_streak(source)
         return f"{source.name}: all {count} jobs closed"
-    streak = int(source.config.get(STREAK_KEY, "0")) + 1
+    still_there = any(answer is False for answer in answers)
+    streak = int(source.config.get(STREAK_KEY, "0"))
+    today = utcnow().date().isoformat()
+    # A job the system says is still listed means this is a glitch, never a closure; and only one
+    # empty listing per calendar day counts, so repeated manual runs are not "three nights".
+    if not still_there and source.config.get(STREAK_DATE_KEY) != today:
+        streak += 1
     nights = backstop_nights or load_settings().empty_listing_backstop_nights
-    if streak >= nights:
+    if streak >= nights and not still_there:
         _reset_streak(source)
         return f"{source.name}: no jobs for {streak} nights in a row, so {count} jobs were closed"
-    source.config = {**source.config, STREAK_KEY: str(streak)}
+    source.config = {**source.config, STREAK_KEY: str(streak), STREAK_DATE_KEY: today}
     source.health = "failing"
     session.commit()
     raise FetchError(f"{label} listed no jobs for a board that had open jobs; kept them.")
 
 
 def _reset_streak(source: Source) -> None:
-    source.config = {k: v for k, v in source.config.items() if k != STREAK_KEY}
+    source.config = {k: v for k, v in source.config.items() if k not in _STREAK_KEYS}
 
 
 def _has_open_jobs(session: Session, source: Source) -> bool:

@@ -22,6 +22,7 @@ from careerhub.modules.jobs.ingest import FetchError, ingest_source
 from careerhub.modules.jobs.sources import require_approved
 from careerhub.modules.jobs.store import IngestReport, NormalizedJob
 
+_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 KIND = "lever"
 API_BASES = {"us": "https://api.lever.co/v0/postings", "eu": "https://api.eu.lever.co/v0/postings"}
 TIMEOUT_SECONDS = 30.0
@@ -88,6 +89,8 @@ def job_is_gone(source: Source, job: Job, client: httpx.Client | None = None) ->
 
     None means the check itself failed (an error or an unexpected status), which is not an answer.
     """
+    if not _SAFE_ID.match(job.external_id):
+        return None  # never put an odd id into a request path
     http = client or httpx.Client(timeout=TIMEOUT_SECONDS)
     region = str(source.config.get("region", "us")).lower()
     if region not in API_BASES:
