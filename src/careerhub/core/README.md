@@ -81,3 +81,8 @@ See [ADR-0002](../../../docs/decisions/0002-data-models-and-migrations.md) for t
 web endings, "the", and punctuation are ignored; a short built-in alias list covers Google/Alphabet
 and similar). Every importer uses `get_or_create_company`; lookups use `find_companies`, which
 matches whole words only and reports ambiguity. See [ADR-0033](../../../docs/decisions/0033-company-names.md).
+
+Your own aliases (`company_aliases` in `preferences.yaml`) are checked by `resolve_aliases` (chains
+followed, loops rejected) and passed as `aliases`. `suggest_merges` records near-duplicates such as
+"Acme" and "Acme Robotics" as pending proposals; `hub companies suggestions | merge <id> | skip <id>`
+answers them, and nothing merges by itself. See [ADR-0041](../../../docs/decisions/0041-company-aliases-and-suggestions.md).

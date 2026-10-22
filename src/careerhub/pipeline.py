@@ -135,13 +135,15 @@ def _run(
     report: NightlyReport,
     run_id: int,
 ) -> None:
+    preferences = load_preferences()
+    aliases = preferences.alias_keys() if preferences else {}
     sessions = session_factory(engine)
     report.cache_pruned = ResponseCache(sessions, settings.cache_ttl_days).prune()
     setup = build_router(settings, store, sessions, client, run_id)
     report.problems += [f"provider: {p}" for p in setup.problems]
     for source in approved_sources(session, "greenhouse"):
         try:
-            result = ingest_greenhouse(session, source, client)
+            result = ingest_greenhouse(session, source, client, aliases)
             report.sources_ok += 1
             report.new_jobs += result.new
         except (FetchError, SourceNotApproved) as caught:
@@ -172,6 +174,7 @@ def _understand_and_rank(
     doc, rubric = load_profile_doc(), load_rubric()
     preferences = load_preferences()
     constraints = preferences.hard_constraints if preferences else HardConstraints()
+    aliases = preferences.alias_keys() if preferences else {}
     if doc is None or rubric is None:
         report.problems.append("scoring skipped: profile.md or rubric.yaml is missing")
     try:
@@ -194,7 +197,7 @@ def _understand_and_rank(
                 and extract_and_save(session, setup.router, job, extract_routes)
             ):
                 report.extracted += 1
-            assessment = assess_filters(session, job, constraints)
+            assessment = assess_filters(session, job, constraints, aliases)
             if not assessment.filter_passed:
                 report.filtered_out += 1
             elif (

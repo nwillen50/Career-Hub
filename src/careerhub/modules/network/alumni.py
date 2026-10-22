@@ -14,6 +14,7 @@ overwritten. Re-importing the same file changes nothing.
 from __future__ import annotations
 
 import csv
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,7 +44,9 @@ def tag_for(group: str) -> str:
     return f"alumni: {group.strip()}"
 
 
-def import_alumni(session: Session, path: Path) -> AlumniReport:
+def import_alumni(
+    session: Session, path: Path, aliases: Mapping[str, str] | None = None
+) -> AlumniReport:
     """Read the alumni CSV at `path`. Raises `ProfileFileError` if it has the wrong columns."""
     if not path.exists():
         raise ProfileFileError(f"{path.name} does not exist.")
@@ -54,7 +57,7 @@ def import_alumni(session: Session, path: Path) -> AlumniReport:
         if not (name and company_name and group):
             skipped += 1
             continue
-        company = _company(session, company_name)
+        company = _company(session, company_name, aliases)
         person = _find(session, name, company, row.get("email", ""), row.get("url", ""))
         tag = tag_for(group)
         if person is None:
@@ -96,8 +99,8 @@ def _rows(path: Path) -> list[dict[str, str]]:
         ]
 
 
-def _company(session: Session, name: str) -> Company:
-    company = get_or_create_company(session, name)
+def _company(session: Session, name: str, aliases: Mapping[str, str] | None = None) -> Company:
+    company = get_or_create_company(session, name, aliases)
     if company is None:
         company = get_or_create_company(session, "unknown company")
     assert company is not None

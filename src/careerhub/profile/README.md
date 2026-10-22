@@ -37,6 +37,7 @@ hard_constraints:
   excluded_title_words: [senior]
 timeline: {earliest_start: 2027-06-01}
 weekly_time_budget_hours: 6
+company_aliases: {"Old Name Labs": "New Name"}   # optional; loops are rejected
 ```
 
 A missing file gives `None` (the caller reports it). A malformed file raises `ProfileFileError`

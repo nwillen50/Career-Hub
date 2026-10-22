@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import html
 import re
+from collections.abc import Mapping
 from html.parser import HTMLParser
 from typing import Any
 
@@ -100,7 +101,10 @@ def fetch_greenhouse(source: Source, client: httpx.Client | None = None) -> list
 
 
 def ingest_greenhouse(
-    session: Session, source: Source, client: httpx.Client | None = None
+    session: Session,
+    source: Source,
+    client: httpx.Client | None = None,
+    aliases: Mapping[str, str] | None = None,
 ) -> IngestReport:
     """Fetch and store one approved source, recording the fetch time and the source's health."""
     try:
@@ -116,7 +120,7 @@ def ingest_greenhouse(
         source.health = "failing"
         session.commit()
         raise FetchError("Greenhouse listed no jobs for a board that had open jobs; kept them.")
-    report = store_jobs(session, source, jobs)
+    report = store_jobs(session, source, jobs, aliases=aliases)
     source.health = "ok"
     source.last_fetched_at = utcnow()
     session.commit()

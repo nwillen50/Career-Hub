@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from careerhub.core.names import resolve_aliases
 
 
 class _Strict(BaseModel):
@@ -66,3 +68,16 @@ class Preferences(_Strict):
     timeline: Timeline = Field(default_factory=Timeline)
     #: Hours per week the user can put into the job search (feeds the weekly plan).
     weekly_time_budget_hours: float = Field(default=5.0, gt=0, le=80)
+    #: Your own names for companies that Career Hub counts as one: {"Old Name": "Name Now"}.
+    company_aliases: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("company_aliases")
+    @classmethod
+    def _check_aliases(cls, value: dict[str, str]) -> dict[str, str]:
+        """Reject blank names and loops now, with a clear message, not at import time."""
+        resolve_aliases(value)
+        return value
+
+    def alias_keys(self) -> dict[str, str]:
+        """Return the aliases as company keys, ready for `company_key(name, aliases)`."""
+        return resolve_aliases(self.company_aliases)

@@ -11,6 +11,7 @@ Rules (all from `preferences.yaml`): excluded companies, excluded title words, a
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -58,12 +59,17 @@ def _location_ok(
     return False, f"located in {', '.join(job_places)}, outside your locations"
 
 
-def apply_filters(job: Job, fields: JobFields | None, constraints: HardConstraints) -> FilterResult:
+def apply_filters(
+    job: Job,
+    fields: JobFields | None,
+    constraints: HardConstraints,
+    aliases: Mapping[str, str] | None = None,
+) -> FilterResult:
     """Check `job` against `constraints`. `fields` are the extracted facts, if any."""
     reasons: list[str] = []
     uncertain: list[str] = []
-    excluded = {company_key(name) for name in constraints.excluded_companies}
-    if company_key(job.company.name) in excluded:
+    excluded = {company_key(name, aliases) for name in constraints.excluded_companies}
+    if company_key(job.company.name, aliases) in excluded:
         reasons.append(f"company {job.company.name} is on your excluded list")
     bad_words = _words(" ".join(constraints.excluded_title_words)) & _words(job.title)
     if bad_words:
@@ -87,11 +93,16 @@ def apply_filters(job: Job, fields: JobFields | None, constraints: HardConstrain
     return FilterResult(not reasons, reasons, uncertain)
 
 
-def assess_filters(session: Session, job: Job, constraints: HardConstraints) -> Assessment:
+def assess_filters(
+    session: Session,
+    job: Job,
+    constraints: HardConstraints,
+    aliases: Mapping[str, str] | None = None,
+) -> Assessment:
     """Run the filters on `job` and save the result (replacing any earlier one)."""
     saved = job.structured_fields.get("fields")
     fields = JobFields.model_validate(saved) if saved else None
-    result = apply_filters(job, fields, constraints)
+    result = apply_filters(job, fields, constraints, aliases)
     assessment = session.scalars(select(Assessment).where(Assessment.job_id == job.id)).first()
     if assessment is None:
         assessment = Assessment(job_id=job.id)

@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from sqlalchemy.orm import Session
 
-from careerhub.core.companies import find_companies
+from careerhub.core.companies import decide_merge, find_companies, pending_merges, suggest_merges
 from careerhub.core.migrate import migrate
 from careerhub.core.models import utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore, SecretsError
@@ -55,6 +55,7 @@ USAGE = """Usage:
   hub people find <text>                     (by name or company)
   hub people tag <id> <how you know them>
   hub people import-alumni <file.csv>
+  hub companies suggestions | merge <id> | skip <id>   (near-duplicate company names)
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
   hub cache clear [--expired]               (delete saved model answers; prints how many)
@@ -88,6 +89,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _with_session(store, lambda s: _people_tag(s, int(args[2]), " ".join(args[3:])))
         if args[:2] == ["people", "import-alumni"] and len(args) == 3:
             return _with_session(store, lambda s: _people_import(s, Path(args[2])))
+        if args[:1] == ["companies"]:
+            return _with_session(store, lambda s: _companies(s, args[1:]))
         if args == ["schedule", "install"]:
             return _schedule_install()
         if args == ["nightly"]:
@@ -155,7 +158,7 @@ def _plan(session: Session) -> int:
 
 
 def _paths(session: Session, company_text: str) -> int:
-    matches = find_companies(session, company_text)
+    matches = find_companies(session, company_text, _aliases())
     if len(matches) > 1:
         print(f"{company_text!r} matches several companies; be more specific:")
         print("\n".join(f"  {c.name}" for c in matches))
@@ -202,8 +205,34 @@ def _people_tag(session: Session, person_id: int, how_known: str) -> int:
     return 0
 
 
+def _aliases() -> dict[str, str]:
+    """Return the user's company aliases from preferences.yaml (none if there is no file)."""
+    preferences = load_preferences()
+    return preferences.alias_keys() if preferences else {}
+
+
+def _companies(session: Session, args: list[str]) -> int:
+    """`hub companies suggestions | merge <id> | skip <id>`: answer near-duplicate suggestions."""
+    if args == ["suggestions"]:
+        pending = pending_merges(session)
+        for item in pending:
+            print(f"  {item.id}: {item.title}")
+        print("" if pending else "No merge suggestions.", end="\n" if not pending else "")
+        return 0
+    if len(args) == 2 and args[0] in ("merge", "skip") and args[1].isdigit():
+        try:
+            print(decide_merge(session, int(args[1]), accept=args[0] == "merge"))
+        except LookupError as error:
+            print(error)
+            return 1
+        return 0
+    print("Usage: hub companies suggestions | merge <id> | skip <id>")
+    return 2
+
+
 def _people_import(session: Session, path: Path) -> int:
-    report = import_alumni(session, path)
+    report = import_alumni(session, path, _aliases())
+    suggest_merges(session)
     print(
         f"{report.created} added, {report.tagged} tagged as alumni, {report.unchanged} unchanged, "
         f"{report.skipped} rows skipped (missing name, company, or group)."
@@ -311,7 +340,7 @@ def _ingest(session: Session, board: str, client: httpx.Client | None = None) ->
         )
         return 1
     try:
-        report = ingest_greenhouse(session, sources[0], client)
+        report = ingest_greenhouse(session, sources[0], client, _aliases())
     except SourceNotApproved as error:
         print(error)
         return 1
