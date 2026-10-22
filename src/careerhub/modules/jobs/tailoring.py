@@ -31,7 +31,7 @@ from careerhub.profile.redact import personal_text
 from careerhub.prompts import load_prompt, render
 
 PROMPT_NAME = "tailor_job"
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2
 MAX_RESUME_CHARS = 8_000
 MAX_POSTING_CHARS = 6_000
 
@@ -54,6 +54,13 @@ def resume_for_model(resume_text: str, name: str = "", aliases: Sequence[str] = 
     return personal_text(resume_text, name, aliases)[:MAX_RESUME_CHARS]
 
 
+def preferred_skills(job: Job) -> list[str]:
+    """Return the nice-to-have skills extracted from the posting (strings only)."""
+    fields = (job.structured_fields or {}).get("fields") or {}
+    skills = fields.get("preferred_skills") or []
+    return [str(skill) for skill in skills]
+
+
 def build_request(
     job: Job, doc: ProfileDoc, resume_text: str, facts: ProfileFacts | None = None
 ) -> LLMRequest:
@@ -64,6 +71,7 @@ def build_request(
         resume=resume_text,
         company=job.company.name,
         title=job.title,
+        preferred=", ".join(preferred_skills(job)) or "none listed",
         posting=(job.raw_text or "(no description)")[:MAX_POSTING_CHARS],
     )
     return LLMRequest(prompt=prompt, tier=PrivacyTier.PERSONAL, max_tokens=900, essential=False)
@@ -84,7 +92,10 @@ def tailor_job(
     resume = resume_for_model(resume_text, doc.name, doc.aliases)
     facts = accepted_facts(session)
     about_me = profile_text(doc, facts)
-    material = f"{resume}\n{about_me}\n{job.company.name}\n{job.title}\n{job.raw_text or ''}"
+    wanted = ", ".join(preferred_skills(job))
+    material = (
+        f"{resume}\n{about_me}\n{job.company.name}\n{job.title}\n{job.raw_text or ''}\n{wanted}"
+    )
     digest = hashlib.sha256(material.encode()).hexdigest()
     saved = assessment.tailoring or {}
     if saved.get("prompt_version") == PROMPT_VERSION and saved.get("resume_sha256") == digest:

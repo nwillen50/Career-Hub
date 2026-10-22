@@ -215,7 +215,7 @@ def _understand_and_rank(
                 and rubric
                 and score_routes
                 and not budget_hit
-                and score_job(session, setup.router, job, doc, rubric, score_routes)
+                and score_job(session, setup.router, job, doc, rubric, score_routes, preferences)
             ):
                 report.scored += 1
         except BudgetExceeded:

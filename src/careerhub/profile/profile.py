@@ -102,6 +102,23 @@ def load_profile(session: Session | None = None) -> Profile:
     )
 
 
+QUALIFICATIONS_LINE = (
+    "  - {name: qualifications, weight: 2, description: I meet the degree, graduation, and "
+    "eligibility requirements.}"
+)
+
+
+def rubric_suggestion(rubric: Rubric | None) -> str | None:
+    """Suggest a 'qualifications' criterion when the rubric has none (never edits the file)."""
+    if rubric is None or any("qualif" in c.name.lower() for c in rubric.criteria):
+        return None
+    return (
+        "Suggestion: your rubric has no criterion for degree and eligibility fit. To add one, "
+        "put this under `criteria:` in rubric.yaml (you decide; nothing was changed):\n"
+        + QUALIFICATIONS_LINE
+    )
+
+
 def format_profile(profile: Profile) -> str:
     """Render `profile` as plain text for `hub profile show` (no resume or transcript text)."""
     lines: list[str] = []
@@ -139,6 +156,9 @@ def format_profile(profile: Profile) -> str:
             f"Facts read from documents: {profile.fact_counts['pending']} waiting for review, "
             f"{profile.fact_counts['accepted']} accepted"
         )
+    suggestion = rubric_suggestion(profile.rubric)
+    if suggestion:
+        lines += ["", suggestion]
     if profile.problems:
         lines += ["", "Missing:"] + [f"  - {problem}" for problem in profile.problems]
     return "\n".join(lines)

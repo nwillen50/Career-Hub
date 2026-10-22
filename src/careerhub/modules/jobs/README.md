@@ -78,6 +78,15 @@ sent. The resume goes to the model as plain text with emails, links, and phone n
 only to providers allowed to see Personal data. See
 [ADR-0024](../../../../docs/decisions/0024-tailoring-notes.md).
 
+## Scoring v2 (CH-114)
+
+Scoring (`score_job_v2.md`) sees every extracted fact except nice-to-have skills ("unknown" stays
+unknown), your preferences (locations, remote, salary, start window), and your degree, expected
+graduation, and `also_qualified_fields`. It treats new grad, entry level, associate, and 0 to 2
+years as equal, counts adjacent fields, and scores internships like any job. Nice-to-have skills
+cannot change a score; they go to the tailoring notes instead. `hub profile show` suggests a
+"qualifications" rubric criterion if yours has none (it never edits the file).
+
 ## Eligibility filters (CH-113)
 
 Besides the constraints above, three eligibility rules can filter a job, each with its reason:

@@ -24,13 +24,13 @@ from careerhub.modules.jobs.store import only_visible_copies
 from careerhub.profile.extract import ProfileFacts
 from careerhub.profile.facts import accepted_facts, facts_text
 from careerhub.profile.files import ProfileFileError, load_preferences
-from careerhub.profile.models import ProfileDoc
+from careerhub.profile.models import Preferences, ProfileDoc
 from careerhub.profile.redact import personal_text
 from careerhub.profile.rubric import Rubric
 from careerhub.prompts import load_prompt, render
 
 PROMPT_NAME = "score_job"
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2
 MAX_POSTING_CHARS = 6_000
 
 
@@ -100,14 +100,63 @@ def combine(rubric: Rubric, answer: ScoreAnswer) -> float:
     return round(weighted / total * 10, 1)
 
 
-def input_hash(job: Job, doc: ProfileDoc, facts: ProfileFacts | None = None) -> str:
+#: Extracted posting facts that never reach the scoring prompt or its input hash (CH-98/CH-114).
+HIDDEN_FIELDS = frozenset({"preferred_skills"})
+
+
+def posting_facts(job: Job) -> dict[str, object]:
+    """Return the extracted facts for scoring: everything except nice-to-have skills."""
+    fields = (job.structured_fields or {}).get("fields") or {}
+    return {k: v for k, v in fields.items() if k not in HIDDEN_FIELDS}
+
+
+def facts_line(job: Job) -> str:
+    """Describe the extracted facts, with facts the posting didn't state shown as "unknown"."""
+    facts = posting_facts(job)
+    if not facts:
+        return "none extracted"
+    return ", ".join(
+        f"{key}={'unknown' if value in (None, [], '') else value}" for key, value in facts.items()
+    )
+
+
+def preferences_text(doc: ProfileDoc, preferences: Preferences | None) -> str:
+    """Describe what the person wants and their schooling for the prompt (no name, no contacts)."""
+    lines: list[str] = []
+    for entry in doc.education:
+        when = f", expected graduation {entry.graduation:%B %Y}" if entry.graduation else ""
+        lines.append(f"Degree: {entry.degree}, {entry.school}{when}")
+    if preferences is not None:
+        hard = preferences.hard_constraints
+        where = ", ".join(hard.locations) or "anywhere"
+        lines.append(f"Locations: {where}; remote work ok: {'yes' if hard.remote_ok else 'no'}")
+        if hard.min_salary_usd:
+            lines.append(f"Minimum salary: ${hard.min_salary_usd:,}")
+        timeline = preferences.timeline
+        if timeline.earliest_start or timeline.latest_start:
+            lines.append(
+                f"Wants to start between {timeline.earliest_start or 'any time'} "
+                f"and {timeline.latest_start or 'any time'}"
+            )
+        if preferences.also_qualified_fields:
+            lines.append(f"Also qualified in: {', '.join(preferences.also_qualified_fields)}")
+    return personal_text("\n".join(lines) or "not stated", doc.name, doc.aliases)
+
+
+def input_hash(
+    job: Job,
+    doc: ProfileDoc,
+    facts: ProfileFacts | None = None,
+    preferences: Preferences | None = None,
+) -> str:
     """Hash what a score depends on besides the prompt and rubric: profile, posting, and facts."""
     material = json.dumps(
         [
             profile_text(doc, facts),
             job.title,
             job.raw_text or "",
-            job.structured_fields.get("fields", {}),
+            posting_facts(job),
+            preferences_text(doc, preferences),
         ],
         sort_keys=True,
         default=str,
@@ -116,18 +165,21 @@ def input_hash(job: Job, doc: ProfileDoc, facts: ProfileFacts | None = None) -> 
 
 
 def build_request(
-    job: Job, doc: ProfileDoc, rubric: Rubric, facts: ProfileFacts | None = None
+    job: Job,
+    doc: ProfileDoc,
+    rubric: Rubric,
+    facts: ProfileFacts | None = None,
+    preferences: Preferences | None = None,
 ) -> LLMRequest:
     """Build the (PERSONAL tier) request for one job."""
-    fields = job.structured_fields.get("fields", {})
     prompt = render(
         load_prompt(PROMPT_NAME, PROMPT_VERSION),
         profile=profile_text(doc, facts),
         rubric=rubric_text(rubric),
         company=job.company.name,
         title=job.title,
-        facts=", ".join(f"{k}={v}" for k, v in fields.items() if v not in (None, [], "unknown"))
-        or "none extracted",
+        preferences=preferences_text(doc, preferences),
+        facts=facts_line(job),
         posting=(job.raw_text or "(no description)")[:MAX_POSTING_CHARS],
     )
     return LLMRequest(prompt=prompt, tier=PrivacyTier.PERSONAL, max_tokens=900, essential=True)
@@ -140,13 +192,14 @@ def score_job(
     doc: ProfileDoc,
     rubric: Rubric,
     routes: Sequence[str],
+    preferences: Preferences | None = None,
 ) -> Assessment | None:
     """Score `job` and save it. Returns None if it failed a filter or is already scored."""
     assessment = session.scalars(select(Assessment).where(Assessment.job_id == job.id)).first()
     if assessment is None or not assessment.filter_passed:
         return None  # run the filters first; filtered jobs are not scored
     facts = accepted_facts(session)
-    digest = input_hash(job, doc, facts)
+    digest = input_hash(job, doc, facts, preferences)
     if (
         assessment.fit_score is not None
         and assessment.prompt_version == PROMPT_VERSION
@@ -156,7 +209,7 @@ def score_job(
         return None
     answer, response = complete_validated_detailed(
         router,
-        build_request(job, doc, rubric, facts),
+        build_request(job, doc, rubric, facts, preferences),
         ScoreAnswer,
         routes,
         check=lambda parsed: combine(rubric, parsed),
