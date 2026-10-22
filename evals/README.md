@@ -12,6 +12,9 @@ Format (see the comment at the top of `sample.yaml`): a list of `cases`, each wi
 `title`, `location`, the posting `text`, and `expected` answers for `level`, `locations`,
 `visa_sponsorship`, and `deadline`.
 
+Optional expected values (CH-98): `degree_required`, `equivalent_experience_ok`, and
+`work_authorization` are scored only for cases that state them.
+
 Scoring (`careerhub.modules.jobs.evals`): `level`, `visa_sponsorship`, and `deadline` must match
 exactly (no deadline expected means none found); `locations` must match as a set, ignoring case,
 spacing, and order. A case the model can't answer validly counts as wrong on every field.

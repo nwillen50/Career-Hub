@@ -23,7 +23,7 @@ def answers(cases: list[EvalCase], overrides: dict[int, dict[str, Any]] | None =
     overrides = overrides or {}
     out = []
     for i, case in enumerate(cases):
-        fields = json.loads(case.expected.model_dump_json())
+        fields = json.loads(case.expected.model_dump_json(exclude_none=True))
         fields.update(overrides.get(i, {}))
         out.append(json.dumps(fields))
     return out
@@ -70,7 +70,7 @@ def test_an_unanswerable_case_is_wrong_on_every_field() -> None:
     cases = load_cases(SAMPLE)[:1]
     report = run_extraction_eval(Router([FakeProvider("m", replies=["nonsense"])]), cases, ["m"])
     assert all(report.accuracy(name) == 0.0 for name in ("level", "locations", "deadline"))
-    assert len(report.misses) == 4 and report.misses[0].got == "no valid answer"
+    assert len(report.misses) == 7 and report.misses[0].got == "no valid answer"
 
 
 def test_bad_eval_files_are_reported(tmp_path: Path) -> None:
@@ -83,3 +83,14 @@ def test_bad_eval_files_are_reported(tmp_path: Path) -> None:
     bad.write_text("cases: [unclosed\n", encoding="utf-8")
     with pytest.raises(EvalError):
         load_cases(bad)
+
+
+def test_the_new_fields_are_measured_only_for_cases_that_state_them() -> None:
+    cases = load_cases(SAMPLE)
+    replies = answers(cases, {1: {"degree_required": "master"}})
+    report = run_extraction_eval(Router([FakeProvider("m", replies=replies)]), cases, ["m"])
+    assert report.counted["degree_required"] == 2 and report.counted["work_authorization"] == 2
+    assert report.accuracy("degree_required") == 0.5
+    assert report.accuracy("equivalent_experience_ok") == 1.0
+    assert "degree_required: 50%" in report.summary()
+    assert {(m.case_id, m.field) for m in report.misses} == {("sample-2", "degree_required")}

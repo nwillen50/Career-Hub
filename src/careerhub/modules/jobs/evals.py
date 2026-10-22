@@ -20,10 +20,19 @@ from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 from careerhub.core.models import Job
 from careerhub.llm import Router
 from careerhub.llm.validated import ValidationFailed
-from careerhub.modules.jobs.extract import JobFields, Level, Visa, extract_fields
+from careerhub.modules.jobs.extract import (
+    Degree,
+    JobFields,
+    Level,
+    Visa,
+    WorkAuth,
+    extract_fields,
+)
 
 #: The fields measured, in report order.
 FIELDS = ("level", "locations", "visa_sponsorship", "deadline")
+#: Fields measured only for cases that state an expected value (CH-98).
+OPTIONAL_FIELDS = ("degree_required", "equivalent_experience_ok", "work_authorization")
 
 
 class EvalError(Exception):
@@ -39,6 +48,9 @@ class Expected(BaseModel):
     locations: list[str]
     visa_sponsorship: Visa
     deadline: date | None
+    degree_required: Degree | None = None
+    equivalent_experience_ok: Visa | None = None
+    work_authorization: WorkAuth | None = None
 
     @field_validator("visa_sponsorship", mode="before")
     @classmethod
@@ -81,17 +93,25 @@ class EvalReport:
     """Accuracy per field, with the misses that explain it."""
 
     total: int = 0
-    correct: dict[str, int] = field(default_factory=lambda: dict.fromkeys(FIELDS, 0))
+    correct: dict[str, int] = field(
+        default_factory=lambda: dict.fromkeys((*FIELDS, *OPTIONAL_FIELDS), 0)
+    )
+    #: How many cases measured each field (the optional ones only count cases that state them).
+    counted: dict[str, int] = field(
+        default_factory=lambda: dict.fromkeys((*FIELDS, *OPTIONAL_FIELDS), 0)
+    )
     misses: list[Miss] = field(default_factory=list)
 
     def accuracy(self, name: str) -> float:
         """Return the fraction of cases where `name` was right (0.0 with no cases)."""
-        return self.correct[name] / self.total if self.total else 0.0
+        counted = self.counted[name] if name in OPTIONAL_FIELDS else self.total
+        return self.correct[name] / counted if counted else 0.0
 
     def summary(self) -> str:
         """Render the report as plain text."""
         lines = [f"Extraction eval: {self.total} cases"]
-        lines += [f"  {name}: {self.accuracy(name):.0%}" for name in FIELDS]
+        measured = [*FIELDS, *(n for n in OPTIONAL_FIELDS if self.counted[n])]
+        lines += [f"  {name}: {self.accuracy(name):.0%}" for name in measured]
         lines += [
             f"  miss: {m.case_id} {m.field}: expected {m.expected!r}, got {m.got!r}"
             for m in self.misses
@@ -130,7 +150,11 @@ def run_extraction_eval(
             got: JobFields | None = extract_fields(router, job, routes, company=case.company)
         except ValidationFailed:
             got = None
-        for name in FIELDS:
+        for name in (*FIELDS, *OPTIONAL_FIELDS):
+            if name in OPTIONAL_FIELDS:
+                if getattr(case.expected, name) is None:
+                    continue
+                report.counted[name] += 1
             if got is not None and _matches(name, case.expected, got):
                 report.correct[name] += 1
             else:
