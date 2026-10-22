@@ -15,6 +15,7 @@ from careerhub.core.secrets import new_database_key
 from careerhub.core.storage import open_engine, session_factory
 from careerhub.modules.jobs import NormalizedJob, store_jobs
 from careerhub.web.shortlist import (
+    INTERNSHIP_NOTE,
     ShortlistData,
     ShortlistEntry,
     gather_shortlist,
@@ -194,3 +195,21 @@ def test_gather_attaches_the_two_strongest_contacts(session: Session) -> None:
     session.commit()
     contacts = gather_shortlist(session).entries[0].contacts
     assert [c.name for c in contacts] == ["Cat", "Ann"]
+
+
+def test_the_internship_note_appears_only_when_the_setting_is_on(
+    session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CAREERHUB_DATA_DIR", str(tmp_path))
+    seed(session, 2)
+    job = session.scalars(select(Job).where(Job.external_id == "1")).one()
+    job.structured_fields = {"fields": {"level": "internship"}}
+    session.commit()
+    assert all(INTERNSHIP_NOTE not in e.footnotes for e in gather_shortlist(session).entries)
+    (tmp_path / "profile").mkdir()
+    (tmp_path / "profile" / "preferences.yaml").write_text("internship_rank_penalty: 1\n")
+    entries = {e.title: e for e in gather_shortlist(session).entries}
+    assert INTERNSHIP_NOTE in entries["Job 1"].footnotes
+    assert INTERNSHIP_NOTE not in entries["Job 0"].footnotes
+    html = render_shortlist(ShortlistData([entries["Job 1"]], NOW), NOW)
+    assert '<p class="footnote">Internship: ranked a little lower (your setting)</p>' in html

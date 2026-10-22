@@ -68,7 +68,7 @@ def test_the_request_is_public_and_contains_the_posting_as_data(job: Job) -> Non
 
 def test_long_postings_are_cut(job: Job) -> None:
     job.raw_text = "x" * 50_000
-    assert len(build_request(job, "Acme").prompt) < 14_000
+    assert len(build_request(job, "Acme").prompt) < 16_000  # 12,000 of posting plus the prompt
 
 
 def test_fields_are_parsed_and_validated(job: Job) -> None:
@@ -117,3 +117,46 @@ def test_a_partial_answer_gets_safe_defaults() -> None:
 
 def test_extra_keys_from_the_model_are_ignored() -> None:
     assert JobFields.model_validate({"level": "mid", "bonus": 1}).level == "mid"
+
+
+def test_the_new_fields_default_to_unknown_so_older_saved_results_still_load() -> None:
+    old = JobFields.model_validate(GOOD)
+    assert old.degree_required == "unknown" and old.work_authorization == "unknown"
+    assert old.preferred_skills == [] and old.summary is None and old.graduation_latest is None
+
+
+def test_the_v2_fields_are_validated() -> None:
+    full = JobFields.model_validate(
+        {
+            **GOOD,
+            "degree_required": "bachelor",
+            "degree_fields": ["Mechanical Engineering", "or related field"],
+            "equivalent_experience_ok": "yes",
+            "graduation_earliest": "2027-01-01",
+            "graduation_latest": "2027-12-31",
+            "work_authorization": "clearance_required",
+            "start_date": "2027-06-01",
+            "preferred_skills": ["Rust"],
+            "summary": "Builds perception for warehouse robots.",
+            "role_focus": "applied ML, computer vision",
+        }
+    )
+    assert full.graduation_latest == date(2027, 12, 31) and full.preferred_skills == ["Rust"]
+    bads = (
+        {"degree_required": "doctorate"},
+        {"work_authorization": "maybe"},
+        {"summary": "x" * 801},
+    )
+    for bad in bads:
+        with pytest.raises(ValueError):
+            JobFields.model_validate({**GOOD, **bad})
+
+
+def test_a_posting_extracted_with_the_old_prompt_is_extracted_again(
+    session: Session, job: Job
+) -> None:
+    job.structured_fields = {"fields": GOOD, "prompt_version": 1, "text_sha256": "x"}
+    router = Router([FakeProvider("m", replies=[json.dumps(GOOD)])])
+    assert PROMPT_VERSION == 2
+    assert extract_and_save(session, router, job, ["m"]) is not None
+    assert job.structured_fields["prompt_version"] == 2

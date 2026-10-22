@@ -42,13 +42,22 @@ from careerhub.modules.jobs import (
 )
 from careerhub.modules.jobs.extract import extract_and_save
 from careerhub.modules.jobs.filters import assess_filters
-from careerhub.modules.jobs.scoring import ScoringError, ranked_jobs, score_job
+from careerhub.modules.jobs.scoring import (
+    ScoringError,
+    current_rank_adjustments,
+    ranked_jobs,
+    score_job,
+)
 from careerhub.modules.jobs.store import only_visible_copies
 from careerhub.modules.jobs.tailoring import tailor_job
+from careerhub.profile.eligibility import Eligibility, eligibility_from
+from careerhub.profile.extract import EducationFact
 from careerhub.profile.extract import extract_and_save as extract_profile_and_save
+from careerhub.profile.facts import accepted_facts
 from careerhub.profile.files import load_preferences, load_profile_doc
 from careerhub.profile.inputs import find_resume, find_transcript
 from careerhub.profile.models import HardConstraints, ProfileDoc
+from careerhub.profile.readiness import current_readiness
 from careerhub.profile.rubric import load_rubric
 from careerhub.web.shortlist import MAX_JOBS, write_shortlist
 
@@ -66,6 +75,8 @@ class NightlyReport:
     tailored: int = 0
     profile_facts: int = 0
     problems: list[str] = field(default_factory=list)
+    #: Things that happened on purpose that the user should see, e.g. "Acme: all 7 jobs closed".
+    notes: list[str] = field(default_factory=list)
     cache_pruned: int = 0
     shortlist_path: str | None = None
 
@@ -85,6 +96,7 @@ class NightlyReport:
             lines.append(f"Removed {self.cache_pruned} expired saved answers.")
         if self.shortlist_path:
             lines.append(f"Shortlist: {self.shortlist_path}")
+        lines += [f"Note: {note}" for note in self.notes]
         lines += [f"Problem: {problem}" for problem in self.problems]
         return "\n".join(lines)
 
@@ -172,7 +184,12 @@ def _understand_and_rank(
     doc, rubric = load_profile_doc(), load_rubric()
     preferences = load_preferences()
     constraints = preferences.hard_constraints if preferences else HardConstraints()
-    if doc is None or rubric is None:
+    eligibility = (
+        eligibility_from(doc, preferences, [e.degree or "" for e in _accepted_education(session)])
+        if doc
+        else Eligibility()
+    )
+    if (doc is None or rubric is None) and current_readiness(session).on:
         report.problems.append("scoring skipped: profile.md or rubric.yaml is missing")
     try:
         extract_routes = routes_for(settings, "extract", setup.built)
@@ -184,6 +201,14 @@ def _understand_and_rank(
     except NoRoute:
         score_routes = []
         report.problems.append("scoring skipped: no usable model for 'score'")
+    readiness = current_readiness(session, settings.profile_min_skills)
+    if not readiness.on:
+        # Ingesting, understanding and filtering are cheap, so they run; scoring and tailoring wait.
+        score_routes = []
+        report.notes.append(
+            "scoring starts when your profile is ready (hub profile ready); missing: "
+            + "; ".join(readiness.missing)
+        )
     budget_hit = False
     failures = 0
     for job in jobs:
@@ -194,7 +219,7 @@ def _understand_and_rank(
                 and extract_and_save(session, setup.router, job, extract_routes)
             ):
                 report.extracted += 1
-            assessment = assess_filters(session, job, constraints)
+            assessment = assess_filters(session, job, constraints, eligibility)
             if not assessment.filter_passed:
                 report.filtered_out += 1
             elif (
@@ -202,7 +227,7 @@ def _understand_and_rank(
                 and rubric
                 and score_routes
                 and not budget_hit
-                and score_job(session, setup.router, job, doc, rubric, score_routes)
+                and score_job(session, setup.router, job, doc, rubric, score_routes, preferences)
             ):
                 report.scored += 1
         except BudgetExceeded:
@@ -217,7 +242,7 @@ def _understand_and_rank(
         report.problems.append(f"{failures} jobs could not be understood or scored")
     if doc is not None:
         _extract_profile_facts(session, setup, settings, doc, report)
-    if doc is not None and not budget_hit:
+    if doc is not None and not budget_hit and readiness.on:
         _tailor_top_jobs(session, setup, settings, doc, report)
 
 
@@ -255,6 +280,12 @@ def _extract_profile_facts(
             report.problems.append(f"the {kind} could not be read into facts")
 
 
+def _accepted_education(session: Session) -> list[EducationFact]:
+    """Return the education entries from the user's accepted resume and transcript facts."""
+    facts = accepted_facts(session)
+    return [e for e in facts.education if e.degree] if facts else []
+
+
 def _tailor_top_jobs(
     session: Session,
     setup: RouterSetup,
@@ -279,7 +310,7 @@ def _tailor_top_jobs(
         report.problems.append("tailoring skipped: the resume could not be read (hub profile show)")
         return
     failures = 0
-    for job, _assessment in ranked_jobs(session, MAX_JOBS):
+    for job, _assessment in ranked_jobs(session, MAX_JOBS, **current_rank_adjustments()):
         try:
             if tailor_job(session, setup.router, job, doc, source, routes):
                 report.tailored += 1

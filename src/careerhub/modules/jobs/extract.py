@@ -23,13 +23,15 @@ from careerhub.llm.validated import complete_validated
 from careerhub.prompts import load_prompt, render
 
 PROMPT_NAME = "extract_job"
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2
 #: Postings are cut to this many characters before they reach the model, to bound cost.
 MAX_POSTING_CHARS = 12_000
 
 Level = Literal["internship", "new_grad", "entry", "mid", "senior", "staff_plus", "unknown"]
 Remote = Literal["remote", "hybrid", "onsite", "unknown"]
 Visa = Literal["yes", "no", "unknown"]
+Degree = Literal["none", "associate", "bachelor", "master", "phd", "unknown"]
+WorkAuth = Literal["none_stated", "us_citizen_required", "clearance_required", "unknown"]
 
 
 class JobFields(BaseModel):
@@ -46,6 +48,22 @@ class JobFields(BaseModel):
     salary_min_usd: int | None = Field(default=None, ge=0)
     salary_max_usd: int | None = Field(default=None, ge=0)
     required_skills: list[str] = Field(default_factory=list, max_length=10)
+    #: Eligibility facts (CH-98). Unknown stays "unknown"; nothing is guessed.
+    degree_required: Degree = "unknown"
+    degree_preferred: Degree = "unknown"
+    degree_fields: list[str] = Field(default_factory=list, max_length=10)
+    equivalent_experience_ok: Visa = "unknown"
+    #: The graduation dates a posting targets (for example a class of 2027), if it says.
+    graduation_earliest: date | None = None
+    graduation_latest: date | None = None
+    work_authorization: WorkAuth = "unknown"
+    start_date: date | None = None
+    #: Skills the posting calls preferred or nice to have. They never lower a score.
+    preferred_skills: list[str] = Field(default_factory=list, max_length=10)
+    #: Two or three plain sentences on what the job is, written only from the posting.
+    summary: str | None = Field(default=None, max_length=800)
+    #: A short label such as "applied ML, computer vision".
+    role_focus: str | None = Field(default=None, max_length=120)
 
 
 def posting_hash(job: Job) -> str:
@@ -64,7 +82,7 @@ def build_request(job: Job, company_name: str) -> LLMRequest:
         location=job.location or "not listed",
         posting=text or "(no description)",
     )
-    return LLMRequest(prompt=prompt, tier=PrivacyTier.PUBLIC, max_tokens=700, essential=True)
+    return LLMRequest(prompt=prompt, tier=PrivacyTier.PUBLIC, max_tokens=1200, essential=True)
 
 
 def extract_fields(
