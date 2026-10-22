@@ -86,7 +86,7 @@ def build_router(
                 "is not counted toward the monthly budget."
             )
     costs = CostLog(sessions, settings.monthly_budget_usd, prices, run_id)
-    router = Router(providers, cache=ResponseCache(sessions), costs=costs)
+    router = Router(providers, cache=ResponseCache(sessions, settings.cache_ttl_days), costs=costs)
     return RouterSetup(router, tuple(p.name for p in providers), problems)
 
 
