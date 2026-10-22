@@ -133,3 +133,14 @@ notes: what to lead with, gaps to address, resume edits to consider. Notes only;
 sent. The resume goes to the model as plain text with emails, links, and phone numbers removed, and
 only to providers allowed to see Personal data. See
 [ADR-0024](../../../../docs/decisions/0024-tailoring-notes.md).
+
+## Eligibility filters (CH-113)
+
+Besides the constraints above, three eligibility rules can filter a job, each with its reason:
+the **degree level** it requires (above your highest completed or in-progress degree, unless it
+accepts equivalent experience, which only makes it "uncertain"), a **graduation window** that
+excludes your expected graduation date, and **US citizenship** if you set `work_authorization` in
+`preferences.yaml` to something other than `us_citizen`. A clearance is always only "uncertain".
+Degree *field* and job *level* (new grad, entry, internship) never filter. `internship_rank_penalty`
+(0 to 10, default 0) ranks internships a little lower without changing their score, and the page
+says so. `also_qualified_fields` lists fields you count as your own (used by scoring, CH-114).

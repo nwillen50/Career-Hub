@@ -7,6 +7,7 @@ ignored constraint. All of this is Personal data (PRD, privacy tiers).
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -66,3 +67,12 @@ class Preferences(_Strict):
     timeline: Timeline = Field(default_factory=Timeline)
     #: Hours per week the user can put into the job search (feeds the weekly plan).
     weekly_time_budget_hours: float = Field(default=5.0, gt=0, le=80)
+    #: Fields of study the user counts as their own, beyond their degree (for example a physics
+    #: major listing "electrical engineering"). Degree field is never a filter; it helps scoring.
+    also_qualified_fields: list[str] = Field(default_factory=list)
+    #: Points (on a 0 to 10 scale) an internship ranks below a full-time job. Ordering only; the
+    #: stored score is never changed. 0 means no penalty.
+    internship_rank_penalty: float = Field(default=0.0, ge=0, le=10)
+    #: Your work authorization, if you want citizenship-required jobs checked. Unset: they are
+    #: only marked uncertain.
+    work_authorization: Literal["us_citizen", "work_authorized", "needs_sponsorship"] | None = None

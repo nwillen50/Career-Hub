@@ -66,6 +66,14 @@ criteria:
 
 See [ADR-0009](../../../docs/decisions/0009-profile-assembly.md).
 
+## Preferences added by CH-113
+
+`preferences.yaml` also takes `also_qualified_fields: [...]` (fields you count as your own),
+`internship_rank_penalty: 1` (0 to 10; ranks internships lower without changing scores), and
+`work_authorization: us_citizen | work_authorized | needs_sponsorship` (so jobs that require US
+citizenship can be checked; unset, they are only marked uncertain). `eligibility.py` reads your
+highest degree and expected graduation date from `profile.md` and your accepted facts.
+
 ## Reading documents (`documents.py`)
 
 `read_document(path)` returns a document's text, format, page count, and problems. It reads `.tex`,

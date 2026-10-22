@@ -44,10 +44,18 @@ from careerhub.modules.jobs import (
 from careerhub.modules.jobs.adapters import ADAPTERS
 from careerhub.modules.jobs.extract import extract_and_save
 from careerhub.modules.jobs.filters import assess_filters
-from careerhub.modules.jobs.scoring import ScoringError, ranked_jobs, score_job
+from careerhub.modules.jobs.scoring import (
+    ScoringError,
+    current_internship_penalty,
+    ranked_jobs,
+    score_job,
+)
 from careerhub.modules.jobs.store import only_visible_copies
 from careerhub.modules.jobs.tailoring import tailor_job
+from careerhub.profile.eligibility import Eligibility, eligibility_from
+from careerhub.profile.extract import EducationFact
 from careerhub.profile.extract import extract_and_save as extract_profile_and_save
+from careerhub.profile.facts import accepted_facts
 from careerhub.profile.files import load_preferences, load_profile_doc
 from careerhub.profile.inputs import find_resume, find_transcript
 from careerhub.profile.models import HardConstraints, ProfileDoc
@@ -184,6 +192,11 @@ def _understand_and_rank(
     doc, rubric = load_profile_doc(), load_rubric()
     preferences = load_preferences()
     constraints = preferences.hard_constraints if preferences else HardConstraints()
+    eligibility = (
+        eligibility_from(doc, preferences, [e.degree or "" for e in _accepted_education(session)])
+        if doc
+        else Eligibility()
+    )
     if doc is None or rubric is None:
         report.problems.append("scoring skipped: profile.md or rubric.yaml is missing")
     try:
@@ -206,7 +219,7 @@ def _understand_and_rank(
                 and extract_and_save(session, setup.router, job, extract_routes)
             ):
                 report.extracted += 1
-            assessment = assess_filters(session, job, constraints)
+            assessment = assess_filters(session, job, constraints, eligibility)
             if not assessment.filter_passed:
                 report.filtered_out += 1
             elif (
@@ -267,6 +280,12 @@ def _extract_profile_facts(
             report.problems.append(f"the {kind} could not be read into facts")
 
 
+def _accepted_education(session: Session) -> list[EducationFact]:
+    """Return the education entries from the user's accepted resume and transcript facts."""
+    facts = accepted_facts(session)
+    return [e for e in facts.education if e.degree] if facts else []
+
+
 def _tailor_top_jobs(
     session: Session,
     setup: RouterSetup,
@@ -291,7 +310,7 @@ def _tailor_top_jobs(
         report.problems.append("tailoring skipped: the resume could not be read (hub profile show)")
         return
     failures = 0
-    for job, _assessment in ranked_jobs(session, MAX_JOBS):
+    for job, _assessment in ranked_jobs(session, MAX_JOBS, current_internship_penalty()):
         try:
             if tailor_job(session, setup.router, job, doc, source, routes):
                 report.tailored += 1

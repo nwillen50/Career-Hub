@@ -25,7 +25,7 @@ from careerhub.core.models import Assessment, Job, RunLog, Source
 from careerhub.core.paths import data_dir
 from careerhub.modules.jobs.muse import KIND as MUSE_KIND
 from careerhub.modules.jobs.muse import VIA
-from careerhub.modules.jobs.scoring import ranked_jobs
+from careerhub.modules.jobs.scoring import current_internship_penalty, is_internship, ranked_jobs
 from careerhub.modules.network import WarmPath, warm_paths
 
 #: Today shows at most this many ranked jobs (PRD).
@@ -33,6 +33,7 @@ MAX_JOBS = 5
 #: Warm paths shown per job.
 MAX_CONTACTS = 2
 RUN_STEP = "nightly"
+INTERNSHIP_NOTE = "Internship: ranked a little lower (your setting)"
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,8 @@ class ShortlistEntry:
     contacts: list[WarmPath] = field(default_factory=list)
     #: Tailoring notes: {"lead_with": [...], "gaps": [...], "resume_suggestions": [...]}.
     tailoring: dict[str, list[str]] | None = None
+    #: Short muted lines at the bottom of the card (for example the internship ordering note).
+    footnotes: tuple[str, ...] = ()
     #: Where the posting came from when the source requires credit (for example "via The Muse").
     via: str | None = None
 
@@ -66,6 +69,7 @@ class ShortlistData:
 
 def gather_shortlist(session: Session, limit: int = MAX_JOBS) -> ShortlistData:
     """Collect the top jobs and the state of the latest nightly run."""
+    penalty = current_internship_penalty()
     entries = [
         ShortlistEntry(
             title=job.title,
@@ -77,9 +81,10 @@ def gather_shortlist(session: Session, limit: int = MAX_JOBS) -> ShortlistData:
             criteria=list(assessment.criteria_scores),
             contacts=warm_paths(session, job.company_id, limit=MAX_CONTACTS),
             tailoring=_notes(assessment),
+            footnotes=(INTERNSHIP_NOTE,) if penalty > 0 and is_internship(job) else (),
             via=VIA if _from_muse(session, job) else None,
         )
-        for job, assessment in ranked_jobs(session, min(limit, MAX_JOBS))
+        for job, assessment in ranked_jobs(session, min(limit, MAX_JOBS), penalty)
     ]
     runs = list(
         session.scalars(
@@ -137,6 +142,7 @@ main { max-width:46rem; margin:0 auto; padding:1.5rem 1rem 3rem; }
 h1 { font-size:1.6rem; margin:0 0 .25rem; } h2 { font-size:1.15rem; margin:0; }
 h3 { font-size:1rem; margin:.6rem 0 .2rem; } ul { margin:.2rem 0 .6rem; padding-left:1.2rem; }
 .meta { color:var(--muted); margin:0 0 1.5rem; }
+.footnote { color:var(--muted); font-size:.85rem; margin:.5rem 0 0; }
 .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
   padding:1rem 1.1rem; margin:0 0 1rem; }
 .score { float:right; font-weight:600; color:var(--accent); }
@@ -209,7 +215,8 @@ def _render_entry(index: int, entry: ShortlistEntry) -> str:
         f'<p class="where">{where}</p><p>{escape(_first_sentence(entry.explanation))}</p>'
         f"{_render_contacts(entry.contacts)}"
         f"<details><summary>Full explanation</summary><p>{escape(entry.explanation)}</p>{table}"
-        f"</details>{_render_tailoring(entry.tailoring)}</article>"
+        f"</details>{_render_tailoring(entry.tailoring)}{_render_footnotes(entry.footnotes)}"
+        "</article>"
     )
 
 
@@ -218,6 +225,11 @@ _TAILORING_TITLES = (
     ("gaps", "Gaps to address"),
     ("resume_suggestions", "Resume edits to consider"),
 )
+
+
+def _render_footnotes(footnotes: tuple[str, ...]) -> str:
+    """Render the small muted lines at the bottom of a card (none: nothing)."""
+    return "".join(f'<p class="footnote">{escape(note)}</p>' for note in footnotes)
 
 
 def _render_tailoring(notes: dict[str, list[str]] | None) -> str:
