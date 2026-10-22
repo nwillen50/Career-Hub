@@ -22,11 +22,11 @@ from careerhub.modules.jobs import (
     UnknownSource,
     approve_source,
     disable_source,
-    ingest_greenhouse,
     list_sources,
     propose_source,
     reject_source,
 )
+from careerhub.modules.jobs.adapters import ADAPTERS, BOARD_KINDS
 from careerhub.modules.network import (
     UnknownPerson,
     find_company,
@@ -45,7 +45,7 @@ from careerhub.web.shortlist import write_shortlist
 
 USAGE = """Usage:
   hub profile show
-  hub ingest greenhouse --company <board>   (the source must be approved)
+  hub ingest greenhouse|lever --company <board>   (the source must be approved)
   hub plan                                   (suggested blocks for the next 7 days)
   hub paths <company>                        (who you know there, strongest first)
   hub people find <text>                     (by name or company)
@@ -67,8 +67,13 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
         if args == ["profile", "show"]:
             print(format_profile(_load_profile(store)))
             return 0
-        if len(args) == 4 and args[:2] == ["ingest", "greenhouse"] and args[2] == "--company":
-            return _with_session(store, lambda s: _ingest(s, args[3]))
+        if (
+            len(args) == 4
+            and args[0] == "ingest"
+            and args[1] in ADAPTERS
+            and args[2] == "--company"
+        ):
+            return _with_session(store, lambda s: _ingest(s, args[3], kind=args[1]))
         if args == ["plan"]:
             return _with_session(store, _plan)
         if args[:1] == ["paths"] and len(args) >= 2:
@@ -230,8 +235,8 @@ def _sources_list(session: Session) -> int:
 
 
 def _sources_add(session: Session, kind: str, name: str, url: str) -> int:
-    # A Greenhouse board's name is the last part of its address.
-    config = {"board": urlparse(url).path.strip("/").split("/")[-1]} if kind == "greenhouse" else {}
+    # A board's name is the last part of its address (jobs.lever.co/acme).
+    config = {"board": urlparse(url).path.strip("/").split("/")[-1]} if kind in BOARD_KINDS else {}
     source = propose_source(session, kind, name, url, config)
     print(
         f"Source {source.id} is {source.status}. Approve it with: hub sources approve {source.id}"
@@ -239,21 +244,21 @@ def _sources_add(session: Session, kind: str, name: str, url: str) -> int:
     return 0
 
 
-def _ingest(session: Session, board: str, client: httpx.Client | None = None) -> int:
-    """Fetch one approved Greenhouse source, found by its board name."""
+def _ingest(
+    session: Session, board: str, client: httpx.Client | None = None, kind: str = "greenhouse"
+) -> int:
+    """Fetch one approved source of `kind` (greenhouse or lever), found by its board name."""
     sources = [
-        s
-        for s in list_sources(session)
-        if s.kind == "greenhouse" and s.config.get("board") == board
+        s for s in list_sources(session) if s.kind == kind and s.config.get("board") == board
     ]
     if not sources:
         print(
-            f"No Greenhouse source for {board!r}. Add one with: "
-            f"hub sources add greenhouse <name> https://boards.greenhouse.io/{board}"
+            f"No {kind} source for {board!r}. Add one with: "
+            f"hub sources add {kind} <name> <the board's address>"
         )
         return 1
     try:
-        report = ingest_greenhouse(session, sources[0], client)
+        report = ADAPTERS[kind](session, sources[0], client)
     except SourceNotApproved as error:
         print(error)
         return 1

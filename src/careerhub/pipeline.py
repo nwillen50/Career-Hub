@@ -37,8 +37,8 @@ from careerhub.modules.jobs import (
     FetchError,
     SourceNotApproved,
     approved_sources,
-    ingest_greenhouse,
 )
+from careerhub.modules.jobs.adapters import ADAPTERS
 from careerhub.modules.jobs.extract import extract_and_save
 from careerhub.modules.jobs.filters import assess_filters
 from careerhub.modules.jobs.scoring import ScoringError, ranked_jobs, score_job
@@ -128,9 +128,11 @@ def _run(
     sessions = session_factory(engine)
     setup = build_router(settings, store, sessions, client, run_id)
     report.problems += [f"provider: {p}" for p in setup.problems]
-    for source in approved_sources(session, "greenhouse"):
+    for source in approved_sources(session):
+        if source.kind not in ADAPTERS:
+            continue
         try:
-            result = ingest_greenhouse(session, source, client)
+            result = ADAPTERS[source.kind](session, source, client)
             report.sources_ok += 1
             report.new_jobs += result.new
         except (FetchError, SourceNotApproved) as caught:

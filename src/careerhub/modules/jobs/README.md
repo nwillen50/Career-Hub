@@ -13,6 +13,8 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | `filters` | Hard filters (companies, title words, locations, salary) with reasons | CH-66 | Built |
 | `evals` | `run_extraction_eval`: per-field accuracy against hand-checked postings | CH-63 | Built |
 | `greenhouse` | Fetch a company's public board; `hub ingest greenhouse` | CH-60 | Built |
+| `lever` | Same for Lever (`api.lever.co`); `hub ingest lever` | CH-93 | Built |
+| `ingest`, `adapters` | The shared fetch-and-store routine and the adapter registry | CH-93 | Built |
 
 An adapter turns its feed into `NormalizedJob`s and calls `store_jobs(session, source, jobs)` with
 the source's **complete** listing. A rerun adds no duplicates; postings that disappear are marked
@@ -25,6 +27,15 @@ Sources start `proposed`. Only `approve_source` (via `hub sources approve <id>`)
 and fetching code must call `require_approved` first. Commands: `hub sources list`,
 `hub sources add <kind> <name> <url>`, `hub sources approve|reject|disable <id>`.
 See [ADR-0012](../../../../docs/decisions/0012-source-approval.md).
+
+## Lever
+
+`hub sources add lever Acme https://jobs.lever.co/acme`, then `hub sources approve <id>`, then
+`hub ingest lever --company acme`. Companies on Lever's European site add `"region": "eu"` to the
+source's config. Same rules as Greenhouse: a failed fetch changes nothing, and an empty listing for
+a board that had jobs is treated as a glitch. The nightly run fetches every approved source whose
+kind is in `adapters.ADAPTERS`. The response shape was built from Lever's public documentation
+(not checked against a live board from the build environment; see the PR).
 
 ## Greenhouse
 
