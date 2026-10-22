@@ -92,3 +92,10 @@ The nightly run (when a `profile_extract` route exists) reads the current resume
 a Personal-tier model after redaction, and saves what it found as **pending** facts, keyed by the
 file's hash so an unchanged file is never read twice. Nothing counts until the user accepts it
 (review commands: CH-110). See [ADR-0031](../../../docs/decisions/0031-profile-extraction.md).
+
+### Reviewing facts (`facts.py`)
+
+`hub profile facts` lists what was read; `hub profile facts accept <n|all>` or `reject <n>` decides.
+Accepted facts (newest per document) are added to the profile text for scoring and tailoring, after
+redaction; what you typed in `profile.md` wins. See
+[ADR-0032](../../../docs/decisions/0032-accepting-extracted-facts.md).

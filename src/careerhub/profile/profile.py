@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.models import Person
 from careerhub.profile.documents import DocumentText, read_document
+from careerhub.profile.facts import counts
 from careerhub.profile.files import load_preferences, load_profile_doc
 from careerhub.profile.inputs import ResumeFiles, find_resume, find_transcript
 from careerhub.profile.models import Preferences, ProfileDoc
@@ -51,6 +52,8 @@ class Profile:
     problems: list[str] = field(default_factory=list)
     resume_info: DocumentInfo | None = None
     transcript_info: DocumentInfo | None = None
+    #: How many extracted fact sets are pending, accepted, or rejected (None: no database).
+    fact_counts: dict[str, int] | None = None
 
 
 def load_profile(session: Session | None = None) -> Profile:
@@ -82,6 +85,7 @@ def load_profile(session: Session | None = None) -> Profile:
         if info:
             problems += [f"{label}: {problem}" for problem in info.problems]
     connections = None
+    fact_counts = counts(session) if session is not None else None
     if session is not None:
         connections = session.scalar(select(func.count()).select_from(Person)) or 0
     return Profile(
@@ -94,6 +98,7 @@ def load_profile(session: Session | None = None) -> Profile:
         problems,
         resume_info,
         transcript_info,
+        fact_counts,
     )
 
 
@@ -129,6 +134,11 @@ def format_profile(profile: Profile) -> str:
         "unknown (database not opened)" if profile.connections is None else profile.connections
     )
     lines.append(f"LinkedIn connections imported: {connections}")
+    if profile.fact_counts is not None:
+        lines.append(
+            f"Facts read from documents: {profile.fact_counts['pending']} waiting for review, "
+            f"{profile.fact_counts['accepted']} accepted"
+        )
     if profile.problems:
         lines += ["", "Missing:"] + [f"  - {problem}" for problem in profile.problems]
     return "\n".join(lines)

@@ -37,6 +37,7 @@ that supersedes the old one.
 | [0029](0029-model-catalog.md) | Model catalog: presets switched on by a key, default routes that respect privacy | Accepted |
 | [0030](0030-document-reader.md) | Document reader: pypdfium2 and python-docx, textutil on the Mac, scans reported | Accepted |
 | [0031](0031-profile-extraction.md) | Profile extraction: redacted, validated, saved as pending facts keyed by file hash | Accepted |
+| [0032](0032-accepting-extracted-facts.md) | Extracted facts count only when accepted; profile.md wins; newest accepted set per document | Accepted |
 
 ## Template
 

@@ -48,7 +48,10 @@ from careerhub.modules.network import (
 from careerhub.modules.plan import suggest_week
 from careerhub.modules.plan.ics import IcsError
 from careerhub.pipeline import run_nightly
+from careerhub.profile.extract import ProfileFacts
+from careerhub.profile.facts import UnknownExtraction, decide, facts_text, pending
 from careerhub.profile.files import ProfileFileError, load_preferences
+from careerhub.profile.models import ProfileDoc
 from careerhub.profile.profile import Profile, format_profile, load_profile
 from careerhub.schedule import install_plist, launchctl_commands
 from careerhub.web.shortlist import write_shortlist
@@ -69,6 +72,8 @@ USAGE = """Usage:
   hub models add-custom <name> <kind> <model> [--base-url U] [--input N] [--output N]
                         [--trains-on-data]
   hub cache clear [--expired]               (delete saved model answers; prints how many)
+  hub profile facts                         (what was read from your resume and transcript)
+  hub profile facts accept <number|all> | reject <number>
   hub shortlist build                        (write the shortlist page)
   hub sources list
   hub sources add <kind> <name> <url>     (saved as proposed; nothing is fetched yet)
@@ -80,6 +85,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     store = store or KeychainKeyStore()
     try:
+        if args[:2] == ["profile", "facts"]:
+            return _with_session(store, lambda s: _profile_facts(s, args[2:]))
         if args == ["profile", "show"]:
             print(format_profile(_load_profile(store)))
             return 0
@@ -297,6 +304,38 @@ def _cache_clear(store: KeyStore, expired_only: bool) -> int:
     cache = ResponseCache(session_factory(engine), load_settings().cache_ttl_days)
     removed = cache.prune() if expired_only else cache.clear()
     print(f"Removed {removed} saved model {'answer' if removed == 1 else 'answers'}.")
+    return 0
+
+
+def _profile_facts(session: Session, args: list[str]) -> int:
+    """List pending facts, or accept or reject one (nothing counts until accepted)."""
+    if not args:
+        rows = pending(session)
+        for row in rows:
+            print(f"#{row.id} from your {row.kind} (read by {row.model_used}):")
+            facts = ProfileFacts.model_validate(row.facts)
+            shown = facts_text(facts, ProfileDoc(name="")) or "(nothing found)"
+            print("  " + shown.replace("\n", "\n  "))
+        if not rows:
+            print("No facts are waiting for review.")
+        else:
+            print("Accept with `hub profile facts accept <number|all>` or `reject <number>`.")
+        return 0
+    if args[0] == "accept" and len(args) == 2 and (args[1] == "all" or args[1].isdigit()):
+        ids = [r.id for r in pending(session)] if args[1] == "all" else [int(args[1])]
+        accept = True
+    elif args[0] == "reject" and len(args) == 2 and args[1].isdigit():
+        ids, accept = [int(args[1])], False
+    else:
+        print(USAGE)
+        return 2
+    try:
+        for extraction_id in ids:
+            decide(session, extraction_id, accept)
+    except UnknownExtraction as error:
+        print(error)
+        return 1
+    print(f"{'Accepted' if accept else 'Rejected'} {len(ids)} set(s) of facts.")
     return 0
 
 

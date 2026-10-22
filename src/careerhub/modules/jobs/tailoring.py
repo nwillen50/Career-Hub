@@ -24,6 +24,8 @@ from careerhub.core.models import Assessment, Job
 from careerhub.llm import LLMRequest, PrivacyTier, Router
 from careerhub.llm.validated import complete_validated_detailed
 from careerhub.modules.jobs.scoring import profile_text
+from careerhub.profile.extract import ProfileFacts
+from careerhub.profile.facts import accepted_facts
 from careerhub.profile.models import ProfileDoc
 from careerhub.profile.redact import personal_text
 from careerhub.prompts import load_prompt, render
@@ -52,11 +54,13 @@ def resume_for_model(resume_text: str, name: str = "", aliases: Sequence[str] = 
     return personal_text(resume_text, name, aliases)[:MAX_RESUME_CHARS]
 
 
-def build_request(job: Job, doc: ProfileDoc, resume_text: str) -> LLMRequest:
+def build_request(
+    job: Job, doc: ProfileDoc, resume_text: str, facts: ProfileFacts | None = None
+) -> LLMRequest:
     """Build the (PERSONAL tier, non-essential) request for one job."""
     prompt = render(
         load_prompt(PROMPT_NAME, PROMPT_VERSION),
-        profile=profile_text(doc),
+        profile=profile_text(doc, facts),
         resume=resume_text,
         company=job.company.name,
         title=job.title,
@@ -78,15 +82,15 @@ def tailor_job(
     if assessment is None or assessment.fit_score is None:
         return None  # only scored (shortlisted) jobs get notes
     resume = resume_for_model(resume_text, doc.name, doc.aliases)
-    material = (
-        f"{resume}\n{profile_text(doc)}\n{job.company.name}\n{job.title}\n{job.raw_text or ''}"
-    )
+    facts = accepted_facts(session)
+    about_me = profile_text(doc, facts)
+    material = f"{resume}\n{about_me}\n{job.company.name}\n{job.title}\n{job.raw_text or ''}"
     digest = hashlib.sha256(material.encode()).hexdigest()
     saved = assessment.tailoring or {}
     if saved.get("prompt_version") == PROMPT_VERSION and saved.get("resume_sha256") == digest:
         return None
     notes, response = complete_validated_detailed(
-        router, build_request(job, doc, resume), TailoringNotes, routes
+        router, build_request(job, doc, resume, facts), TailoringNotes, routes
     )
     assessment.tailoring = {
         "notes": notes.model_dump(),
