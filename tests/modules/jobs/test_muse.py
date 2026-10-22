@@ -205,3 +205,16 @@ def test_hub_sources_add_takes_muse_search_options(
     assert "not valid for greenhouse" in capsys.readouterr().out
     with session_factory(open_database(store))() as session:
         assert session.scalars(select(Source)).one().config == {"level": "Entry Level"}
+
+
+def test_a_job_repeated_across_pages_is_stored_once_and_does_not_crash(session: Session) -> None:
+    pages = [page(record(1), record(2), page_count=2), page(record(2), record(3), page_count=2)]
+    source = approved(session, pages="2")
+    report = ingest_muse(session, source, client(pages))
+    assert report.new == 3 and len(session.scalars(select(Job)).all()) == 3
+
+
+def test_store_jobs_ignores_a_repeated_id_in_one_listing(session: Session) -> None:
+    source = approved(session)
+    item = NormalizedJob("Acme", "1", "Role", "u", None)
+    assert store_jobs(session, source, [item, item]).new == 1
