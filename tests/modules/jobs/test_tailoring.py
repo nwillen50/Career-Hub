@@ -18,11 +18,11 @@ from careerhub.modules.jobs.filters import assess_filters
 from careerhub.modules.jobs.tailoring import (
     build_request,
     latex_to_text,
-    redact_contacts,
     resume_for_model,
     tailor_job,
 )
 from careerhub.profile.models import HardConstraints, ProfileDoc
+from careerhub.profile.redact import redact_contacts
 from careerhub.web.shortlist import ShortlistData, ShortlistEntry, render_shortlist
 
 DOC = ProfileDoc(name="Jane Sample", skills=["Python"], interests=["ml"])
