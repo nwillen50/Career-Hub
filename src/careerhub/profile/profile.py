@@ -13,7 +13,7 @@ from careerhub.profile.documents import DocumentText, read_document
 from careerhub.profile.facts import counts
 from careerhub.profile.files import load_preferences, load_profile_doc
 from careerhub.profile.inputs import ResumeFiles, find_resume, find_transcript
-from careerhub.profile.models import Preferences, ProfileDoc
+from careerhub.profile.models import HardConstraints, Preferences, ProfileDoc
 from careerhub.profile.rubric import Rubric, load_rubric
 
 
@@ -102,6 +102,35 @@ def load_profile(session: Session | None = None) -> Profile:
     )
 
 
+QUALIFICATIONS_LINE = (
+    "  - {name: qualifications, weight: 2, description: I meet the degree, graduation, and "
+    "eligibility requirements.}"
+)
+
+
+def rubric_suggestion(rubric: Rubric | None) -> str | None:
+    """Suggest a 'qualifications' criterion when the rubric has none (never edits the file)."""
+    if rubric is None or any("qualif" in c.name.lower() for c in rubric.criteria):
+        return None
+    return (
+        "Suggestion: your rubric has no criterion for degree and eligibility fit. To add one, "
+        "put this under `criteria:` in rubric.yaml (you decide; nothing was changed):\n"
+        + QUALIFICATIONS_LINE
+    )
+
+
+def _modes(hard: HardConstraints) -> str:
+    """List the work modes the user allows, e.g. "remote, hybrid (in your locations)"."""
+    allowed = []
+    if hard.remote_ok:
+        allowed.append("remote")
+    if hard.hybrid_ok:
+        allowed.append("hybrid (in your locations)")
+    if hard.onsite_ok:
+        allowed.append("onsite (in your locations)")
+    return ", ".join(allowed) or "none"
+
+
 def format_profile(profile: Profile) -> str:
     """Render `profile` as plain text for `hub profile show` (no resume or transcript text)."""
     lines: list[str] = []
@@ -115,7 +144,8 @@ def format_profile(profile: Profile) -> str:
     if profile.preferences:
         hard = profile.preferences.hard_constraints
         lines += [
-            f"Locations: {', '.join(hard.locations) or 'anywhere'} (remote ok: {hard.remote_ok})",
+            f"Locations: {', '.join(hard.locations) or 'anywhere'}",
+            f"Work modes allowed: {_modes(hard)}",
             f"Minimum salary: {hard.min_salary_usd or '-'}",
             f"Excluded companies: {', '.join(hard.excluded_companies) or '-'}",
             f"Excluded title words: {', '.join(hard.excluded_title_words) or '-'}",
@@ -139,6 +169,9 @@ def format_profile(profile: Profile) -> str:
             f"Facts read from documents: {profile.fact_counts['pending']} waiting for review, "
             f"{profile.fact_counts['accepted']} accepted"
         )
+    suggestion = rubric_suggestion(profile.rubric)
+    if suggestion:
+        lines += ["", suggestion]
     if profile.problems:
         lines += ["", "Missing:"] + [f"  - {problem}" for problem in profile.problems]
     return "\n".join(lines)

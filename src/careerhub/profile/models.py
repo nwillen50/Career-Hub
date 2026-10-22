@@ -7,6 +7,7 @@ ignored constraint. All of this is Personal data (PRD, privacy tiers).
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -45,11 +46,19 @@ class HardConstraints(_Strict):
 
     #: Places the user will work, e.g. ["New York, NY", "Boston, MA"]. Empty means anywhere.
     locations: list[str] = Field(default_factory=list)
+    #: A fully remote job passes from anywhere.
     remote_ok: bool = True
+    #: A hybrid job passes only if it is in one of your locations (you'd go in some days).
+    hybrid_ok: bool = True
+    #: An onsite job passes only if it is in one of your locations.
+    onsite_ok: bool = True
     min_salary_usd: int | None = Field(default=None, ge=0)
     excluded_companies: list[str] = Field(default_factory=list)
     #: Words that rule a job out when they appear in its title, e.g. ["intern", "senior"].
     excluded_title_words: list[str] = Field(default_factory=list)
+    #: Other names for your places: {"New York, NY": ["the city", "Midtown"]}. Added to the
+    #: built-in list (NYC, Manhattan, SF, Bay Area...). A name matches only as whole words.
+    location_aliases: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class Timeline(_Strict):
@@ -66,3 +75,12 @@ class Preferences(_Strict):
     timeline: Timeline = Field(default_factory=Timeline)
     #: Hours per week the user can put into the job search (feeds the weekly plan).
     weekly_time_budget_hours: float = Field(default=5.0, gt=0, le=80)
+    #: Fields of study the user counts as their own, beyond their degree (for example a physics
+    #: major listing "electrical engineering"). Degree field is never a filter; it helps scoring.
+    also_qualified_fields: list[str] = Field(default_factory=list)
+    #: Points (on a 0 to 10 scale) an internship ranks below a full-time job. Ordering only; the
+    #: stored score is never changed. 0 means no penalty.
+    internship_rank_penalty: float = Field(default=0.0, ge=0, le=10)
+    #: Your work authorization, if you want citizenship-required jobs checked. Unset: they are
+    #: only marked uncertain.
+    work_authorization: Literal["us_citizen", "work_authorized", "needs_sponsorship"] | None = None

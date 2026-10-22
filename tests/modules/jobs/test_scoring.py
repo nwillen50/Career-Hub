@@ -17,6 +17,7 @@ from careerhub.llm.validated import ValidationFailed
 from careerhub.modules.jobs import NormalizedJob, store_jobs
 from careerhub.modules.jobs.filters import assess_filters
 from careerhub.modules.jobs.scoring import (
+    PROMPT_VERSION,
     ScoreAnswer,
     ScoringError,
     build_request,
@@ -115,7 +116,7 @@ def test_a_job_is_scored_and_saved_with_its_provenance(session: Session) -> None
     saved = score_job(session, router, job, DOC, RUBRIC, ["m"])
     assert saved is not None and saved.fit_score == 75.0
     assert saved.explanation == "Strong field match." and saved.model_used == "m:m-model"
-    assert (saved.prompt_version, saved.rubric_version) == (1, 3)
+    assert (saved.prompt_version, saved.rubric_version) == (PROMPT_VERSION, 3)
     assert saved.criteria_scores[0]["name"] == "Field"
 
 

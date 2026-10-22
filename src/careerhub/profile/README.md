@@ -31,7 +31,9 @@ Anything else Career Hub should know.
 ```yaml
 hard_constraints:
   locations: ["Boston, MA"]     # empty means anywhere
-  remote_ok: true
+  remote_ok: true     # fully remote jobs pass from anywhere
+  hybrid_ok: true     # hybrid jobs pass only in one of your locations
+  onsite_ok: true     # onsite jobs pass only in one of your locations
   min_salary_usd: 90000
   excluded_companies: [Acme]
   excluded_title_words: [senior]
@@ -66,6 +68,14 @@ criteria:
 
 See [ADR-0009](../../../docs/decisions/0009-profile-assembly.md).
 
+## Preferences added by CH-113
+
+`preferences.yaml` also takes `also_qualified_fields: [...]` (fields you count as your own),
+`internship_rank_penalty: 1` (0 to 10; ranks internships lower without changing scores), and
+`work_authorization: us_citizen | work_authorized | needs_sponsorship` (so jobs that require US
+citizenship can be checked; unset, they are only marked uncertain). `eligibility.py` reads your
+highest degree and expected graduation date from `profile.md` and your accepted facts.
+
 ## Reading documents (`documents.py`)
 
 `read_document(path)` returns a document's text, format, page count, and problems. It reads `.tex`,
@@ -99,3 +109,11 @@ file's hash so an unchanged file is never read twice. Nothing counts until the u
 Accepted facts (newest per document) are added to the profile text for scoring and tailoring, after
 redaction; what you typed in `profile.md` wins. See
 [ADR-0032](../../../docs/decisions/0032-accepting-extracted-facts.md).
+
+## Readiness (`readiness.py`)
+
+Scoring and tailoring stay off until `hub profile ready` passes its checklist (education with an
+expected graduation, at least 5 skills, interests or About, a readable resume, locations in
+`preferences.yaml`, a rubric; accepted resume facts count). `hub profile ready --off` switches it off
+again while you make big changes. Until it is on, `hub nightly` still ingests, reads, and filters, and
+the shortlist page says what is missing. See [ADR-0037](../../../docs/decisions/0037-profile-readiness.md).

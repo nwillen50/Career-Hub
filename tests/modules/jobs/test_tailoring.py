@@ -16,6 +16,7 @@ from careerhub.llm.fake import FakeProvider
 from careerhub.modules.jobs import NormalizedJob, store_jobs
 from careerhub.modules.jobs.filters import assess_filters
 from careerhub.modules.jobs.tailoring import (
+    PROMPT_VERSION,
     build_request,
     resume_for_model,
     tailor_job,
@@ -104,7 +105,11 @@ def test_notes_are_saved_with_provenance_and_not_redone_until_the_resume_changes
     notes = tailor_job(session, router, job, DOC, RESUME, ["m"])
     assert notes is not None and notes.lead_with == ["Your Python tool"]
     saved = session.scalars(select(Assessment)).one().tailoring
-    assert saved is not None and saved["model"] == "m:m-model" and saved["prompt_version"] == 1
+    assert (
+        saved is not None
+        and saved["model"] == "m:m-model"
+        and saved["prompt_version"] == PROMPT_VERSION
+    )
     assert tailor_job(session, router, job, DOC, RESUME, ["m"]) is None
     assert tailor_job(session, router, job, DOC, RESUME + "\nNew line of experience.", ["m"])
     assert len(provider.requests) == 2

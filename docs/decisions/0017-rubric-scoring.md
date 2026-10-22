@@ -45,3 +45,16 @@ cloud provider, no row written on a bad answer, ranking order and exclusions.
 
 - Score quality is unmeasured until the labeled set exists (CH-7, CH-68).
 - Explanations come from the model; the weekly spot check (PRD) is the guard.
+
+## Amendment (CH-114, Oct 22): prompt v2
+
+`score_job_v2.md` (jobs re-score automatically) sends every extracted posting fact except the
+nice-to-have skills, with unstated facts shown as "unknown", plus a preferences block (locations,
+remote ok, minimum salary, start window), the degree and expected graduation, and
+`also_qualified_fields`. It tells the model to treat new grad, entry level, associate, and 0 to 2
+years as equal, to count adjacent fields (physics toward engineering), to judge required skills
+generously, and to score internships like any job, saying in the explanation whether one is worth it.
+Preferred skills never reach scoring or its input hash, so they cannot change a score; they go to
+tailoring notes (`tailor_job_v2.md`: what to highlight, learn, or frame, never a requirement). The
+name and contact details are removed from the new blocks by `personal_text`. `hub profile show`
+suggests a "qualifications" rubric criterion when there is none, and never edits `rubric.yaml`.

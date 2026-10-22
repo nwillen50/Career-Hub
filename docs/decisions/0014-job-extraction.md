@@ -28,6 +28,18 @@ checked against a schema, and raw text is kept so extraction can be redone.
    characters first.
 6. The accuracy evals are CH-63; connecting real providers to the nightly run is CH-64.
 
+## Amendment (CH-98, Oct 22): prompt v2
+
+`extract_job_v2.md` adds fields about eligibility and about what the job is: `degree_required`,
+`degree_preferred`, `degree_fields`, `equivalent_experience_ok`, `graduation_earliest/latest`,
+`work_authorization`, `start_date`, `preferred_skills` (kept apart from required skills; they never
+lower a score), `summary` (2 to 3 sentences, only from the posting), and `role_focus`. All default
+to "unknown", null, or empty, so results saved with v1 still load; the version bump makes every
+posting extract again (Public tier, so a free Gemini key is fine). The answer budget grew from 700
+to 1,200 tokens. The extraction eval can state expected values for `degree_required`,
+`equivalent_experience_ok`, and `work_authorization`; those are scored only for cases that state them.
+What the fields are used for (filters, scoring) is CH-113 and CH-114.
+
 ## Evidence
 
 `tests/modules/jobs/test_extract.py`, `tests/test_prompts.py`: request shape, validation, retry and
