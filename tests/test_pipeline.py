@@ -238,6 +238,13 @@ def test_tailoring_is_silently_off_without_a_route_and_noted_without_a_resume(en
     assert any("no resume" in p for p in report.problems)
 
 
+def test_notes_are_shown_in_the_summary() -> None:
+    from careerhub.pipeline import NightlyReport
+
+    report = NightlyReport(notes=["Acme: all 7 jobs closed"])
+    assert "Note: Acme: all 7 jobs closed" in report.summary()
+
+
 def test_the_nightly_run_prunes_expired_saved_answers_and_reports_the_count(env: Any) -> None:
     engine, _ = env
     old = datetime(2025, 1, 1, tzinfo=UTC)
