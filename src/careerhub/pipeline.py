@@ -30,8 +30,8 @@ from careerhub.core.secrets import KeyStore
 from careerhub.core.settings import Settings, load_settings
 from careerhub.core.storage import session_factory
 from careerhub.llm import BudgetExceeded, PrivacyViolation
-from careerhub.llm.catalog import ollama_is_running, with_catalog
 from careerhub.llm.cache import ResponseCache
+from careerhub.llm.catalog import ollama_is_running, with_catalog
 from careerhub.llm.providers import ProviderError
 from careerhub.llm.setup import NoRoute, RouterSetup, build_router, routes_for
 from careerhub.llm.validated import ValidationFailed
