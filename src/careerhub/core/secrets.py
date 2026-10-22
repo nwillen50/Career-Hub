@@ -60,6 +60,10 @@ class KeyStore(Protocol):
         """Store `value` as the secret called `name`, replacing any existing value."""
         ...
 
+    def delete(self, name: str) -> None:
+        """Remove the secret called `name`. Removing one that doesn't exist is not an error."""
+        ...
+
 
 class KeychainKeyStore:
     """A `KeyStore` backed by the system keychain (the macOS Keychain on a Mac).
@@ -98,6 +102,18 @@ class KeychainKeyStore:
             # being stored. Only its type name is kept, in our own message.
             raise KeyStoreUnavailableError(_unavailable_message(error)) from None
 
+    def delete(self, name: str) -> None:
+        """Remove the secret called `name`; a missing one is ignored."""
+        try:
+            if self._backend is not None:
+                self._backend.delete_password(self._service, name)
+            else:
+                keyring.delete_password(self._service, name)
+        except keyring.errors.PasswordDeleteError:
+            return  # nothing stored under that name
+        except keyring.errors.KeyringError as error:
+            raise KeyStoreUnavailableError(_unavailable_message(error)) from None
+
 
 class InMemoryKeyStore:
     """A `KeyStore` that lives only in memory. For tests; secrets vanish when it does."""
@@ -117,6 +133,10 @@ class InMemoryKeyStore:
     def set(self, name: str, value: str) -> None:
         """Store `value` as the secret called `name`."""
         self._secrets[name] = value
+
+    def delete(self, name: str) -> None:
+        """Remove the secret called `name`; a missing one is ignored."""
+        self._secrets.pop(name, None)
 
 
 def new_database_key() -> str:
