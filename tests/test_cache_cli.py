@@ -63,3 +63,29 @@ def test_cache_ttl_days_defaults_to_30_and_is_validated() -> None:
     for bad in (0, -1, 10_000):
         with pytest.raises(ValidationError):
             Settings(cache_ttl_days=bad)
+
+
+def test_the_migration_gives_existing_cache_rows_a_last_used_time(tmp_path: Path) -> None:
+    from alembic import command
+    from sqlalchemy import text
+
+    from careerhub.core.migrate import _config
+    from careerhub.core.secrets import new_database_key
+    from careerhub.core.storage import open_engine
+
+    engine = open_engine(tmp_path / "old.db", new_database_key())
+    config = _config()
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "db9e23f5a551")  # the revision before last_used_at existed
+        connection.execute(
+            text(
+                "INSERT INTO llm_cache (provider, model, prompt_hash, response_text, "
+                "input_tokens, output_tokens, created_at, updated_at) "
+                "VALUES ('p', 'm', 'h', 'x', 0, 0, '2026-01-01 00:00:00', '2026-01-01 00:00:00')"
+            )
+        )
+    migrate(engine)
+    with session_factory(engine)() as session:
+        entry = session.scalars(select(LLMCacheEntry)).one()
+        assert entry.last_used_at > datetime(2026, 1, 2, tzinfo=UTC)
