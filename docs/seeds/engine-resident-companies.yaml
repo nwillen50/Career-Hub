@@ -1,0 +1,596 @@
+# The Engine's resident companies (https://engine.xyz/resident-companies), fetched 2026-10-21.
+# Public data. Import with: hub targets import docs/seeds/engine-resident-companies.yaml
+# Nothing is enabled by default; you decide which to follow.
+targets:
+- name: 100XBIO
+  sectors:
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+- name: Abselion
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - MOBILITY
+- name: Accure Health
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - APPLIED AI & ML
+- name: ACORN
+  sectors:
+  - APPLIED AI & ML
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - COMPUTING
+  - ENERGY
+- name: Adiabatic Machines
+  sectors:
+  - COMPUTING
+- name: AeroShield Materials
+  sectors:
+  - CLIMATE
+  - ENERGY
+  - MANUFACTURING
+  - MATERIALS
+- name: Altrusion
+  sectors:
+  - CLIMATE
+  - ENERGY
+  - MANUFACTURING
+- name: Anthology
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Anvil Diagnostics
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - APPLIED AI & ML
+- name: Apeiron Labs
+  sectors:
+  - WATER / OCEANS
+  - NATURAL RESOURCES
+  - CLIMATE
+  - APPLIED AI & ML
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+- name: Apidae Forms
+  sectors:
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - CLIMATE
+- name: Apollo Generators
+  sectors:
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - ENERGY
+  - MANUFACTURING
+  - WATER / OCEANS
+- name: Aquinnah Pharmaceuticals
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: AshGen
+  sectors:
+  - CLIMATE
+  - MATERIALS
+- name: Atlantic Quantum
+  sectors:
+  - QUANTUM COMPUTING
+- name: AutonomUS
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - APPLIED AI & ML
+- name: Axella Bio
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+  - MANUFACTURING
+- name: Axiomatic AI
+  sectors:
+  - APPLIED AI & ML
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - COMPUTING
+  - MATERIALS
+  - QUANTUM COMPUTING
+  - SPACE
+- name: Axoft
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+  - MATERIALS
+- name: Axoniverse
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - COMPUTING
+- name: B.A.I. Biosciences
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - COMPUTING
+  - APPLIED AI & ML
+- name: BioBot Analytics
+  sectors:
+  - MOBILITY
+  - WATER / OCEANS
+- name: Biocloner Health
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - MATERIALS
+- name: BioDevek
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - MATERIALS
+- name: Bioqore
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+  - MANUFACTURING
+- name: BioSens8
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - APPLIED AI & ML
+- name: BlueShift
+  sectors:
+  - APPLIED AI & ML
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - NATURAL RESOURCES
+- name: Boston Metal
+  sectors:
+  - CLIMATE
+  - MANUFACTURING
+- name: Brightlight Photonics
+  sectors:
+  - COMPUTING
+  - MATERIALS
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - QUANTUM COMPUTING
+- name: Butlr
+  sectors:
+  - APPLIED AI & ML
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - COMPUTING
+- name: Cambridge Heavy Industries
+  sectors:
+  - ENERGY
+  - MATERIALS
+- name: CaviSense
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Cellbricks Therapeutics
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Cellino
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+  - MANUFACTURING
+- name: CemCycle
+  sectors:
+  - CARBON CAPTURE / CCUS
+  - CLIMATE
+  - ENERGY
+  - FOOD / AGRICULTURE
+  - MATERIALS
+- name: Cerberus Therapeutics
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Clenersys
+  sectors:
+  - CLIMATE
+  - ENERGY
+  - CARBON CAPTURE / CCUS
+- name: Coalesenz
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Coastal Assembly
+  sectors:
+  - APPLIED AI & ML
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - CLIMATE
+  - WATER / OCEANS
+- name: Commonwealth Fusion Systems
+  sectors:
+  - ENERGY
+  - CLIMATE
+- name: Concerto Biosciences
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - APPLIED AI & ML
+- name: Concordance Therapeutics
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Copernic Catalysts
+  sectors:
+  - CLIMATE
+  - MANUFACTURING
+  - ENERGY
+- name: Criocore
+  sectors:
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - BIOTECH / LIFE SCIENCES
+- name: Cypher AI
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+- name: DataEnergy
+  sectors:
+  - ENERGY
+- name: Deco Labs
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - CLIMATE
+  - FOOD / AGRICULTURE
+- name: Diffraqtion
+  sectors:
+  - SPACE
+- name: DropGenie
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - MATERIALS
+- name: Droplet Biosciences
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Drūl
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Emvolon
+  sectors:
+  - CLIMATE
+  - ENERGY
+- name: Encora Therapeutics
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+- name: Evoworks Bio
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+  - MANUFACTURING
+  - NATURAL RESOURCES
+- name: Foray
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - CLIMATE
+  - MANUFACTURING
+  - MATERIALS
+  - NATURAL RESOURCES
+- name: Foregger Energy Solutions
+  sectors:
+  - CLIMATE
+  - ENERGY
+  - MOBILITY
+- name: Form Energy
+  sectors:
+  - ENERGY
+  - MATERIALS
+  - CLIMATE
+- name: Foundation Alloy
+  sectors:
+  - MANUFACTURING
+  - MATERIALS
+- name: Fourier
+  sectors:
+  - MATERIALS
+- name: Gander Robotics
+  sectors:
+  - APPLIED AI & ML
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - WATER / OCEANS
+- name: GiwoTech
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+- name: Harton Therapeutics
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - MANUFACTURING
+- name: Helix Carbon
+  sectors:
+  - CARBON CAPTURE / CCUS
+  - CLIMATE
+- name: Hyperion Biosystems
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+  - MATERIALS
+- name: HyperSpectral
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+  - COMPUTING
+- name: ISEE AI
+  sectors:
+  - APPLIED AI & ML
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - COMPUTING
+- name: Kykloris
+  sectors:
+  - WATER / OCEANS
+  - MANUFACTURING
+  - MATERIALS
+  - CLIMATE
+  - FOOD / AGRICULTURE
+  - NATURAL RESOURCES
+- name: Kytopen
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Lightfinder
+  sectors:
+  - APPLIED AI & ML
+  - MANUFACTURING
+  - MATERIALS
+- name: Lithios
+  sectors:
+  - CLIMATE
+  - NATURAL RESOURCES
+- name: LIV Process
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Lydian
+  sectors:
+  - ENERGY
+  - CLIMATE
+- name: MacroCycle Technologies
+  sectors:
+  - MATERIALS
+  - CLIMATE
+- name: Malstrom Molecules
+  sectors:
+  - CLIMATE
+  - ENERGY
+  - MANUFACTURING
+  - NATURAL RESOURCES
+  - MATERIALS
+- name: Mantel
+  sectors:
+  - CLIMATE
+  - CARBON CAPTURE / CCUS
+- name: Materialize Bio
+  sectors:
+  - MATERIALS
+  - BIOTECH / LIFE SCIENCES
+  - MANUFACTURING
+- name: MAV Unlimited
+  sectors:
+  - MANUFACTURING
+  - MATERIALS
+- name: Merida Biosciences
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: MicroQuin
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Möbius Industries
+  sectors:
+  - MATERIALS
+  - MANUFACTURING
+  - NATURAL RESOURCES
+  - CLIMATE
+- name: Molariti
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Morphitectica
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+  - COMPUTING
+  - MANUFACTURING
+  - SPACE
+  - NATURAL RESOURCES
+  - MATERIALS
+- name: Multiply Labs
+  sectors:
+  - APPLIED AI & ML
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - BIOTECH / LIFE SCIENCES
+- name: Nanopath
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Neoclease
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+- name: Nervoid
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+- name: Noble Carbon
+  sectors:
+  - ENERGY
+- name: Northwood Space
+  sectors:
+  - SPACE
+- name: Notch
+  sectors:
+  - APPLIED AI & ML
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - MATERIALS
+  - SPACE
+  - MOBILITY
+- name: OpenStar Technologies
+  sectors:
+  - CLIMATE
+  - ENERGY
+- name: Orgagen Biosciences
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Osmoses
+  sectors:
+  - CLIMATE
+  - MATERIALS
+- name: Overpotential
+  sectors:
+  - APPLIED AI & ML
+  - FOOD / AGRICULTURE
+  - MANUFACTURING
+  - MATERIALS
+- name: Oxbridge Clinical
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+- name: Oxyverse
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+- name: Pascal
+  sectors:
+  - ENERGY
+  - CLIMATE
+  - MATERIALS
+- name: Pearl Bio
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Phare Bio
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+  - NATURAL RESOURCES
+- name: Predicta Biosciences
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Quaise
+  sectors:
+  - ENERGY
+  - CLIMATE
+- name: Quantum Formatics
+  sectors:
+  - APPLIED AI & ML
+  - COMPUTING
+  - MATERIALS
+- name: Quantum Machines
+  sectors:
+  - QUANTUM COMPUTING
+- name: Rehydrate
+  sectors:
+  - CLIMATE
+  - NATURAL RESOURCES
+- name: Resonant Link Medical
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - MOBILITY
+- name: RevivBio
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Rheyo
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - MATERIALS
+- name: RISE Robotics
+  sectors:
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - CLIMATE
+  - MOBILITY
+- name: Robigo
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - FOOD / AGRICULTURE
+- name: Rock Zero
+  sectors:
+  - CLIMATE
+  - NATURAL RESOURCES
+- name: Roebling Labs
+  sectors:
+  - APPLIED AI & ML
+  - COMPUTING
+  - NATURAL RESOURCES
+- name: rStream
+  sectors:
+  - CLIMATE
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - MATERIALS
+- name: Rubik Therapeutics
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Seabased
+  sectors:
+  - CLIMATE
+  - ENERGY
+  - WATER / OCEANS
+- name: Seaspire Skincare
+  sectors:
+  - WATER / OCEANS
+  - BIOTECH / LIFE SCIENCES
+  - MATERIALS
+- name: Seia Bio
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: SiTration
+  sectors:
+  - ENERGY
+  - NATURAL RESOURCES
+- name: Solvanic
+  sectors:
+  - CLIMATE
+  - CARBON CAPTURE / CCUS
+- name: Sora Fuel
+  sectors:
+  - ENERGY
+  - CLIMATE
+- name: STRM.BIO
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Sublime Systems
+  sectors:
+  - CLIMATE
+  - NATURAL RESOURCES
+  - MANUFACTURING
+- name: Sutol Bio
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: TenSixty Bio
+  sectors:
+  - APPLIED AI & ML
+  - BIOTECH / LIFE SCIENCES
+- name: Teradar
+  sectors:
+  - APPLIED AI & ML
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - MOBILITY
+- name: Teragen Energy
+  sectors:
+  - ENERGY
+  - CLIMATE
+- name: Terrestial Bio
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Tessel Bio
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Ubicept
+  sectors:
+  - APPLIED AI & ML
+- name: UbiquiTx
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - APPLIED AI & ML
+- name: Venova Technologies
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Ventum
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - MANUFACTURING
+- name: Via Separations
+  sectors:
+  - MANUFACTURING
+  - MATERIALS
+  - CLIMATE
+- name: VioNano
+  sectors:
+  - MATERIALS
+  - COMPUTING
+- name: Voluna
+  sectors:
+  - AUTONOMOUS SYSTEMS / ROBOTICS
+  - CLIMATE
+  - ENERGY
+  - MATERIALS
+  - SPACE
+  - NATURAL RESOURCES
+- name: Wild Microbes
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+  - MANUFACTURING
+- name: XGenomes
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Zag Bio
+  sectors:
+  - BIOTECH / LIFE SCIENCES
+- name: Zapata Quantum
+  sectors:
+  - APPLIED AI & ML
+  - QUANTUM COMPUTING
