@@ -2,34 +2,55 @@
 
 from __future__ import annotations
 
+import getpass
 import sys
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
+from typing import TextIO
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy.orm import Session
 
+from careerhub.core.companies import find_companies
 from careerhub.core.migrate import migrate
 from careerhub.core.models import utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore, SecretsError
 from careerhub.core.settings import SettingsError, load_settings
 from careerhub.core.storage import StorageError, open_database, session_factory
+from careerhub.llm.cache import ResponseCache
+from careerhub.llm.commands import (
+    models_add,
+    models_add_custom,
+    models_list,
+    models_remove,
+    models_routes,
+)
 from careerhub.modules.jobs import (
     FetchError,
     SourceNotApproved,
     UnknownSource,
     approve_source,
     disable_source,
-    ingest_greenhouse,
     list_sources,
     propose_source,
     reject_source,
 )
+from careerhub.modules.jobs.adapters import ADAPTERS, BOARD_KINDS
+from careerhub.modules.jobs.manual import ManualJobError, add_job, classify, guess_from_link
+from careerhub.modules.jobs.targets import (
+    TargetsError,
+    load_targets,
+    matches_interests,
+    merge_import,
+    read_targets,
+    save_targets,
+    set_enabled,
+)
 from careerhub.modules.network import (
     UnknownPerson,
-    find_company,
     find_people,
     import_alumni,
     tag_person,
@@ -38,14 +59,17 @@ from careerhub.modules.network import (
 from careerhub.modules.plan import suggest_week
 from careerhub.modules.plan.ics import IcsError
 from careerhub.pipeline import run_nightly
-from careerhub.profile.files import ProfileFileError, load_preferences
+from careerhub.profile.extract import ProfileFacts
+from careerhub.profile.facts import UnknownExtraction, decide, facts_text, pending
+from careerhub.profile.files import ProfileFileError, load_preferences, load_profile_doc
+from careerhub.profile.models import ProfileDoc
 from careerhub.profile.profile import Profile, format_profile, load_profile
 from careerhub.schedule import install_plist, launchctl_commands
 from careerhub.web.shortlist import write_shortlist
 
 USAGE = """Usage:
   hub profile show
-  hub ingest greenhouse --company <board>   (the source must be approved)
+  hub ingest greenhouse|lever|ashby --company <board>   (the source must be approved)
   hub plan                                   (suggested blocks for the next 7 days)
   hub paths <company>                        (who you know there, strongest first)
   hub people find <text>                     (by name or company)
@@ -53,9 +77,22 @@ USAGE = """Usage:
   hub people import-alumni <file.csv>
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
+  hub targets import <file> | list | enable <name>... | disable <name>... | enable-matching
+                          (companies you follow; the Engine list is in docs/seeds)
+  hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
+                                             are never requested; text can also come from stdin)
+  hub models list | routes
+  hub models add <anthropic|openai|gemini --tier free|paid|local|preset>   (asks for the key)
+  hub models remove <same names>
+  hub models add-custom <name> <kind> <model> [--base-url U] [--input N] [--output N]
+                        [--trains-on-data]
+  hub cache clear [--expired]               (delete saved model answers; prints how many)
+  hub profile facts                         (what was read from your resume and transcript)
+  hub profile facts accept <number|all> | reject <number>
   hub shortlist build                        (write the shortlist page)
   hub sources list
   hub sources add <kind> <name> <url>     (saved as proposed; nothing is fetched yet)
+    for themuse also: --category <c> --level <l> --location <l> --pages <n>
   hub sources approve|reject|disable <id>"""
 
 
@@ -64,11 +101,18 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     store = store or KeychainKeyStore()
     try:
+        if args[:2] == ["profile", "facts"]:
+            return _with_session(store, lambda s: _profile_facts(s, args[2:]))
         if args == ["profile", "show"]:
             print(format_profile(_load_profile(store)))
             return 0
-        if len(args) == 4 and args[:2] == ["ingest", "greenhouse"] and args[2] == "--company":
-            return _with_session(store, lambda s: _ingest(s, args[3]))
+        if (
+            len(args) == 4
+            and args[0] == "ingest"
+            and args[1] in ADAPTERS
+            and args[2] == "--company"
+        ):
+            return _with_session(store, lambda s: _ingest(s, args[3], kind=args[1]))
         if args == ["plan"]:
             return _with_session(store, _plan)
         if args[:1] == ["paths"] and len(args) >= 2:
@@ -83,12 +127,22 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _schedule_install()
         if args == ["nightly"]:
             return _nightly(store)
+        if args[:1] == ["targets"] and len(args) >= 2:
+            return _targets(args[1:])
+        if args[:1] == ["add-job"] and len(args) >= 2 and len(args) % 2 == 0:
+            return _with_session(store, lambda s: _add_job(s, args[1], args[2:]))
+        if args[:1] == ["models"] and len(args) >= 2:
+            return _models(store, args[1:])
+        if args[:2] == ["cache", "clear"] and args[2:] in ([], ["--expired"]):
+            return _cache_clear(store, expired_only=bool(args[2:]))
         if args == ["shortlist", "build"]:
             return _with_session(store, _shortlist_build)
         if args[:2] == ["sources", "list"] and len(args) == 2:
             return _with_session(store, _sources_list)
-        if args[:2] == ["sources", "add"] and len(args) == 5:
-            return _with_session(store, lambda s: _sources_add(s, *args[2:]))
+        if args[:2] == ["sources", "add"] and len(args) >= 5 and len(args) % 2 == 1:
+            return _with_session(
+                store, lambda s: _sources_add(s, args[2], args[3], args[4], args[5:])
+            )
         if len(args) == 3 and args[0] == "sources" and args[1] in _DECISIONS and args[2].isdigit():
             return _with_session(store, lambda s: _sources_decide(s, args[1], int(args[2])))
     except (ProfileFileError, SettingsError) as error:
@@ -144,10 +198,15 @@ def _plan(session: Session) -> int:
 
 
 def _paths(session: Session, company_text: str) -> int:
-    company = find_company(session, company_text)
-    if company is None:
+    matches = find_companies(session, company_text)
+    if len(matches) > 1:
+        print(f"{company_text!r} matches several companies; be more specific:")
+        print("\n".join(f"  {c.name}" for c in matches))
+        return 1
+    if not matches:
         print(f"No company matching {company_text!r}.")
         return 1
+    company = matches[0]
     paths = warm_paths(session, company.id, limit=10)
     print(f"{company.name}:")
     for path in paths:
@@ -214,6 +273,188 @@ def _nightly(store: KeyStore) -> int:
     return 1 if any(p.startswith("run failed") for p in report.problems) else 0
 
 
+def _targets(args: list[str]) -> int:
+    """Run a `hub targets ...` command on `targets.yaml` (no network, no database)."""
+    try:
+        targets = load_targets()
+        if args[0] == "import" and len(args) == 2:
+            merged, added = merge_import(targets, read_targets(Path(args[1])))
+            save_targets(merged)
+            followed = sum(t.enabled for t in merged)
+            print(f"Added {added} companies (disabled). You follow {followed}.")
+            return 0
+        if args[0] == "list" and len(args) == 1:
+            for target in targets:
+                board = f"{target.board_kind}:{target.board}" if target.board else "board unknown"
+                mark = "x" if target.enabled else " "
+                sectors = ", ".join(target.sectors) or "no sectors"
+                print(f"[{mark}] {target.name} ({sectors}); {board}")
+            print(f"{len(targets)} companies, {sum(t.enabled for t in targets)} followed.")
+            return 0
+        if args[0] in ("enable", "disable") and len(args) >= 2:
+            unknown = set_enabled(targets, args[1:], args[0] == "enable")
+            save_targets(targets)
+            for name in unknown:
+                print(f"No target named {name!r}.")
+            return 1 if unknown else 0
+        if args[0] == "enable-matching" and len(args) == 1:
+            doc = load_profile_doc()
+            if doc is None or not doc.interests:
+                print("Add interests to profile.md first.")
+                return 1
+            hits = [t for t in targets if matches_interests(t, doc.interests)]
+            for target in hits:
+                target.enabled = True
+            save_targets(targets)
+            print(f"Now following {len(hits)} companies whose sectors match your interests:")
+            print("\n".join(f"  {t.name}" for t in hits))
+            return 0
+    except (TargetsError, ProfileFileError) as error:
+        print(error)
+        return 1
+    print(USAGE)
+    return 2
+
+
+def _add_job(
+    session: Session,
+    url: str,
+    options: list[str],
+    client: httpx.Client | None = None,
+    stdin: TextIO | None = None,
+    ask: Callable[[str], str] = input,
+) -> int:
+    """Add a job from its link (see `modules/jobs/manual.py`); asks only for what is missing."""
+    stdin = stdin or sys.stdin
+    flags = dict(zip(options[::2], options[1::2], strict=True))
+    if not set(flags) <= {"--company", "--title", "--text-file"}:
+        print(USAGE)
+        return 2
+    company, title = flags.get("--company"), flags.get("--title")
+    if classify(url) is None:
+        guess = guess_from_link(url)
+        if guess and not title:
+            title = title or guess[0]
+        if guess and not company:
+            company = guess[1]
+        if stdin.isatty():
+            company = company or ask("Company: ").strip() or None
+            title = title or ask("Job title: ").strip() or None
+    text: str | None = None
+    try:
+        try:
+            result = add_job(session, url, company, title, None, client)
+        except ManualJobError:
+            if "--text-file" in flags:
+                text = Path(flags["--text-file"]).read_text(encoding="utf-8")
+            elif not stdin.isatty():
+                text = stdin.read()
+            result = add_job(session, url, company, title, text, client)
+    except (ManualJobError, OSError) as error:
+        print(f"Couldn't add the job. {error}")
+        return 1
+    print(f"Added #{result.job.id} {result.job.title}: {result.how}. Run `hub nightly` to rank it.")
+    return 0
+
+
+#: The `--flag value` options `hub models` accepts.
+_MODEL_FLAGS = frozenset({"tier", "base_url", "input", "output"})
+
+
+def _flags(args: list[str]) -> tuple[list[str], dict[str, str | bool]] | None:
+    """Split `args` into plain words and `--flag value` pairs; None if a flag is malformed."""
+    words: list[str] = []
+    flags: dict[str, str | bool] = {}
+    i = 0
+    while i < len(args):
+        if args[i] == "--trains-on-data":
+            flags["trains_on_data"] = True
+        elif args[i].startswith("--"):
+            name = args[i][2:].replace("-", "_")
+            # An unknown flag is an error: dropping a mistyped --trains-on-data would silently
+            # save the less restrictive value.
+            if name not in _MODEL_FLAGS or i + 1 >= len(args):
+                return None
+            flags[name] = args[i + 1]
+            i += 1
+        else:
+            words.append(args[i])
+        i += 1
+    return words, flags
+
+
+def _models(store: KeyStore, args: list[str]) -> int:
+    """Run a `hub models ...` command."""
+    parsed = _flags(args[1:])
+    if parsed is None:
+        print(USAGE)
+        return 2
+    words, flags = parsed
+    tier = flags.get("tier")
+    tier = tier if isinstance(tier, str) else None
+    secret = lambda prompt: getpass.getpass(prompt)  # noqa: E731  (hidden input, never echoed)
+    if args[0] == "list" and not words:
+        return models_list(store, date.today())
+    if args[0] == "routes" and not words:
+        return models_routes(load_settings(), store)
+    if args[0] in ("add", "remove") and len(words) == 1:
+        if args[0] == "add":
+            return models_add(store, words[0], tier, secret)
+        return models_remove(store, words[0], tier, input)
+    if args[0] == "add-custom" and len(words) == 3:
+        options: dict[str, str | bool] = {
+            "name": words[0],
+            "kind": words[1],
+            "model": words[2],
+            **flags,
+        }
+        return models_add_custom(store, load_settings(), options, secret)
+    print(USAGE)
+    return 2
+
+
+def _cache_clear(store: KeyStore, expired_only: bool) -> int:
+    """Delete saved model answers (only the expired ones with `--expired`) and print the count."""
+    engine = open_database(store)
+    migrate(engine)
+    cache = ResponseCache(session_factory(engine), load_settings().cache_ttl_days)
+    removed = cache.prune() if expired_only else cache.clear()
+    print(f"Removed {removed} saved model {'answer' if removed == 1 else 'answers'}.")
+    return 0
+
+
+def _profile_facts(session: Session, args: list[str]) -> int:
+    """List pending facts, or accept or reject one (nothing counts until accepted)."""
+    if not args:
+        rows = pending(session)
+        for row in rows:
+            print(f"#{row.id} from your {row.kind} (read by {row.model_used}):")
+            facts = ProfileFacts.model_validate(row.facts)
+            shown = facts_text(facts, ProfileDoc(name="")) or "(nothing found)"
+            print("  " + shown.replace("\n", "\n  "))
+        if not rows:
+            print("No facts are waiting for review.")
+        else:
+            print("Accept with `hub profile facts accept <number|all>` or `reject <number>`.")
+        return 0
+    if args[0] == "accept" and len(args) == 2 and (args[1] == "all" or args[1].isdigit()):
+        ids = [r.id for r in pending(session)] if args[1] == "all" else [int(args[1])]
+        accept = True
+    elif args[0] == "reject" and len(args) == 2 and args[1].isdigit():
+        ids, accept = [int(args[1])], False
+    else:
+        print(USAGE)
+        return 2
+    try:
+        for extraction_id in ids:
+            decide(session, extraction_id, accept)
+    except UnknownExtraction as error:
+        print(error)
+        return 1
+    print(f"{'Accepted' if accept else 'Rejected'} {len(ids)} set(s) of facts.")
+    return 0
+
+
 def _shortlist_build(session: Session) -> int:
     path = write_shortlist(session, utcnow())
     print(f"Wrote {path}. Open it in your browser and bookmark it.")
@@ -229,9 +470,17 @@ def _sources_list(session: Session) -> int:
     return 0
 
 
-def _sources_add(session: Session, kind: str, name: str, url: str) -> int:
-    # A Greenhouse board's name is the last part of its address.
-    config = {"board": urlparse(url).path.strip("/").split("/")[-1]} if kind == "greenhouse" else {}
+def _sources_add(
+    session: Session, kind: str, name: str, url: str, options: list[str] | None = None
+) -> int:
+    # A board's name is the last part of its address (jobs.lever.co/acme, jobs.ashbyhq.com/acme).
+    config = {"board": urlparse(url).path.strip("/").split("/")[-1]} if kind in BOARD_KINDS else {}
+    pairs = options or []
+    for flag, value in zip(pairs[::2], pairs[1::2], strict=True):
+        if kind != "themuse" or flag not in ("--category", "--level", "--location", "--pages"):
+            print(f"Option {flag!r} is not valid for {kind}.")
+            return 2
+        config[flag[2:]] = value
     source = propose_source(session, kind, name, url, config)
     print(
         f"Source {source.id} is {source.status}. Approve it with: hub sources approve {source.id}"
@@ -239,21 +488,21 @@ def _sources_add(session: Session, kind: str, name: str, url: str) -> int:
     return 0
 
 
-def _ingest(session: Session, board: str, client: httpx.Client | None = None) -> int:
-    """Fetch one approved Greenhouse source, found by its board name."""
+def _ingest(
+    session: Session, board: str, client: httpx.Client | None = None, kind: str = "greenhouse"
+) -> int:
+    """Fetch one approved source of `kind` (greenhouse, lever, or ashby) by its board name."""
     sources = [
-        s
-        for s in list_sources(session)
-        if s.kind == "greenhouse" and s.config.get("board") == board
+        s for s in list_sources(session) if s.kind == kind and s.config.get("board") == board
     ]
     if not sources:
         print(
-            f"No Greenhouse source for {board!r}. Add one with: "
-            f"hub sources add greenhouse <name> https://boards.greenhouse.io/{board}"
+            f"No {kind} source for {board!r}. Add one with: "
+            f"hub sources add {kind} <name> <the board's address>"
         )
         return 1
     try:
-        report = ingest_greenhouse(session, sources[0], client)
+        report = ADAPTERS[kind](session, sources[0], client)
     except SourceNotApproved as error:
         print(error)
         return 1

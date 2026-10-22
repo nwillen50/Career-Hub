@@ -26,6 +26,15 @@ Step 4 is done when one company's postings are in the database and a rerun adds 
 5. `stale` is defined in the schema but set by a later ticket (reposted or open unusually long).
 6. The shared `company_key` helper moved to `careerhub.core.names`.
 
+## Amendment (CH-95, Oct 22): partial listings
+
+A search API (The Muse) never returns every job, so its source is **partial**: `store_jobs(...,
+partial=True)` does not close a job for being missing from one night's results. A partial source's
+job closes only when it has not been seen for 14 days (`PARTIAL_CLOSE_DAYS`), and reopens if it
+returns. An empty search from a partial source is normal, not a "glitch" (the ingest rule that keeps
+jobs open and marks the source failing applies to complete listings only). Whether the API reports a
+job as gone is not used yet.
+
 ## Evidence
 
 `tests/modules/jobs/test_store.py`: new, rerun, close, reopen, cross-source linking, different

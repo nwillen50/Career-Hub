@@ -65,3 +65,37 @@ criteria:
 ```
 
 See [ADR-0009](../../../docs/decisions/0009-profile-assembly.md).
+
+## Reading documents (`documents.py`)
+
+`read_document(path)` returns a document's text, format, page count, and problems. It reads `.tex`,
+`.pdf`, `.docx`, `.txt`, and `.md` anywhere, and `.doc`, `.rtf`, `.odt` on a Mac (through
+`textutil`). `.pages` and scanned PDFs come back with a problem that says what to do. It never
+raises on a bad file and never quotes the document in a problem. `inputs/resume/` and `inputs/transcript/`
+each take one file of any supported type. See [ADR-0030](../../../docs/decisions/0030-document-reader.md).
+
+## Text sent to models (`redact.py`)
+
+Anything of the user's own that goes into a Personal-tier prompt (profile text, resume, and later
+profile extraction) passes through `personal_text`: emails, links, and phone numbers become
+`[email]`, `[link]`, `[phone]`, and the name becomes `[name]`. Names match whole words only. List
+nicknames and handles in `profile.md` front matter under `aliases:` (for example `["Nick",
+"nwillen50"]`) and they are removed too.
+
+`redact.transcript_text` is for transcripts: it also removes student ID numbers, birth dates,
+SSN-shaped numbers, and street addresses before contacts and the name. `hub profile show` reports
+only each document's format, page count, and character count, plus any reader problems.
+
+## Understanding the documents (`extract.py`)
+
+The nightly run (when a `profile_extract` route exists) reads the current resume and transcript with
+a Personal-tier model after redaction, and saves what it found as **pending** facts, keyed by the
+file's hash so an unchanged file is never read twice. Nothing counts until the user accepts it
+(review commands: CH-110). See [ADR-0031](../../../docs/decisions/0031-profile-extraction.md).
+
+### Reviewing facts (`facts.py`)
+
+`hub profile facts` lists what was read; `hub profile facts accept <n|all>` or `reject <n>` decides.
+Accepted facts (newest per document) are added to the profile text for scoring and tailoring, after
+redaction; what you typed in `profile.md` wins. See
+[ADR-0032](../../../docs/decisions/0032-accepting-extracted-facts.md).

@@ -2,7 +2,9 @@
 
 `complete_validated` asks for JSON, checks it against a Pydantic schema, and if the answer is
 invalid asks the same model once more (telling it what was wrong). If that fails too, it moves to
-the next, stronger provider in `routes` and repeats. Every attempt goes through
+the next, stronger provider in `routes` and repeats. A provider that is down, rate limited, or
+paused by the monthly budget is skipped the same way (noted in `router.skipped`, as a type name
+only); if no provider can answer, the last such error is raised. Every attempt goes through
 `Router.complete`, so the privacy check applies to every provider tried: escalating a Sensitive
 call to a cloud provider raises `PrivacyViolation` rather than being skipped.
 """
@@ -16,6 +18,8 @@ from dataclasses import replace
 
 from pydantic import BaseModel, ValidationError
 
+from careerhub.llm.cost import BudgetExceeded
+from careerhub.llm.providers import ProviderError
 from careerhub.llm.router import Router
 from careerhub.llm.types import LLMRequest, LLMResponse
 
@@ -92,12 +96,18 @@ def complete_validated_detailed[T: BaseModel](
     if not routes:
         raise ValueError("routes must name at least one provider")
     problems: list[str] = []
+    unavailable: ProviderError | BudgetExceeded | None = None
     for name in routes:
         current = request
         for _ in range(retries + 1):
-            response = router.complete(
-                current, name, accept=lambda r: _is_valid(r.text, schema, check)
-            )
+            try:
+                response = router.complete(
+                    current, name, accept=lambda r: _is_valid(r.text, schema, check)
+                )
+            except (ProviderError, BudgetExceeded) as error:
+                router.skipped.append(f"{name}: {type(error).__name__}")
+                unavailable = error
+                break  # try the next provider
             try:
                 parsed = _parse(response.text, schema)
                 if check is not None:
@@ -113,4 +123,6 @@ def complete_validated_detailed[T: BaseModel](
                         "Reply with only valid JSON that matches the requested format."
                     ),
                 )
+    if unavailable is not None and not problems:
+        raise unavailable
     raise ValidationFailed("No valid answer. " + " | ".join(problems))
