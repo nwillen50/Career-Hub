@@ -15,7 +15,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import and_, or_, select
@@ -60,10 +60,23 @@ def dedupe_key(company_name: str, title: str, location: str | None) -> str:
     return hashlib.sha256(parts.encode()).hexdigest()
 
 
+#: A job from a search (partial) source closes after this many days without being seen.
+PARTIAL_CLOSE_DAYS = 14
+
+
 def store_jobs(
-    session: Session, source: Source, jobs: list[NormalizedJob], now: datetime | None = None
+    session: Session,
+    source: Source,
+    jobs: list[NormalizedJob],
+    now: datetime | None = None,
+    partial: bool = False,
 ) -> IngestReport:
-    """Save a complete listing from `source`. Safe to repeat: a rerun adds no duplicates."""
+    """Save a listing from `source`. Safe to repeat: a rerun adds no duplicates.
+
+    Normally the listing is complete, so a job missing from it is closed. With `partial=True` (a
+    search API that never lists everything, ADR-0011), nothing is closed because it is missing;
+    a job closes only after `PARTIAL_CLOSE_DAYS` days without being seen again.
+    """
     now = now or utcnow()
     existing = {
         job.external_id: job
@@ -108,8 +121,11 @@ def store_jobs(
         new += 1
         duplicates += original is not None
     closed = 0
+    cutoff = now - timedelta(days=PARTIAL_CLOSE_DAYS)
     for external_id, job in existing.items():
-        if external_id not in listed and job.status != "closed":
+        if external_id in listed or job.status == "closed":
+            continue
+        if not partial or job.last_seen_at <= cutoff:
             job.status = "closed"
             closed += 1
     session.commit()

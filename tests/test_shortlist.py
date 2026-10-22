@@ -194,3 +194,18 @@ def test_gather_attaches_the_two_strongest_contacts(session: Session) -> None:
     session.commit()
     contacts = gather_shortlist(session).entries[0].contacts
     assert [c.name for c in contacts] == ["Cat", "Ann"]
+
+
+def test_jobs_from_the_muse_say_so_and_others_do_not(session: Session) -> None:
+    seed(session, 2)  # a Greenhouse source
+    muse = Source(kind="themuse", name="The Muse", url="https://www.themuse.com", status="approved")
+    session.add(muse)
+    session.commit()
+    store_jobs(session, muse, [NormalizedJob("Globex", "m1", "Muse Job", "https://m/1", "NYC")])
+    job = session.scalars(select(Job).where(Job.title == "Muse Job")).one()
+    session.add(Assessment(job_id=job.id, filter_passed=True, fit_score=99.0, explanation="x"))
+    session.commit()
+    entries = {e.title: e for e in gather_shortlist(session).entries}
+    assert entries["Muse Job"].via == "via The Muse" and entries["Job 1"].via is None
+    html = render_shortlist(ShortlistData([entries["Muse Job"]], NOW), NOW)
+    assert "Globex · NYC · via The Muse" in html

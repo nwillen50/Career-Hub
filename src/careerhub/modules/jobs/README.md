@@ -15,6 +15,7 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | `greenhouse` | Fetch a company's public board; `hub ingest greenhouse` | CH-60 | Built |
 | `lever` | Same for Lever (`api.lever.co`); `hub ingest lever` | CH-93 | Built |
 | `ashby` | Same for Ashby (`api.ashbyhq.com`), with stated pay added to the text; `hub ingest ashby` | CH-94 | Built |
+| `muse` | The Muse search (partial listing; shortlist says "via The Muse"); `themuse` sources | CH-95 | Built |
 | `ingest`, `adapters` | The shared fetch-and-store routine and the adapter registry | CH-93 | Built |
 
 An adapter turns its feed into `NormalizedJob`s and calls `store_jobs(session, source, jobs)` with
@@ -44,6 +45,13 @@ kind is in `adapters.ADAPTERS`. The response shape was built from Lever's public
 `hub ingest ashby --company acme`. When a posting states a salary, a "Compensation" line is added to
 its text so extraction and the salary filter see it. Unlisted postings are skipped. Shape built from
 Ashby's public documentation (not checked against a live board from the build environment).
+
+## The Muse
+
+`hub sources add themuse "The Muse" https://www.themuse.com --level "Entry Level" --category
+"Software Engineering" --pages 3` (also `--location`), then approve it. It is a **partial** source: jobs missing from tonight's search stay open and
+close only after 14 days unseen. Every job keeps its Muse address and the page credits "via The
+Muse". The nightly run searches it with the other sources. See ADR-0010 and ADR-0011's amendment.
 
 ## Greenhouse
 
