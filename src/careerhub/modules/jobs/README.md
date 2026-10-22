@@ -13,6 +13,11 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | `filters` | Hard filters (companies, title words, locations, salary) with reasons | CH-66 | Built |
 | `evals` | `run_extraction_eval`: per-field accuracy against hand-checked postings | CH-63 | Built |
 | `greenhouse` | Fetch a company's public board; `hub ingest greenhouse` | CH-60 | Built |
+| `lever` | Same for Lever (`api.lever.co`); `hub ingest lever` | CH-93 | Built |
+| `ashby` | Same for Ashby (`api.ashbyhq.com`), with stated pay added to the text; `hub ingest ashby` | CH-94 | Built |
+| `muse` | The Muse search (partial listing; shortlist says "via The Muse"); `themuse` sources | CH-95 | Built |
+| `manual` | `hub add-job <url>`: a link from an ATS, or any site with pasted text | CH-96 | Built |
+| `ingest`, `adapters` | The shared fetch-and-store routine and the adapter registry | CH-93 | Built |
 
 An adapter turns its feed into `NormalizedJob`s and calls `store_jobs(session, source, jobs)` with
 the source's **complete** listing. A rerun adds no duplicates; postings that disappear are marked
@@ -25,6 +30,38 @@ Sources start `proposed`. Only `approve_source` (via `hub sources approve <id>`)
 and fetching code must call `require_approved` first. Commands: `hub sources list`,
 `hub sources add <kind> <name> <url>`, `hub sources approve|reject|disable <id>`.
 See [ADR-0012](../../../../docs/decisions/0012-source-approval.md).
+
+## Lever
+
+`hub sources add lever Acme https://jobs.lever.co/acme`, then `hub sources approve <id>`, then
+`hub ingest lever --company acme`. Companies on Lever's European site add `"region": "eu"` to the
+source's config. Same rules as Greenhouse: a failed fetch changes nothing, and an empty listing for
+a board that had jobs is treated as a glitch. The nightly run fetches every approved source whose
+kind is in `adapters.ADAPTERS`. The response shape was built from Lever's public documentation
+(not checked against a live board from the build environment; see the PR).
+
+## Ashby
+
+`hub sources add ashby Acme https://jobs.ashbyhq.com/acme`, approve, then
+`hub ingest ashby --company acme`. When a posting states a salary, a "Compensation" line is added to
+its text so extraction and the salary filter see it. Unlisted postings are skipped. Shape built from
+Ashby's public documentation (not checked against a live board from the build environment).
+
+## The Muse
+
+`hub sources add themuse "The Muse" https://www.themuse.com --level "Entry Level" --category
+"Software Engineering" --pages 3` (also `--location`), then approve it. It is a **partial** source: jobs missing from tonight's search stay open and
+close only after 14 days unseen. Every job keeps its Muse address and the page credits "via The
+Muse". The nightly run searches it with the other sources. See ADR-0010 and ADR-0011's amendment.
+
+## Add a job by link
+
+`hub add-job <url>` works for any link. A Greenhouse, Lever, or Ashby posting address is fetched
+through its public API. For LinkedIn, Handshake, or any other site the page is **never requested**:
+give `--company` and `--title` (or let them be read from the link's own text), and if the job is
+already known or on a company board you have an approved source for, that copy is used; otherwise
+paste the description with `--text-file <file>` or on stdin. Manual jobs are never closed by Career
+Hub. See [ADR-0034](../../../../docs/decisions/0034-add-a-job-by-link.md).
 
 ## Target companies
 

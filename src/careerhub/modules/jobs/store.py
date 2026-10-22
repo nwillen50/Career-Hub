@@ -15,12 +15,13 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, aliased
 
+from careerhub.core.companies import get_or_create_company
 from careerhub.core.models import Company, Job, Source, utcnow
 from careerhub.core.names import company_key
 
@@ -56,14 +57,29 @@ def _squash(text: str | None) -> str:
 
 def dedupe_key(company_name: str, title: str, location: str | None) -> str:
     """Return the hash that two postings of the same job share, whatever their source."""
-    parts = "|".join((_squash(company_name), _squash(title), _squash(location)))
+    parts = "|".join((company_key(company_name), _squash(title), _squash(location)))
     return hashlib.sha256(parts.encode()).hexdigest()
 
 
+#: A job from a search (partial) source closes after this many days without being seen.
+PARTIAL_CLOSE_DAYS = 14
+
+
 def store_jobs(
-    session: Session, source: Source, jobs: list[NormalizedJob], now: datetime | None = None
+    session: Session,
+    source: Source,
+    jobs: list[NormalizedJob],
+    now: datetime | None = None,
+    partial: bool = False,
+    close_missing: bool = True,
 ) -> IngestReport:
-    """Save a complete listing from `source`. Safe to repeat: a rerun adds no duplicates."""
+    """Save a listing from `source`. Safe to repeat: a rerun adds no duplicates.
+
+    Normally the listing is complete, so a job missing from it is closed. With `partial=True` (a
+    search API that never lists everything, ADR-0011), nothing is closed because it is missing;
+    a job closes only after `PARTIAL_CLOSE_DAYS` days without being seen again. With
+    `close_missing=False` (jobs the user added by hand) nothing is ever closed by a listing.
+    """
     now = now or utcnow()
     existing = {
         job.external_id: job
@@ -72,6 +88,8 @@ def store_jobs(
     new = seen_again = reopened = duplicates = 0
     listed: set[str] = set()
     for item in jobs:
+        if item.external_id in listed:
+            continue  # a source (a search spanning pages) listed the same posting twice
         listed.add(item.external_id)
         job = existing.get(item.external_id)
         if job is not None:
@@ -108,8 +126,11 @@ def store_jobs(
         new += 1
         duplicates += original is not None
     closed = 0
+    cutoff = now - timedelta(days=PARTIAL_CLOSE_DAYS)
     for external_id, job in existing.items():
-        if external_id not in listed and job.status != "closed":
+        if not close_missing or external_id in listed or job.status == "closed":
+            continue
+        if not partial or job.last_seen_at <= cutoff:
             job.status = "closed"
             closed += 1
     session.commit()
@@ -117,13 +138,11 @@ def store_jobs(
 
 
 def _company(session: Session, name: str) -> Company:
-    """Return the company called `name`, creating it if needed (matched ignoring case/spacing)."""
-    key = company_key(name)
-    company = session.scalars(select(Company).where(Company.name_key == key)).first()
-    if company is None:
-        company = Company(name=" ".join(name.split()), name_key=key)
-        session.add(company)
-        session.flush()
+    """Return the company called `name`, creating it if needed (matched by company key)."""
+    company = get_or_create_company(session, name)
+    if company is None:  # a posting with a blank company name
+        company = get_or_create_company(session, "unknown company")
+    assert company is not None
     return company
 
 
