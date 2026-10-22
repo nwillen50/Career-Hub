@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,9 +34,28 @@ _BARE_COMMAND = re.compile(r"\\[a-zA-Z]+\*?")
 _ESCAPED = re.compile(r"\\([_&%#$])")
 
 
+_ACCENTS = {
+    "`": "\u0300", "'": "\u0301", "^": "\u0302", "~": "\u0303", "=": "\u0304", "u": "\u0306",
+    ".": "\u0307", '"': "\u0308", "r": "\u030a", "H": "\u030b", "v": "\u030c", "c": "\u0327",
+    "k": "\u0328",
+}  # fmt: skip
+_ACCENT = re.compile(r"\\(?:([`'^~=.\"])\s*\{?\\?([A-Za-z])\}?|([uvHcrk])\s*\{([A-Za-z])\})")
+_SPECIAL = {r"\ss": "ß", r"\o": "ø", r"\O": "Ø", r"\ae": "æ", r"\AE": "Æ", r"\l": "ł"}
+
+
+def _accented(match: re.Match[str]) -> str:
+    """Turn a LaTeX accent command (acute e, cedilla c...) into the accented letter."""
+    mark = match.group(1) or match.group(3)
+    letter = match.group(2) or match.group(4)
+    return unicodedata.normalize("NFC", letter + _ACCENTS[mark])
+
+
 def latex_to_text(source: str) -> str:
     """Reduce LaTeX source to readable text: comments, commands, and braces removed."""
     text = _ESCAPED.sub(r"\1", _COMMENT.sub("", source))
+    text = _ACCENT.sub(_accented, text)
+    for command, letter in _SPECIAL.items():
+        text = re.sub(re.escape(command) + r"(?![A-Za-z])\s?", letter, text)
     text = _ENVIRONMENT.sub("\n", text)
     for _ in range(5):  # unwrap nested \textbf{\emph{...}}
         text = _COMMAND_WITH_ARG.sub(r"\1", text)

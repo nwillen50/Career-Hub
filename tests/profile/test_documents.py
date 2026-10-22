@@ -9,7 +9,7 @@ import docx
 import pytest
 
 from careerhub.profile import documents
-from careerhub.profile.documents import MAX_FILE_BYTES, read_document
+from careerhub.profile.documents import MAX_FILE_BYTES, latex_to_text, read_document
 
 
 def make_pdf(path: Path, pages: list[str]) -> Path:
@@ -149,3 +149,20 @@ def test_invalid_utf8_and_null_bytes_do_not_crash(tmp_path: Path) -> None:
 def test_empty_files_give_empty_text(tmp_path: Path) -> None:
     (tmp_path / "a.txt").write_text("")
     assert read_document(tmp_path / "a.txt").chars == 0
+
+
+@pytest.mark.parametrize(
+    ("source", "text"),
+    [
+        (r"Jos\'e Garc\'ia", "José García"),
+        (r"Zo\"e M\"uller", "Zoë Müller"),
+        (r"Fran\c{c}ois", "François"),
+        (r"\v{S}koda and \'{E}milie", "Škoda and Émilie"),
+        (r"Stra\ss e and \o{}ystein", "Straße and øystein"),
+    ],
+)
+def test_latex_accents_become_real_letters_so_names_can_be_matched(source: str, text: str) -> None:
+    from careerhub.profile.redact import personal_text
+
+    assert latex_to_text(source) == text
+    assert "[name]" in personal_text(latex_to_text(source), text)

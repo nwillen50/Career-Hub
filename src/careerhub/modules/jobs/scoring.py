@@ -65,8 +65,8 @@ def profile_text(doc: ProfileDoc) -> str:
     lines = [f"Education: {e.degree}, {e.school}" for e in doc.education]
     lines.append(f"Skills: {', '.join(doc.skills) or 'not listed'}")
     lines.append(f"Interests: {', '.join(doc.interests) or 'not listed'}")
-    if doc.about:
-        lines.append(f"About: {doc.about[:1500]}")
+    if doc.about:  # redact before cutting, so a cut can't leave half an email behind
+        lines.append(f"About: {personal_text(doc.about, doc.name, doc.aliases)[:1500]}")
     return personal_text("\n".join(lines), doc.name, doc.aliases)
 
 
