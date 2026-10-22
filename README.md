@@ -62,8 +62,9 @@ You bring your own API keys, stored in the macOS Keychain. A typical low-cost se
 | Scoring jobs, tailoring notes | Claude Haiku | Cheap (well under $2 a month here), doesn't train on API data |
 | Fallback for everything | A local model through Ollama | Free and private; runs overnight |
 
-A monthly budget setting caps spending. A built-in model catalog and `hub models` commands are
-planned so this becomes a few commands instead of a settings file.
+A monthly budget setting caps spending. A built-in model catalog and `hub models` commands switch
+models on with a key; the exact steps for this setup are in [`docs/model-setup.md`](docs/model-setup.md).
+If a model is down, rate limited, or paused by the budget, the next one in the route is used.
 
 ## Repository layout
 
