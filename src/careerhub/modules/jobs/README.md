@@ -16,6 +16,7 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | `lever` | Same for Lever (`api.lever.co`); `hub ingest lever` | CH-93 | Built |
 | `ashby` | Same for Ashby (`api.ashbyhq.com`), with stated pay added to the text; `hub ingest ashby` | CH-94 | Built |
 | `muse` | The Muse search (partial listing; shortlist says "via The Muse"); `themuse` sources | CH-95 | Built |
+| `manual` | `hub add-job <url>`: a link from an ATS, or any site with pasted text | CH-96 | Built |
 | `ingest`, `adapters` | The shared fetch-and-store routine and the adapter registry | CH-93 | Built |
 
 An adapter turns its feed into `NormalizedJob`s and calls `store_jobs(session, source, jobs)` with
@@ -52,6 +53,15 @@ Ashby's public documentation (not checked against a live board from the build en
 "Software Engineering" --pages 3` (also `--location`), then approve it. It is a **partial** source: jobs missing from tonight's search stay open and
 close only after 14 days unseen. Every job keeps its Muse address and the page credits "via The
 Muse". The nightly run searches it with the other sources. See ADR-0010 and ADR-0011's amendment.
+
+## Add a job by link
+
+`hub add-job <url>` works for any link. A Greenhouse, Lever, or Ashby posting address is fetched
+through its public API. For LinkedIn, Handshake, or any other site the page is **never requested**:
+give `--company` and `--title` (or let them be read from the link's own text), and if the job is
+already known or on a company board you have an approved source for, that copy is used; otherwise
+paste the description with `--text-file <file>` or on stdin. Manual jobs are never closed by Career
+Hub. See [ADR-0034](../../../../docs/decisions/0034-add-a-job-by-link.md).
 
 ## Greenhouse
 

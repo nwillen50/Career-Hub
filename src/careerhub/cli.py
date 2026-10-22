@@ -7,6 +7,7 @@ import sys
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
+from typing import TextIO
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
@@ -38,6 +39,7 @@ from careerhub.modules.jobs import (
     reject_source,
 )
 from careerhub.modules.jobs.adapters import ADAPTERS, BOARD_KINDS
+from careerhub.modules.jobs.manual import ManualJobError, add_job, classify, guess_from_link
 from careerhub.modules.network import (
     UnknownPerson,
     find_people,
@@ -66,6 +68,8 @@ USAGE = """Usage:
   hub people import-alumni <file.csv>
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
+  hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
+                                             are never requested; text can also come from stdin)
   hub models list | routes
   hub models add <anthropic|openai|gemini --tier free|paid|local|preset>   (asks for the key)
   hub models remove <same names>
@@ -112,6 +116,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _schedule_install()
         if args == ["nightly"]:
             return _nightly(store)
+        if args[:1] == ["add-job"] and len(args) >= 2 and len(args) % 2 == 0:
+            return _with_session(store, lambda s: _add_job(s, args[1], args[2:]))
         if args[:1] == ["models"] and len(args) >= 2:
             return _models(store, args[1:])
         if args[:2] == ["cache", "clear"] and args[2:] in ([], ["--expired"]):
@@ -252,6 +258,47 @@ def _nightly(store: KeyStore) -> int:
     report = run_nightly(engine, store)
     print(report.summary())
     return 1 if any(p.startswith("run failed") for p in report.problems) else 0
+
+
+def _add_job(
+    session: Session,
+    url: str,
+    options: list[str],
+    client: httpx.Client | None = None,
+    stdin: TextIO | None = None,
+    ask: Callable[[str], str] = input,
+) -> int:
+    """Add a job from its link (see `modules/jobs/manual.py`); asks only for what is missing."""
+    stdin = stdin or sys.stdin
+    flags = dict(zip(options[::2], options[1::2], strict=True))
+    if not set(flags) <= {"--company", "--title", "--text-file"}:
+        print(USAGE)
+        return 2
+    company, title = flags.get("--company"), flags.get("--title")
+    if classify(url) is None:
+        guess = guess_from_link(url)
+        if guess and not title:
+            title = title or guess[0]
+        if guess and not company:
+            company = guess[1]
+        if stdin.isatty():
+            company = company or ask("Company: ").strip() or None
+            title = title or ask("Job title: ").strip() or None
+    text: str | None = None
+    try:
+        try:
+            result = add_job(session, url, company, title, None, client)
+        except ManualJobError:
+            if "--text-file" in flags:
+                text = Path(flags["--text-file"]).read_text(encoding="utf-8")
+            elif not stdin.isatty():
+                text = stdin.read()
+            result = add_job(session, url, company, title, text, client)
+    except (ManualJobError, OSError) as error:
+        print(f"Couldn't add the job. {error}")
+        return 1
+    print(f"Added #{result.job.id} {result.job.title}: {result.how}. Run `hub nightly` to rank it.")
+    return 0
 
 
 #: The `--flag value` options `hub models` accepts.

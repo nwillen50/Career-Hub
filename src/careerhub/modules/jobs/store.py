@@ -71,12 +71,14 @@ def store_jobs(
     jobs: list[NormalizedJob],
     now: datetime | None = None,
     partial: bool = False,
+    close_missing: bool = True,
 ) -> IngestReport:
     """Save a listing from `source`. Safe to repeat: a rerun adds no duplicates.
 
     Normally the listing is complete, so a job missing from it is closed. With `partial=True` (a
     search API that never lists everything, ADR-0011), nothing is closed because it is missing;
-    a job closes only after `PARTIAL_CLOSE_DAYS` days without being seen again.
+    a job closes only after `PARTIAL_CLOSE_DAYS` days without being seen again. With
+    `close_missing=False` (jobs the user added by hand) nothing is ever closed by a listing.
     """
     now = now or utcnow()
     existing = {
@@ -126,7 +128,7 @@ def store_jobs(
     closed = 0
     cutoff = now - timedelta(days=PARTIAL_CLOSE_DAYS)
     for external_id, job in existing.items():
-        if external_id in listed or job.status == "closed":
+        if not close_missing or external_id in listed or job.status == "closed":
             continue
         if not partial or job.last_seen_at <= cutoff:
             job.status = "closed"

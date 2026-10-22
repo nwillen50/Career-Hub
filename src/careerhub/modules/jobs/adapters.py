@@ -24,4 +24,4 @@ ADAPTERS: dict[str, Ingester] = {
     "themuse": ingest_muse,
 }
 #: Kinds whose sources are named by a board in their address (the last part of the URL).
-BOARD_KINDS = frozenset({"greenhouse", "lever"})
+BOARD_KINDS = frozenset({"greenhouse", "lever", "ashby"})
