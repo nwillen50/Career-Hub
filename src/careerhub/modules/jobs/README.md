@@ -73,6 +73,15 @@ changes nothing and never touches a company you already have. `hub targets list`
 (whole words: "robotics" matches "AUTONOMOUS SYSTEMS / ROBOTICS"). Finding each company's job board
 is the next ticket.
 
+## When a board lists no jobs
+
+If a board that had open jobs suddenly lists none, Career Hub asks the system about up to three of
+those jobs by address (Greenhouse and Lever). If all are "not found", the company really closed them
+and they close here too, with a line in the nightly summary. If any is still there, or the check
+fails, it is treated as a glitch and the jobs stay open. Ashby has no such address, so after
+`empty_listing_backstop_nights` (default 3) empty nights in a row its jobs close anyway.
+See [ADR-0035](../../../../docs/decisions/0035-closed-vs-glitch.md).
+
 ## Greenhouse
 
 `hub sources add greenhouse Acme https://boards.greenhouse.io/acme`, then
