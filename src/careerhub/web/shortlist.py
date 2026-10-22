@@ -21,10 +21,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from careerhub.core.files import write_private
-from careerhub.core.models import Assessment, Job, RunLog, utcnow
+from careerhub.core.models import Assessment, Job, RunLog, Source, utcnow
 from careerhub.core.paths import data_dir
 from careerhub.core.settings import load_settings
 from careerhub.modules.jobs.age import age_days
+from careerhub.modules.jobs.muse import KIND as MUSE_KIND
+from careerhub.modules.jobs.muse import VIA
 from careerhub.modules.jobs.scoring import current_rank_adjustments, is_internship, ranked_jobs
 from careerhub.modules.network import WarmPath, warm_paths
 from careerhub.modules.network.schools import alumni_search_link, my_schools
@@ -58,6 +60,8 @@ class ShortlistEntry:
     #: A link the user can open to search their school's alumni at this company on LinkedIn.
     alumni_link: str | None = None
     alumni_school: str | None = None
+    #: Where the posting came from when the source requires credit (for example "via The Muse").
+    via: str | None = None
 
 
 @dataclass(frozen=True)
@@ -96,6 +100,7 @@ def gather_shortlist(
             footnotes=_footnotes(job, now, penalty, stale_days),
             alumni_link=alumni_search_link(slug, job.company.name),
             alumni_school=schools[0] if schools else None,
+            via=VIA if _from_muse(session, job) else None,
         )
         for job, assessment in ranked_jobs(session, min(limit, MAX_JOBS), now=now, **adjustments)
     ]
@@ -134,6 +139,12 @@ def _footnotes(job: Job, now: datetime, penalty: float, stale_days: int) -> tupl
     if penalty > 0 and is_internship(job):
         notes.append(INTERNSHIP_NOTE)
     return tuple(notes)
+
+
+def _from_muse(session: Session, job: Job) -> bool:
+    """Say whether `job` came from The Muse, which requires crediting it."""
+    source = session.get(Source, job.source_id)
+    return source is not None and source.kind == MUSE_KIND
 
 
 def _notes(assessment: Assessment) -> dict[str, list[str]] | None:
@@ -231,7 +242,7 @@ def _render_entry(index: int, entry: ShortlistEntry) -> str:
         if link
         else title
     )
-    where = escape(" · ".join(filter(None, (entry.company, entry.location))))
+    where = escape(" · ".join(filter(None, (entry.company, entry.location, entry.via))))
     rows = "".join(
         f"<tr><td>{escape(str(c.get('name', '')))}</td>"
         f"<td>{escape(str(c.get('score', '')))}/10</td>"
