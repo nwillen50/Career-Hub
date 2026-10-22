@@ -77,6 +77,7 @@ USAGE = """Usage:
   hub shortlist build                        (write the shortlist page)
   hub sources list
   hub sources add <kind> <name> <url>     (saved as proposed; nothing is fetched yet)
+    for themuse also: --category <c> --level <l> --location <l> --pages <n>
   hub sources approve|reject|disable <id>"""
 
 
@@ -119,8 +120,10 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _with_session(store, _shortlist_build)
         if args[:2] == ["sources", "list"] and len(args) == 2:
             return _with_session(store, _sources_list)
-        if args[:2] == ["sources", "add"] and len(args) == 5:
-            return _with_session(store, lambda s: _sources_add(s, *args[2:]))
+        if args[:2] == ["sources", "add"] and len(args) >= 5 and len(args) % 2 == 1:
+            return _with_session(
+                store, lambda s: _sources_add(s, args[2], args[3], args[4], args[5:])
+            )
         if len(args) == 3 and args[0] == "sources" and args[1] in _DECISIONS and args[2].isdigit():
             return _with_session(store, lambda s: _sources_decide(s, args[1], int(args[2])))
     except (ProfileFileError, SettingsError) as error:
@@ -364,9 +367,17 @@ def _sources_list(session: Session) -> int:
     return 0
 
 
-def _sources_add(session: Session, kind: str, name: str, url: str) -> int:
+def _sources_add(
+    session: Session, kind: str, name: str, url: str, options: list[str] | None = None
+) -> int:
     # A board's name is the last part of its address (jobs.lever.co/acme, jobs.ashbyhq.com/acme).
     config = {"board": urlparse(url).path.strip("/").split("/")[-1]} if kind in BOARD_KINDS else {}
+    pairs = options or []
+    for flag, value in zip(pairs[::2], pairs[1::2], strict=True):
+        if kind != "themuse" or flag not in ("--category", "--level", "--location", "--pages"):
+            print(f"Option {flag!r} is not valid for {kind}.")
+            return 2
+        config[flag[2:]] = value
     source = propose_source(session, kind, name, url, config)
     print(
         f"Source {source.id} is {source.status}. Approve it with: hub sources approve {source.id}"
