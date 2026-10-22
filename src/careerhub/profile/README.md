@@ -65,3 +65,11 @@ criteria:
 ```
 
 See [ADR-0009](../../../docs/decisions/0009-profile-assembly.md).
+
+## Reading documents (`documents.py`)
+
+`read_document(path)` returns a document's text, format, page count, and problems. It reads `.tex`,
+`.pdf`, `.docx`, `.txt`, and `.md` anywhere, and `.doc`, `.rtf`, `.odt` on a Mac (through
+`textutil`). `.pages` and scanned PDFs come back with a problem that says what to do. It never
+raises on a bad file and never quotes the document in a problem. Not wired into the inputs folders
+yet (CH-109). See [ADR-0030](../../../docs/decisions/0030-document-reader.md).
