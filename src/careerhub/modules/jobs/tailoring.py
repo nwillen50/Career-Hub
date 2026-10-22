@@ -14,7 +14,6 @@ redone only when the prompt or the resume changes.
 from __future__ import annotations
 
 import hashlib
-import re
 from collections.abc import Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -34,12 +33,6 @@ PROMPT_VERSION = 1
 MAX_RESUME_CHARS = 8_000
 MAX_POSTING_CHARS = 6_000
 
-_COMMENT = re.compile(r"(?<!\\)%.*")
-_ENVIRONMENT = re.compile(r"\\(?:begin|end)\{[^}]*\}")
-_COMMAND_WITH_ARG = re.compile(r"\\[a-zA-Z]+\*?(?:\[[^\]]*\])?\{([^{}]*)\}")
-_BARE_COMMAND = re.compile(r"\\[a-zA-Z]+\*?")
-_ESCAPED = re.compile(r"\\([_&%#$])")
-
 
 class TailoringNotes(BaseModel):
     """The model's advice: three short lists."""
@@ -51,21 +44,12 @@ class TailoringNotes(BaseModel):
     resume_suggestions: list[str] = Field(default_factory=list, max_length=5)
 
 
-def latex_to_text(source: str) -> str:
-    """Reduce LaTeX source to readable text: comments, commands, and braces removed."""
-    text = _ESCAPED.sub(r"\1", _COMMENT.sub("", source))
-    text = _ENVIRONMENT.sub("\n", text)
-    for _ in range(5):  # unwrap nested \textbf{\emph{...}}
-        text = _COMMAND_WITH_ARG.sub(r"\1", text)
-    text = _BARE_COMMAND.sub(" ", text).replace("\\\\", "\n")
-    text = re.sub(r"[{}]", "", text)
-    lines = (" ".join(line.split()) for line in text.splitlines())
-    return "\n".join(line for line in lines if line)
+def resume_for_model(resume_text: str, name: str = "", aliases: Sequence[str] = ()) -> str:
+    """Return the resume text with contact details and the name removed, cut to length.
 
-
-def resume_for_model(latex_source: str, name: str = "", aliases: Sequence[str] = ()) -> str:
-    """Return the resume as plain text with contact details and the name removed, cut to length."""
-    return personal_text(latex_to_text(latex_source), name, aliases)[:MAX_RESUME_CHARS]
+    `resume_text` is plain text from any format (see `careerhub.profile.documents`).
+    """
+    return personal_text(resume_text, name, aliases)[:MAX_RESUME_CHARS]
 
 
 def build_request(job: Job, doc: ProfileDoc, resume_text: str) -> LLMRequest:
@@ -86,14 +70,14 @@ def tailor_job(
     router: Router,
     job: Job,
     doc: ProfileDoc,
-    latex_source: str,
+    resume_text: str,
     routes: Sequence[str],
 ) -> TailoringNotes | None:
     """Write and save tailoring notes. Returns None if the job isn't scored or is up to date."""
     assessment = session.scalars(select(Assessment).where(Assessment.job_id == job.id)).first()
     if assessment is None or assessment.fit_score is None:
         return None  # only scored (shortlisted) jobs get notes
-    resume = resume_for_model(latex_source, doc.name, doc.aliases)
+    resume = resume_for_model(resume_text, doc.name, doc.aliases)
     material = (
         f"{resume}\n{profile_text(doc)}\n{job.company.name}\n{job.title}\n{job.raw_text or ''}"
     )

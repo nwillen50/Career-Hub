@@ -235,9 +235,12 @@ def _tailor_top_jobs(
         return
     resume, _ = find_resume()
     if resume is None:
-        report.problems.append("tailoring skipped: no LaTeX resume found in inputs/resume")
+        report.problems.append("tailoring skipped: no resume found in inputs/resume")
         return
-    source = resume.text()
+    source = resume.read().text
+    if not source:
+        report.problems.append("tailoring skipped: the resume could not be read (hub profile show)")
+        return
     failures = 0
     for job, _assessment in ranked_jobs(session, MAX_JOBS):
         try:

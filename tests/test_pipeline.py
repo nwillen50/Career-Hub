@@ -231,7 +231,7 @@ def test_tailoring_is_silently_off_without_a_route_and_noted_without_a_resume(en
         }
     )
     report = run_nightly(engine, InMemoryKeyStore(), settings, handler(), NOW)
-    assert any("no LaTeX resume" in p for p in report.problems)
+    assert any("no resume" in p for p in report.problems)
 
 
 def test_the_nightly_run_prunes_expired_saved_answers_and_reports_the_count(env: Any) -> None:

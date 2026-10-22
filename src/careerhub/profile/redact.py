@@ -73,6 +73,39 @@ def redact_address(text: str) -> str:
     return _STATE_ZIP.sub("[address]", _STREET.sub("[address]", text))
 
 
+# --- Transcripts: identity numbers and birth dates (CH-109) --------------------------------------
+_SSN = re.compile(r"(?<!\d)\d{3}[- ]\d{2}[- ]\d{4}(?!\d)")
+_ID_LABEL = (
+    r"(?:(?:student|university|campus|school|college|national|employee)\s+)?"
+    r"(?:id(?:entification)?|sid|uid|ssn|social security)(?:\s*(?:no\.?|number|#|code))?"
+)
+_LABELLED_ID = re.compile(rf"(?i)\b({_ID_LABEL})\s*[:#]?\s*[A-Za-z]{{0,3}}[\w-]*\d[\w-]*")
+_DATE = (
+    r"(?:\d{1,2}[/.\- ]\d{1,2}[/.\- ]\d{2,4}|\d{4}-\d{2}-\d{2}"
+    r"|\d{1,2}\s+[A-Za-z]{3,9}\.?,?\s+\d{4}|[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})"
+)
+_LABELLED_DOB = re.compile(
+    rf"(?i)\b(date\s+of\s+birth|birth\s*date|birthday|d\.?o\.?b\.?|born)\b[^\n\d]{{0,30}}?{_DATE}"
+)
+# An unlabelled ID: 7 or more digits, with an optional letter prefix, standing alone.
+_LONG_NUMBER = re.compile(r"(?<![\w])[A-Za-z]?\d{7,}(?![\w])")
+
+
+def redact_identity_numbers(text: str) -> str:
+    """Remove ID numbers, birth dates, SSN-shaped numbers, and addresses (for transcripts)."""
+    text = normalize(text)
+    text = _LABELLED_ID.sub(lambda m: f"{m.group(1).strip()}: [id]", text)
+    text = _LABELLED_DOB.sub(lambda m: f"{m.group(1)}: [birth date]", text)
+    text = _SSN.sub("[id]", text)
+    text = _LONG_NUMBER.sub("[id]", text)
+    return redact_address(text)
+
+
+def transcript_text(text: str, name: str, aliases: Sequence[str] = ()) -> str:
+    """Prepare a transcript for a model: identity numbers and address, then contacts and name."""
+    return personal_text(redact_identity_numbers(text), name, aliases)
+
+
 def redact_contacts(text: str) -> str:
     """Remove email addresses, web addresses (with or without https://), and phone numbers."""
     text = normalize(text)
