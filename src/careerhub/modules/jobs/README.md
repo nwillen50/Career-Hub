@@ -15,7 +15,6 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | `greenhouse` | Fetch a company's public board; `hub ingest greenhouse` | CH-60 | Built |
 | `lever` | Same for Lever (`api.lever.co`); `hub ingest lever` | CH-93 | Built |
 | `ashby` | Same for Ashby (`api.ashbyhq.com`), with stated pay added to the text; `hub ingest ashby` | CH-94 | Built |
-
 | `muse` | The Muse search (partial listing; shortlist says "via The Muse"); `themuse` sources | CH-95 | Built |
 | `ingest`, `adapters` | The shared fetch-and-store routine and the adapter registry | CH-93 | Built |
 
