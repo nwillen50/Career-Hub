@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import select
 
 from careerhub.core.migrate import migrate
-from careerhub.core.models import Assessment, Job, RunLog
+from careerhub.core.models import Assessment, Job, LLMCacheEntry, RunLog
 from careerhub.core.secrets import InMemoryKeyStore, new_database_key
 from careerhub.core.settings import Settings
 from careerhub.core.storage import open_engine, session_factory
@@ -232,3 +232,18 @@ def test_tailoring_is_silently_off_without_a_route_and_noted_without_a_resume(en
     )
     report = run_nightly(engine, InMemoryKeyStore(), settings, handler(), NOW)
     assert any("no LaTeX resume" in p for p in report.problems)
+
+
+def test_the_nightly_run_prunes_expired_saved_answers_and_reports_the_count(env: Any) -> None:
+    engine, _ = env
+    old = datetime(2025, 1, 1, tzinfo=UTC)
+    with session_factory(engine)() as session:
+        session.add(
+            LLMCacheEntry(
+                provider="p", model="m", prompt_hash="h", response_text="x", last_used_at=old
+            )
+        )
+        session.commit()
+    report = run_nightly(engine, InMemoryKeyStore(), SETTINGS, handler(), NOW)
+    assert report.cache_pruned == 1
+    assert "Removed 1 expired saved answers." in report.summary()
