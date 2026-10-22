@@ -85,6 +85,8 @@ def store_jobs(
     new = seen_again = reopened = duplicates = 0
     listed: set[str] = set()
     for item in jobs:
+        if item.external_id in listed:
+            continue  # a source (a search spanning pages) listed the same posting twice
         listed.add(item.external_id)
         job = existing.get(item.external_id)
         if job is not None:
