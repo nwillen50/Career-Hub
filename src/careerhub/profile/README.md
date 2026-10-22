@@ -71,8 +71,8 @@ See [ADR-0009](../../../docs/decisions/0009-profile-assembly.md).
 `read_document(path)` returns a document's text, format, page count, and problems. It reads `.tex`,
 `.pdf`, `.docx`, `.txt`, and `.md` anywhere, and `.doc`, `.rtf`, `.odt` on a Mac (through
 `textutil`). `.pages` and scanned PDFs come back with a problem that says what to do. It never
-raises on a bad file and never quotes the document in a problem. Not wired into the inputs folders
-yet (CH-109). See [ADR-0030](../../../docs/decisions/0030-document-reader.md).
+raises on a bad file and never quotes the document in a problem. `inputs/resume/` and `inputs/transcript/`
+each take one file of any supported type. See [ADR-0030](../../../docs/decisions/0030-document-reader.md).
 
 ## Text sent to models (`redact.py`)
 
@@ -81,3 +81,7 @@ profile extraction) passes through `personal_text`: emails, links, and phone num
 `[email]`, `[link]`, `[phone]`, and the name becomes `[name]`. Names match whole words only. List
 nicknames and handles in `profile.md` front matter under `aliases:` (for example `["Nick",
 "nwillen50"]`) and they are removed too.
+
+`redact.transcript_text` is for transcripts: it also removes student ID numbers, birth dates,
+SSN-shaped numbers, and street addresses before contacts and the name. `hub profile show` reports
+only each document's format, page count, and character count, plus any reader problems.

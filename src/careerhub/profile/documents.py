@@ -12,6 +12,7 @@ needs text recognition (a follow-up that runs on the Mac).
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -23,6 +24,25 @@ MAX_FILE_BYTES = 20 * 1024 * 1024
 SCANNED_CHARS_PER_PAGE = 20
 TEXTUTIL_FORMATS = {".doc", ".rtf", ".odt"}
 SUPPORTED = (".tex", ".pdf", ".docx", ".txt", ".md", *sorted(TEXTUTIL_FORMATS))
+
+
+_COMMENT = re.compile(r"(?<!\\)%.*")
+_ENVIRONMENT = re.compile(r"\\(?:begin|end)\{[^}]*\}")
+_COMMAND_WITH_ARG = re.compile(r"\\[a-zA-Z]+\*?(?:\[[^\]]*\])?\{([^{}]*)\}")
+_BARE_COMMAND = re.compile(r"\\[a-zA-Z]+\*?")
+_ESCAPED = re.compile(r"\\([_&%#$])")
+
+
+def latex_to_text(source: str) -> str:
+    """Reduce LaTeX source to readable text: comments, commands, and braces removed."""
+    text = _ESCAPED.sub(r"\1", _COMMENT.sub("", source))
+    text = _ENVIRONMENT.sub("\n", text)
+    for _ in range(5):  # unwrap nested \textbf{\emph{...}}
+        text = _COMMAND_WITH_ARG.sub(r"\1", text)
+    text = _BARE_COMMAND.sub(" ", text).replace("\\\\", "\n")
+    text = re.sub(r"[{}]", "", text)
+    lines = (" ".join(line.split()) for line in text.splitlines())
+    return "\n".join(line for line in lines if line)
 
 
 @dataclass(frozen=True)
@@ -67,8 +87,6 @@ def read_document(path: Path) -> DocumentText:
             return _read_with_textutil(path, kind)
         raw = path.read_text(encoding="utf-8", errors="replace")
         if suffix == ".tex":
-            from careerhub.modules.jobs.tailoring import latex_to_text  # reuses the LaTeX reducer
-
             raw = latex_to_text(raw)
         return DocumentText(raw.replace("\x00", ""), kind, None)
     except Exception as error:  # a damaged file must not crash; only the error's type is kept

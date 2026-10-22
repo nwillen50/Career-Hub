@@ -29,5 +29,5 @@ huge, empty, and non-UTF-8 files; Mac-only formats and `textutil` with a stand-i
 
 ## Consequences
 
-The `.tex` branch imports the LaTeX reducer from `modules.jobs.tailoring`; CH-109 should move it
-into `profile` so the dependency points the right way.
+CH-109 wired the reader into `inputs/`, tailoring (which now takes plain text; the LaTeX reducer
+moved to `profile.documents`), transcript redaction, and `hub profile show`.
