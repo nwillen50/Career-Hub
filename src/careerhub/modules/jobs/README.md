@@ -14,6 +14,7 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | `evals` | `run_extraction_eval`: per-field accuracy against hand-checked postings | CH-63 | Built |
 | `greenhouse` | Fetch a company's public board; `hub ingest greenhouse` | CH-60 | Built |
 | `lever` | Same for Lever (`api.lever.co`); `hub ingest lever` | CH-93 | Built |
+| `ashby` | Same for Ashby (`api.ashbyhq.com`), with stated pay added to the text; `hub ingest ashby` | CH-94 | Built |
 | `ingest`, `adapters` | The shared fetch-and-store routine and the adapter registry | CH-93 | Built |
 
 An adapter turns its feed into `NormalizedJob`s and calls `store_jobs(session, source, jobs)` with
@@ -36,6 +37,13 @@ source's config. Same rules as Greenhouse: a failed fetch changes nothing, and a
 a board that had jobs is treated as a glitch. The nightly run fetches every approved source whose
 kind is in `adapters.ADAPTERS`. The response shape was built from Lever's public documentation
 (not checked against a live board from the build environment; see the PR).
+
+## Ashby
+
+`hub sources add ashby Acme https://jobs.ashbyhq.com/acme`, approve, then
+`hub ingest ashby --company acme`. When a posting states a salary, a "Compensation" line is added to
+its text so extraction and the salary filter see it. Unlisted postings are skipped. Shape built from
+Ashby's public documentation (not checked against a live board from the build environment).
 
 ## Greenhouse
 

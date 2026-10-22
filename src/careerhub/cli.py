@@ -58,7 +58,7 @@ from careerhub.web.shortlist import write_shortlist
 
 USAGE = """Usage:
   hub profile show
-  hub ingest greenhouse|lever --company <board>   (the source must be approved)
+  hub ingest greenhouse|lever|ashby --company <board>   (the source must be approved)
   hub plan                                   (suggested blocks for the next 7 days)
   hub paths <company>                        (who you know there, strongest first)
   hub people find <text>                     (by name or company)
@@ -365,7 +365,7 @@ def _sources_list(session: Session) -> int:
 
 
 def _sources_add(session: Session, kind: str, name: str, url: str) -> int:
-    # A board's name is the last part of its address (jobs.lever.co/acme).
+    # A board's name is the last part of its address (jobs.lever.co/acme, jobs.ashbyhq.com/acme).
     config = {"board": urlparse(url).path.strip("/").split("/")[-1]} if kind in BOARD_KINDS else {}
     source = propose_source(session, kind, name, url, config)
     print(
@@ -377,7 +377,7 @@ def _sources_add(session: Session, kind: str, name: str, url: str) -> int:
 def _ingest(
     session: Session, board: str, client: httpx.Client | None = None, kind: str = "greenhouse"
 ) -> int:
-    """Fetch one approved source of `kind` (greenhouse or lever), found by its board name."""
+    """Fetch one approved source of `kind` (greenhouse, lever, or ashby) by its board name."""
     sources = [
         s for s in list_sources(session) if s.kind == kind and s.config.get("board") == board
     ]
