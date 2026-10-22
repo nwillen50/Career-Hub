@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import select
 
 from careerhub.core.migrate import migrate
-from careerhub.core.models import Assessment, Job, LLMCacheEntry, RunLog
+from careerhub.core.models import Assessment, Job, LLMCacheEntry, ProfileExtraction, RunLog
 from careerhub.core.secrets import InMemoryKeyStore, new_database_key
 from careerhub.core.settings import Settings
 from careerhub.core.storage import open_engine, session_factory
@@ -43,6 +43,7 @@ SETTINGS = Settings.model_validate(
     }
 )
 TAILOR = json.dumps({"lead_with": ["Your ML project"], "gaps": [], "resume_suggestions": []})
+FACTS = json.dumps({"skills": ["Python"], "courses": [{"title": "Intro", "grade": "A"}]})
 EXTRACT = json.dumps({"level": "new_grad", "locations": ["Boston, MA"]})
 SCORE = json.dumps(
     {"criteria": [{"name": "field", "score": 8, "reason": "fits"}], "explanation": "Good fit."}
@@ -56,7 +57,9 @@ def handler(board_status: int = 200, model_ok: bool = True, tokens: int = 0):  #
         if not model_ok:
             return httpx.Response(500)
         prompt = json.loads(request.content)["messages"][-1]["content"]
-        if "extract structured facts" in prompt:
+        if "Document type:" in prompt:
+            text = FACTS
+        elif "extract structured facts" in prompt:
             text = EXTRACT
         elif "tailor their job application" in prompt:
             text = TAILOR
@@ -247,3 +250,26 @@ def test_the_nightly_run_prunes_expired_saved_answers_and_reports_the_count(env:
     report = run_nightly(engine, InMemoryKeyStore(), SETTINGS, handler(), NOW)
     assert report.cache_pruned == 1
     assert "Removed 1 expired saved answers." in report.summary()
+
+
+def test_a_new_resume_is_read_into_pending_facts_once(env: Any) -> None:
+    engine, data = env
+    (data / "inputs" / "resume").mkdir(parents=True)
+    (data / "inputs" / "resume" / "resume.txt").write_text("Built a Python tool.", encoding="utf-8")
+    settings = Settings.model_validate(
+        {
+            "providers": [{"name": "local", "kind": "local", "model": "m"}],
+            "model_routes": {
+                "extract": ["local"],
+                "score": ["local"],
+                "profile_extract": ["local"],
+            },
+        }
+    )
+    first = run_nightly(engine, InMemoryKeyStore(), settings, handler(), NOW)
+    assert first.profile_facts == 1 and "facts are waiting for review" in first.summary()
+    again = run_nightly(engine, InMemoryKeyStore(), settings, handler(), NOW)
+    assert again.profile_facts == 0
+    with session_factory(engine)() as session:
+        row = session.scalars(select(ProfileExtraction)).one()
+        assert (row.kind, row.status, row.facts["skills"]) == ("resume", "pending", ["Python"])
