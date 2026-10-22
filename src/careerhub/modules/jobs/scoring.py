@@ -133,7 +133,15 @@ def preferences_text(doc: ProfileDoc, preferences: Preferences | None) -> str:
     if preferences is not None:
         hard = preferences.hard_constraints
         where = ", ".join(hard.locations) or "anywhere"
-        lines.append(f"Locations: {where}; remote work ok: {'yes' if hard.remote_ok else 'no'}")
+        modes = [
+            f"{name} {'ok' if allowed else 'not ok'}"
+            for name, allowed in (
+                ("remote", hard.remote_ok),
+                ("hybrid", hard.hybrid_ok),
+                ("onsite", hard.onsite_ok),
+            )
+        ]
+        lines.append(f"Locations: {where}; work modes: {', '.join(modes)}")
         if hard.min_salary_usd:
             lines.append(f"Minimum salary: ${hard.min_salary_usd:,}")
         timeline = preferences.timeline

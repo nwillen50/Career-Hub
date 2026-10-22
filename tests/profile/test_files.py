@@ -12,6 +12,7 @@ from careerhub.profile import (
     preferences_path,
     profile_doc_path,
 )
+from careerhub.profile.models import HardConstraints
 
 PROFILE = """---
 name: Jane Sample
@@ -114,3 +115,12 @@ def test_a_list_instead_of_fields_is_an_error(tmp_path: Path) -> None:
 def test_profile_requires_a_name(tmp_path: Path) -> None:
     with pytest.raises(ProfileFileError, match="name"):
         load_profile_doc(write(tmp_path, "profile.md", "---\nskills: [x]\n---\n"))
+
+
+def test_hybrid_and_onsite_switches_default_to_on_and_load_from_the_file(tmp_path: Path) -> None:
+    assert HardConstraints().hybrid_ok is True and HardConstraints().onsite_ok is True
+    path = tmp_path / "preferences.yaml"
+    path.write_text("hard_constraints:\n  hybrid_ok: false\n  onsite_ok: false\n", encoding="utf-8")
+    prefs = load_preferences(path)
+    assert prefs is not None
+    assert (prefs.hard_constraints.hybrid_ok, prefs.hard_constraints.onsite_ok) == (False, False)

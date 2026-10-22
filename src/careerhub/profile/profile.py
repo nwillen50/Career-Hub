@@ -13,7 +13,7 @@ from careerhub.profile.documents import DocumentText, read_document
 from careerhub.profile.facts import counts
 from careerhub.profile.files import load_preferences, load_profile_doc
 from careerhub.profile.inputs import ResumeFiles, find_resume, find_transcript
-from careerhub.profile.models import Preferences, ProfileDoc
+from careerhub.profile.models import HardConstraints, Preferences, ProfileDoc
 from careerhub.profile.rubric import Rubric, load_rubric
 
 
@@ -119,6 +119,18 @@ def rubric_suggestion(rubric: Rubric | None) -> str | None:
     )
 
 
+def _modes(hard: HardConstraints) -> str:
+    """List the work modes the user allows, e.g. "remote, hybrid (in your locations)"."""
+    allowed = []
+    if hard.remote_ok:
+        allowed.append("remote")
+    if hard.hybrid_ok:
+        allowed.append("hybrid (in your locations)")
+    if hard.onsite_ok:
+        allowed.append("onsite (in your locations)")
+    return ", ".join(allowed) or "none"
+
+
 def format_profile(profile: Profile) -> str:
     """Render `profile` as plain text for `hub profile show` (no resume or transcript text)."""
     lines: list[str] = []
@@ -132,7 +144,8 @@ def format_profile(profile: Profile) -> str:
     if profile.preferences:
         hard = profile.preferences.hard_constraints
         lines += [
-            f"Locations: {', '.join(hard.locations) or 'anywhere'} (remote ok: {hard.remote_ok})",
+            f"Locations: {', '.join(hard.locations) or 'anywhere'}",
+            f"Work modes allowed: {_modes(hard)}",
             f"Minimum salary: {hard.min_salary_usd or '-'}",
             f"Excluded companies: {', '.join(hard.excluded_companies) or '-'}",
             f"Excluded title words: {', '.join(hard.excluded_title_words) or '-'}",

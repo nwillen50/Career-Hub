@@ -69,7 +69,7 @@ def test_the_prompt_sends_every_fact_except_preferred_skills_and_states_unknowns
 
 def test_the_prompt_carries_the_preferences_education_and_adjacent_fields() -> None:
     text = prompt()
-    assert "Locations: Boston, MA; remote work ok: yes" in text
+    assert "Locations: Boston, MA; work modes: remote ok, hybrid ok, onsite ok" in text
     assert "Minimum salary: $70,000" in text and "Wants to start between 2027-06-01" in text
     assert "Degree: BS Physics, Example University, expected graduation May 2027" in text
     assert "Also qualified in: Electrical Engineering, Optics" in text

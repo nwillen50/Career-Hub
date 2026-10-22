@@ -42,6 +42,18 @@ def _city(place: str) -> str:
     return " ".join(place.split(",")[0].lower().split())
 
 
+def _mode_switched_off(constraints: HardConstraints, mode: str) -> str | None:
+    """Return the reason if the job's work mode is one the user turned off, else None."""
+    allowed = {
+        "remote": constraints.remote_ok,
+        "hybrid": constraints.hybrid_ok,
+        "onsite": constraints.onsite_ok,
+    }
+    if mode in allowed and not allowed[mode]:
+        return f"{mode}, and you turned {mode} off"
+    return None
+
+
 def _location_ok(
     constraints: HardConstraints, job_places: list[str], fields: JobFields | None
 ) -> tuple[bool | None, str]:
@@ -49,7 +61,7 @@ def _location_ok(
     if not constraints.locations:
         return True, ""
     if constraints.remote_ok and fields is not None and fields.remote == "remote":
-        return True, ""
+        return True, ""  # a remote job passes from anywhere
     if not job_places:
         return None, "no location was found for this job"
     wanted = {_city(place) for place in constraints.locations}
@@ -115,11 +127,20 @@ def apply_filters(
         if fields and fields.locations
         else ([job.location] if job.location else [])
     )
-    ok, why = _location_ok(constraints, places, fields)
-    if ok is False:
-        reasons.append(why)
-    elif ok is None:
-        uncertain.append(why)
+    mode = fields.remote if fields else "unknown"
+    switched_off = _mode_switched_off(constraints, mode)
+    if switched_off:
+        reasons.append(switched_off)  # one clear reason; the location rule would only repeat it
+    else:
+        ok, why = _location_ok(constraints, places, fields)
+        if ok is False:
+            reasons.append(why)
+        elif ok is None:
+            uncertain.append(why)
+    if mode == "unknown" and not (
+        constraints.remote_ok and constraints.hybrid_ok and constraints.onsite_ok
+    ):
+        uncertain.append("whether the job is remote, hybrid, or onsite wasn't stated")
     if constraints.min_salary_usd is not None:
         top = fields.salary_max_usd if fields else None
         if top is None:
