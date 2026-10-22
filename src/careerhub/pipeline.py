@@ -44,7 +44,7 @@ from careerhub.modules.jobs.extract import extract_and_save
 from careerhub.modules.jobs.filters import assess_filters
 from careerhub.modules.jobs.scoring import (
     ScoringError,
-    current_internship_penalty,
+    current_rank_adjustments,
     ranked_jobs,
     score_job,
 )
@@ -298,7 +298,7 @@ def _tailor_top_jobs(
         report.problems.append("tailoring skipped: the resume could not be read (hub profile show)")
         return
     failures = 0
-    for job, _assessment in ranked_jobs(session, MAX_JOBS, current_internship_penalty()):
+    for job, _assessment in ranked_jobs(session, MAX_JOBS, **current_rank_adjustments()):
         try:
             if tailor_job(session, setup.router, job, doc, source, routes):
                 report.tailored += 1
