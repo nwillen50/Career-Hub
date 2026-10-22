@@ -1,0 +1,120 @@
+/* Career Hub design tokens (CH-105). The only place a raw color or font name may appear.
+   Light = "The Study" (direction A). Dark = "The Library at night" (direction B), chosen by the
+   Mac's setting through prefers-color-scheme. Layout lives elsewhere and uses var(--token) only. */
+
+@font-face { font-family: "Source Sans 3"; font-weight: 400; font-display: swap;
+  src: url("fonts/source-sans-3-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Source Sans 3"; font-weight: 600; font-display: swap;
+  src: url("fonts/source-sans-3-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Source Serif 4"; font-weight: 600; font-display: swap;
+  src: url("fonts/source-serif-4-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Source Serif 4"; font-weight: 700; font-display: swap;
+  src: url("fonts/source-serif-4-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Libre Caslon Text"; font-weight: 400; font-display: swap;
+  src: url("fonts/libre-caslon-text-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Libre Caslon Text"; font-weight: 700; font-display: swap;
+  src: url("fonts/libre-caslon-text-latin-700-normal.woff2") format("woff2"); }
+
+:root {
+  /* surfaces and lines */
+  --page: #EFE7DA;
+  --surface: #FBF8F2;
+  --border: #D8CAB3;
+  --divider: #E6DAC6;
+  --chip-border: #C9B9A0;
+  --chip-selected: #2F5D45;
+  --chip-selected-border: #2F5D45;
+  --chip-selected-text: #FBF8F2;
+  /* text */
+  --text: #2B2118;
+  --muted: #6B5A48;
+  --brass-text: #7F5C25;      /* darker than the brass rule so small text meets 4.5:1 */
+  --overdue: #A2483A;
+  /* header bar and tabs */
+  --header: #3A2A1E;
+  --header-text: #F4EDE1;
+  --tab-inactive: #E2D5C0;
+  --tab-active: #4F3A2A;
+  --brass-rule: #9A7330;
+  /* accent and the green panel */
+  --accent: #2F5D45;
+  --accent-hover: #22463A;
+  --panel: #E4EDE5;
+  --panel-border: #B9CDBD;
+  --panel-text: #22463A;
+  /* score bubbles (44 px circle, bold number) */
+  --score-high-bg: #2F6B4A;
+  --score-high-text: #FBF8F2;
+  --score-mid-bg: #D9B45A;
+  --score-mid-text: #2B2118;
+  --score-low-bg: #A2483A;
+  --score-low-text: #FBF8F2;
+  /* type */
+  --font-body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-heading: "Source Serif 4", Georgia, serif;
+  --heading-weight: 600;
+  --size-body: 16px;
+  --line-body: 1.5;
+  --size-h1: 34px;
+  --line-h1: 1.2;
+  --size-h2: 22px;
+  --line-h2: 1.25;
+  --size-h3: 19px;
+  --line-h3: 1.3;
+  /* spacing and shape */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-pill: 999px;
+  --shadow-card: 0 1px 2px rgba(58, 42, 30, 0.06);
+  --focus: #2F5D45;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #1C1511;
+    --surface: #271E17;
+    --border: #3B2E22;
+    --divider: #3B2E22;
+    --chip-border: #5A4630;
+    --chip-selected: #2C4A39;
+    --chip-selected-border: #3F6E52;
+    --chip-selected-text: #EFE6D6;
+    --text: #EFE6D6;
+    --muted: #BDAE97;
+    --brass-text: #D9B977;
+    --overdue: #E89A8C;
+    --header: #14100C;
+    --header-text: #EFE6D6;
+    --tab-inactive: #BDAE97;
+    --tab-active: #271E17;
+    --brass-rule: #5A4630;
+    --accent: #9CC8A9;
+    --accent-hover: #C3E0CB;
+    --panel: #22362B;
+    --panel-border: #355A45;
+    --panel-text: #C3E0CB;
+    --score-high-bg: #3E7A55;
+    --score-high-text: #F4EEE3;
+    --score-mid-bg: #D9B977;
+    --score-mid-text: #1C1511;
+    --score-low-bg: #B5574A;
+    --score-low-text: #FFF8F0;
+    --font-heading: "Libre Caslon Text", Georgia, serif;
+    --heading-weight: 700;
+    --shadow-card: none;
+    --focus: #9CC8A9;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root { --fade: opacity 120ms ease-out; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --fade: none; }
+}
