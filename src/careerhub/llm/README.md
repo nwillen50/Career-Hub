@@ -13,7 +13,8 @@ See [ADR-0003](../../../docs/decisions/0003-router-contract.md).
 | `cache` | Response cache in the encrypted database | CH-50 | Built |
 | `cost` | Cost log and the monthly budget | CH-51 | Built |
 | `setup` | `build_router(settings, store, sessions)` and `routes_for` | CH-64 | Built |
-| `catalog` | Built-in presets, switched on by a key; default routes | CH-99 | Built (commands next) |
+| `catalog` | Built-in presets, switched on by a key; default routes | CH-99 | Built |
+| `commands` | `hub models list, add, remove, add-custom, routes` | CH-108 | Built |
 | `providers` | Anthropic, OpenAI, Google, and local adapters | CH-52 | Built |
 
 ## The privacy rule
@@ -94,3 +95,16 @@ presets and default routes for tasks you haven't routed: Public work goes to the
 Personal work only to models that don't train on your data, and local is the last fallback. Your
 own `providers` and `model_routes` always win; `preset_overrides` changes a preset's model, address,
 or prices. Prices carry a checked-on date. See [ADR-0029](../../../docs/decisions/0029-model-catalog.md).
+
+### `hub models`
+
+```
+hub models list                       presets, which are on, prices and the date checked
+hub models add anthropic              asks for the key (hidden); one key switches on Haiku and Sonnet
+hub models add gemini --tier free     the tier is required: free trains on your data
+hub models remove openai              asks first, then deletes the key from the Keychain
+hub models add-custom NAME KIND MODEL [--base-url U] [--input N] [--output N] [--trains-on-data]
+hub models routes                     the model each task will try, and why
+```
+
+Keys go only into the Keychain: never printed, logged, or written to `settings.json`.
