@@ -262,3 +262,31 @@ def test_the_command_reports_what_is_missing_and_bad_options(
     )
     missing = ["--company", "A", "--title", "T", "--text-file", "/nonexistent/file.txt"]
     assert _add_job(session, "https://example.com/j", missing, None, stdin=io.StringIO()) == 1
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://[linkedin.com]/",
+        "https://LinkedIn.com./jobs/1",
+        "linkedin.com/jobs/view/1",
+        "https://joinhandshake.com./x",
+        "www.linkedin.com:443/jobs",
+    ],
+)
+def test_odd_spellings_of_the_never_request_sites_are_still_never_requested(url: str) -> None:
+    assert is_never_requested(url) and classify(url) is None
+
+
+def test_a_malformed_link_does_not_crash_the_command(session: Session) -> None:
+    assert classify("http://[bad") is None
+    with pytest.raises(ManualJobError):
+        add_job(session, "http://[bad")
+
+
+def test_a_closed_ats_posting_can_still_be_added_from_pasted_text(session: Session) -> None:
+    http = client({}, [])  # the board answers 404
+    with pytest.raises(ManualJobError):
+        add_job(session, GH_URL, client=http)
+    result = add_job(session, GH_URL, "Acme", "Engineer", "Pasted text.", http)
+    assert result.how == "stored from the text you pasted" and result.job.url == GH_URL

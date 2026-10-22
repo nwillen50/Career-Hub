@@ -63,14 +63,22 @@ class AddResult:
 
 def is_never_requested(url: str) -> bool:
     """Say whether `url` is on a site this program must not request."""
-    host = (urlparse(url.strip()).hostname or "").lower()
+    text = url.strip()
+    try:
+        parsed = urlparse(text if "//" in text else "//" + text)  # also catch "linkedin.com/jobs/1"
+        host = (parsed.hostname or "").lower().rstrip(".")
+    except ValueError:
+        return True  # a link that can't be read is never requested
     return any(host == site or host.endswith("." + site) for site in NEVER_REQUEST)
 
 
 def classify(url: str) -> PostingRef | None:
     """Recognize a Greenhouse, Lever, or Ashby posting address (no request is made)."""
-    parsed = urlparse(url.strip())
-    host = (parsed.hostname or "").lower()
+    try:
+        parsed = urlparse(url.strip())
+        host = (parsed.hostname or "").lower().rstrip(".")
+    except ValueError:
+        return None
     parts = [p for p in parsed.path.split("/") if p]
     if parsed.scheme not in ("http", "https") or is_never_requested(url):
         return None
@@ -193,8 +201,12 @@ def add_job(
     """Add the job at `url` by the first path that works. Raises `ManualJobError` if none does."""
     ref = classify(url)
     if ref is not None:
-        item = fetch_posting(ref, company, client)
-        return AddResult(_store(session, item), f"fetched from {ref.kind}")
+        try:
+            item = fetch_posting(ref, company, client)
+            return AddResult(_store(session, item), f"fetched from {ref.kind}")
+        except ManualJobError:
+            if not (text and text.strip() and company and title):
+                raise  # a closed posting can still be added from pasted text
     if company and title:
         known = find_known(session, company, title) or _from_company_board(
             session, company, title, client
