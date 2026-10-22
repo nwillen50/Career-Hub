@@ -45,8 +45,9 @@ from careerhub.modules.jobs.filters import assess_filters
 from careerhub.modules.jobs.scoring import ScoringError, ranked_jobs, score_job
 from careerhub.modules.jobs.store import only_visible_copies
 from careerhub.modules.jobs.tailoring import tailor_job
+from careerhub.profile.extract import extract_and_save as extract_profile_and_save
 from careerhub.profile.files import load_preferences, load_profile_doc
-from careerhub.profile.inputs import find_resume
+from careerhub.profile.inputs import find_resume, find_transcript
 from careerhub.profile.models import HardConstraints, ProfileDoc
 from careerhub.profile.rubric import load_rubric
 from careerhub.web.shortlist import MAX_JOBS, write_shortlist
@@ -63,6 +64,7 @@ class NightlyReport:
     filtered_out: int = 0
     scored: int = 0
     tailored: int = 0
+    profile_facts: int = 0
     problems: list[str] = field(default_factory=list)
     cache_pruned: int = 0
     shortlist_path: str | None = None
@@ -75,6 +77,10 @@ class NightlyReport:
             f"Understood {self.extracted}, filtered out {self.filtered_out}, scored {self.scored}, "
             f"tailored {self.tailored}.",
         ]
+        if self.profile_facts:
+            lines.append(
+                f"Read {self.profile_facts} profile documents: facts are waiting for review."
+            )
         if self.cache_pruned:
             lines.append(f"Removed {self.cache_pruned} expired saved answers.")
         if self.shortlist_path:
@@ -209,8 +215,44 @@ def _understand_and_rank(
             failures += 1
     if failures:
         report.problems.append(f"{failures} jobs could not be understood or scored")
+    if doc is not None:
+        _extract_profile_facts(session, setup, settings, doc, report)
     if doc is not None and not budget_hit:
         _tailor_top_jobs(session, setup, settings, doc, report)
+
+
+def _extract_profile_facts(
+    session: Session,
+    setup: RouterSetup,
+    settings: Settings,
+    doc: ProfileDoc,
+    report: NightlyReport,
+) -> None:
+    """Read a new or changed resume and transcript into pending facts (needs a route).
+
+    Optional: with no 'profile_extract' route this does nothing and says nothing.
+    """
+    try:
+        routes = routes_for(settings, "profile_extract", setup.built)
+    except NoRoute:
+        return
+    resume, _ = find_resume()
+    transcript, _ = find_transcript()
+    files = [("resume", resume.main if resume else None), ("transcript", transcript)]
+    for kind, path in files:
+        if path is None:
+            continue
+        try:
+            if extract_profile_and_save(session, setup.router, kind, path, doc, routes):  # type: ignore[arg-type]
+                report.profile_facts += 1
+        except BudgetExceeded:
+            report.problems.append("monthly budget reached: profile reading paused")
+            return
+        except PrivacyViolation:
+            report.problems.append("profile reading skipped: a provider may not see Personal data")
+            return
+        except (ValidationFailed, ProviderError):
+            report.problems.append(f"the {kind} could not be read into facts")
 
 
 def _tailor_top_jobs(

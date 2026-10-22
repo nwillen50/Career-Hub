@@ -85,3 +85,10 @@ nicknames and handles in `profile.md` front matter under `aliases:` (for example
 `redact.transcript_text` is for transcripts: it also removes student ID numbers, birth dates,
 SSN-shaped numbers, and street addresses before contacts and the name. `hub profile show` reports
 only each document's format, page count, and character count, plus any reader problems.
+
+## Understanding the documents (`extract.py`)
+
+The nightly run (when a `profile_extract` route exists) reads the current resume and transcript with
+a Personal-tier model after redaction, and saves what it found as **pending** facts, keyed by the
+file's hash so an unchanged file is never read twice. Nothing counts until the user accepts it
+(review commands: CH-110). See [ADR-0031](../../../docs/decisions/0031-profile-extraction.md).
