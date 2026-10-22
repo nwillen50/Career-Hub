@@ -114,3 +114,15 @@ def test_add_custom_saves_a_provider_and_the_key_only_in_the_store(data_dir: Pat
 
 def test_a_dangling_flag_prints_usage() -> None:
     assert main(["models", "add", "anthropic", "--tier"], InMemoryKeyStore()) == 2
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [["--train-on-data", "yes"], ["--trainsondata", "yes"], ["--name", "x"], ["--kind", "y"]],
+)
+def test_an_unknown_or_overriding_flag_is_refused_not_silently_dropped(flag: list[str]) -> None:
+    from careerhub.core.settings import load_settings
+
+    store = InMemoryKeyStore()
+    assert main(["models", "add-custom", "g", "google", "m", *flag], store) == 2
+    assert load_settings().providers == () and store.get(api_key_name("g")) is None

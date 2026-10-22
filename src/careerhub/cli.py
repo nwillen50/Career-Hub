@@ -230,6 +230,10 @@ def _nightly(store: KeyStore) -> int:
     return 1 if any(p.startswith("run failed") for p in report.problems) else 0
 
 
+#: The `--flag value` options `hub models` accepts.
+_MODEL_FLAGS = frozenset({"tier", "base_url", "input", "output"})
+
+
 def _flags(args: list[str]) -> tuple[list[str], dict[str, str | bool]] | None:
     """Split `args` into plain words and `--flag value` pairs; None if a flag is malformed."""
     words: list[str] = []
@@ -239,9 +243,12 @@ def _flags(args: list[str]) -> tuple[list[str], dict[str, str | bool]] | None:
         if args[i] == "--trains-on-data":
             flags["trains_on_data"] = True
         elif args[i].startswith("--"):
-            if i + 1 >= len(args):
+            name = args[i][2:].replace("-", "_")
+            # An unknown flag is an error: dropping a mistyped --trains-on-data would silently
+            # save the less restrictive value.
+            if name not in _MODEL_FLAGS or i + 1 >= len(args):
                 return None
-            flags[args[i][2:].replace("-", "_")] = args[i + 1]
+            flags[name] = args[i + 1]
             i += 1
         else:
             words.append(args[i])
