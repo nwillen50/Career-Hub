@@ -9,10 +9,32 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from careerhub.core.models import Person
+from careerhub.profile.documents import DocumentText, read_document
+from careerhub.profile.facts import counts
 from careerhub.profile.files import load_preferences, load_profile_doc
 from careerhub.profile.inputs import ResumeFiles, find_resume, find_transcript
 from careerhub.profile.models import Preferences, ProfileDoc
 from careerhub.profile.rubric import Rubric, load_rubric
+
+
+@dataclass(frozen=True)
+class DocumentInfo:
+    """What `hub profile show` may say about a document: never its text."""
+
+    format: str
+    pages: int | None
+    chars: int
+    problems: tuple[str, ...]
+
+    @classmethod
+    def of(cls, document: DocumentText) -> DocumentInfo:
+        """Keep only the safe facts about `document`."""
+        return cls(document.format, document.pages, document.chars, document.problems)
+
+    def describe(self) -> str:
+        """Return e.g. "pdf, 2 pages, 3120 characters"."""
+        pages = f", {self.pages} pages" if self.pages is not None else ""
+        return f"{self.format}{pages}, {self.chars} characters"
 
 
 @dataclass(frozen=True)
@@ -28,6 +50,10 @@ class Profile:
     connections: int | None
     #: One line per missing or unreadable input, ready to show the user.
     problems: list[str] = field(default_factory=list)
+    resume_info: DocumentInfo | None = None
+    transcript_info: DocumentInfo | None = None
+    #: How many extracted fact sets are pending, accepted, or rejected (None: no database).
+    fact_counts: dict[str, int] | None = None
 
 
 def load_profile(session: Session | None = None) -> Profile:
@@ -53,10 +79,27 @@ def load_profile(session: Session | None = None) -> Profile:
     transcript, why = find_transcript()
     if why:
         problems.append(why)
+    resume_info = DocumentInfo.of(resume.read()) if resume else None
+    transcript_info = DocumentInfo.of(read_document(transcript)) if transcript else None
+    for label, info in (("Resume", resume_info), ("Transcript", transcript_info)):
+        if info:
+            problems += [f"{label}: {problem}" for problem in info.problems]
     connections = None
+    fact_counts = counts(session) if session is not None else None
     if session is not None:
         connections = session.scalar(select(func.count()).select_from(Person)) or 0
-    return Profile(doc, preferences, rubric, resume, transcript, connections, problems)
+    return Profile(
+        doc,
+        preferences,
+        rubric,
+        resume,
+        transcript,
+        connections,
+        problems,
+        resume_info,
+        transcript_info,
+        fact_counts,
+    )
 
 
 def format_profile(profile: Profile) -> str:
@@ -81,12 +124,21 @@ def format_profile(profile: Profile) -> str:
     if profile.rubric:
         lines.append(f"Rubric v{profile.rubric.version}:")
         lines += [f"  {c.weight:g} x {c.name}" for c in profile.rubric.criteria]
-    lines.append(f"Resume: {profile.resume.main.name if profile.resume else 'not found'}")
-    lines.append(f"Transcript: {profile.transcript.name if profile.transcript else 'not found'}")
+    for label, path, info in (
+        ("Resume", profile.resume.main if profile.resume else None, profile.resume_info),
+        ("Transcript", profile.transcript, profile.transcript_info),
+    ):
+        detail = f" ({info.describe()})" if info else ""
+        lines.append(f"{label}: {path.name if path else 'not found'}{detail}")
     connections = (
         "unknown (database not opened)" if profile.connections is None else profile.connections
     )
     lines.append(f"LinkedIn connections imported: {connections}")
+    if profile.fact_counts is not None:
+        lines.append(
+            f"Facts read from documents: {profile.fact_counts['pending']} waiting for review, "
+            f"{profile.fact_counts['accepted']} accepted"
+        )
     if profile.problems:
         lines += ["", "Missing:"] + [f"  - {problem}" for problem in profile.problems]
     return "\n".join(lines)

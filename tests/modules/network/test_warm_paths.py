@@ -25,7 +25,7 @@ def session(tmp_path: Path) -> Session:
 
 @pytest.fixture
 def acme(session: Session) -> Company:
-    company = Company(name="Acme Corp", name_key="acme corp")
+    company = Company(name="Acme Corp", name_key="acme")
     session.add(company)
     session.commit()
     return company

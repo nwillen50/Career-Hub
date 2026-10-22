@@ -63,7 +63,7 @@ def test_resume_main_file_and_support_files(tmp_path: Path) -> None:
     resume, why = find_resume(tmp_path)
     assert why is None and resume is not None and resume.main.name == "resume.tex"
     assert [p.name for p in resume.support] == ["x.cls", "y.sty"]
-    assert "documentclass" in resume.text()
+    assert resume.read().format == "tex"
 
 
 def test_resume_problems_are_reported(tmp_path: Path) -> None:
@@ -78,7 +78,7 @@ def test_transcript(tmp_path: Path) -> None:
     assert find_transcript(tmp_path)[0] is None
     put(tmp_path, "t.pdf")
     assert find_transcript(tmp_path)[0] == tmp_path / "t.pdf"
-    put(tmp_path, "u.pdf")
+    put(tmp_path, "u.docx")
     assert "one" in (find_transcript(tmp_path)[1] or "")
 
 
@@ -93,7 +93,7 @@ def test_a_complete_profile_prints_without_resume_text(data: Path) -> None:
     put(data, "profile/preferences.yaml", "weekly_time_budget_hours: 4\n")
     put(data, "profile/rubric.yaml", RUBRIC)
     put(data, "inputs/resume/resume.tex", "SECRET RESUME LINE")
-    put(data, "inputs/transcript/t.pdf")
+    put(data, "inputs/transcript/t.txt", "CS101 A fall term courses and grades")
     profile = load_profile()
     text = format_profile(profile)
     assert profile.problems == []

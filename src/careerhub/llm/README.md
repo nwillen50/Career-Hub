@@ -13,6 +13,8 @@ See [ADR-0003](../../../docs/decisions/0003-router-contract.md).
 | `cache` | Response cache in the encrypted database | CH-50 | Built |
 | `cost` | Cost log and the monthly budget | CH-51 | Built |
 | `setup` | `build_router(settings, store, sessions)` and `routes_for` | CH-64 | Built |
+| `catalog` | Built-in presets, switched on by a key; default routes | CH-99 | Built |
+| `commands` | `hub models list, add, remove, add-custom, routes` | CH-108 | Built |
 | `providers` | Anthropic, OpenAI, Google, and local adapters | CH-52 | Built |
 
 ## The privacy rule
@@ -41,8 +43,11 @@ a Sensitive call can never escalate to a cloud provider. If everything fails it 
 `Router(providers, cache=ResponseCache(sessions))` answers a repeated call from the encrypted
 database (`llm_cache` table). The key is provider, model, and a hash of the system text, prompt,
 and token limit; the prompt itself is never stored. The privacy check runs *before* the lookup,
-and a hit comes back with `cached=True` so the cost log (CH-51) can count it as free. There is no
-expiry yet; a changed prompt or model is a different key. See
+and a hit comes back with `cached=True` so the cost log (CH-51) can count it as free. A changed prompt
+or model is a different key. Entries expire `cache_ttl_days` (setting, default 30) after they were
+last *used*, so a hit resets the clock; an expired entry is a miss. The nightly run prunes expired
+entries and reports the count, and `hub cache clear [--expired]` deletes all entries or only the
+expired ones. See
 [ADR-0005](../../../docs/decisions/0005-response-cache.md).
 
 ## Cost and budget
@@ -80,3 +85,26 @@ In `settings.json` (data folder), list `providers` and map each task to an order
 Keys are never in this file: store each cloud provider's key in the Keychain as
 `api-key-<provider name>`. `build_router(...)` leaves out cloud providers with no key and lists
 them in `problems`. See [ADR-0015](../../../docs/decisions/0015-router-from-settings.md).
+
+## Model catalog
+
+`catalog.json` lists ready-made models (Claude Haiku and Sonnet, two OpenAI models, Gemini Flash
+free and paid, and a local Ollama model). A preset is active when its API key is in the Keychain
+(`api-key-<preset name>`), or for the local one when Ollama answers. `with_catalog` adds the active
+presets and default routes for tasks you haven't routed: Public work goes to the cheapest model,
+Personal work only to models that don't train on your data, and local is the last fallback. Your
+own `providers` and `model_routes` always win; `preset_overrides` changes a preset's model, address,
+or prices. Prices carry a checked-on date. See [ADR-0029](../../../docs/decisions/0029-model-catalog.md).
+
+### `hub models`
+
+```
+hub models list                       presets, which are on, prices and the date checked
+hub models add anthropic              asks for the key (hidden); one key switches on Haiku and Sonnet
+hub models add gemini --tier free     the tier is required: free trains on your data
+hub models remove openai              asks first, then deletes the key from the Keychain
+hub models add-custom NAME KIND MODEL [--base-url U] [--input N] [--output N] [--trains-on-data]
+hub models routes                     the model each task will try, and why
+```
+
+Keys go only into the Keychain: never printed, logged, or written to `settings.json`.

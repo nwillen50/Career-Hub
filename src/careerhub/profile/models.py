@@ -30,6 +30,8 @@ class ProfileDoc(_Strict):
     """The contents of `profile.md`: front matter for fields, the body for free text."""
 
     name: str
+    #: Nicknames and handles (for example "Nick", "nwillen50") removed from text sent to models.
+    aliases: list[str] = Field(default_factory=list)
     education: list[Education] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     #: Interests the user states themselves (inferred ones are added later, with a proposal).

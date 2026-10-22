@@ -17,12 +17,12 @@ from careerhub.modules.jobs import NormalizedJob, store_jobs
 from careerhub.modules.jobs.filters import assess_filters
 from careerhub.modules.jobs.tailoring import (
     build_request,
-    latex_to_text,
-    redact_contacts,
     resume_for_model,
     tailor_job,
 )
+from careerhub.profile.documents import latex_to_text
 from careerhub.profile.models import HardConstraints, ProfileDoc
+from careerhub.profile.redact import redact_contacts
 from careerhub.web.shortlist import ShortlistData, ShortlistEntry, render_shortlist
 
 DOC = ProfileDoc(name="Jane Sample", skills=["Python"], interests=["ml"])
@@ -64,8 +64,11 @@ def scored_job(session: Session, score: float | None = 80.0) -> Job:
     return job
 
 
+RESUME = latex_to_text(LATEX)
+
+
 def test_latex_is_reduced_to_text() -> None:
-    text = latex_to_text(LATEX)
+    text = RESUME
     assert "Built a Python tool that saved 10 hours a week." in text
     assert "private comment" not in text and "trailing comment" not in text
     assert "\\" not in text.replace("\\%", "") or "50\\% less" in text
@@ -73,7 +76,7 @@ def test_latex_is_reduced_to_text() -> None:
 
 
 def test_contact_details_are_removed_before_the_resume_reaches_a_model() -> None:
-    text = resume_for_model(LATEX)
+    text = resume_for_model(RESUME)
     assert "jane.sample@example.com" not in text and "555-0142" not in text
     assert "example.com/jane" not in text
     assert "[email]" in text and "[phone]" in text and "[link]" in text
@@ -85,7 +88,7 @@ def test_ordinary_numbers_are_not_mistaken_for_phones() -> None:
 
 
 def test_the_request_is_personal_tier_without_the_name_and_not_essential(session: Session) -> None:
-    request = build_request(scored_job(session), DOC, resume_for_model(LATEX))
+    request = build_request(scored_job(session), DOC, resume_for_model(RESUME))
     assert request.tier is PrivacyTier.PERSONAL and not request.essential
     assert "Jane" in request.prompt  # the resume's own heading is the user's resume text...
     assert "jane.sample@example.com" not in request.prompt
@@ -98,19 +101,19 @@ def test_notes_are_saved_with_provenance_and_not_redone_until_the_resume_changes
     job = scored_job(session)
     provider = FakeProvider("m", replies=[NOTES])
     router = Router([provider])
-    notes = tailor_job(session, router, job, DOC, LATEX, ["m"])
+    notes = tailor_job(session, router, job, DOC, RESUME, ["m"])
     assert notes is not None and notes.lead_with == ["Your Python tool"]
     saved = session.scalars(select(Assessment)).one().tailoring
     assert saved is not None and saved["model"] == "m:m-model" and saved["prompt_version"] == 1
-    assert tailor_job(session, router, job, DOC, LATEX, ["m"]) is None
-    assert tailor_job(session, router, job, DOC, LATEX + "\nNew line of experience.", ["m"])
+    assert tailor_job(session, router, job, DOC, RESUME, ["m"]) is None
+    assert tailor_job(session, router, job, DOC, RESUME + "\nNew line of experience.", ["m"])
     assert len(provider.requests) == 2
 
 
 def test_unscored_jobs_get_no_notes(session: Session) -> None:
     job = scored_job(session, score=None)
     provider = FakeProvider("m", replies=[NOTES])
-    assert tailor_job(session, Router([provider]), job, DOC, LATEX, ["m"]) is None
+    assert tailor_job(session, Router([provider]), job, DOC, RESUME, ["m"]) is None
     assert provider.requests == []
 
 
@@ -118,7 +121,7 @@ def test_a_training_cloud_provider_cannot_see_the_resume(session: Session) -> No
     job = scored_job(session)
     cloud = FakeProvider("c", Destination.CLOUD, trains_on_data=True, replies=[NOTES])
     with pytest.raises(PrivacyViolation):
-        tailor_job(session, Router([cloud]), job, DOC, LATEX, ["c"])
+        tailor_job(session, Router([cloud]), job, DOC, RESUME, ["c"])
     assert cloud.requests == []
 
 
@@ -126,7 +129,7 @@ def test_notes_with_too_many_items_are_rejected_and_retried(session: Session) ->
     job = scored_job(session)
     too_many = json.dumps({"lead_with": [str(i) for i in range(9)]})
     provider = FakeProvider("m", replies=[too_many, NOTES])
-    assert tailor_job(session, Router([provider]), job, DOC, LATEX, ["m"]) is not None
+    assert tailor_job(session, Router([provider]), job, DOC, RESUME, ["m"]) is not None
     assert len(provider.requests) == 2
 
 

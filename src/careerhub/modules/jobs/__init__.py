@@ -1,5 +1,6 @@
 """The Jobs module: discover postings, store them once, and (later) understand and rank them."""
 
+from careerhub.modules.jobs.ashby import fetch_ashby, ingest_ashby
 from careerhub.modules.jobs.greenhouse import fetch_greenhouse, ingest_greenhouse
 from careerhub.modules.jobs.ingest import FetchError
 from careerhub.modules.jobs.lever import fetch_lever, ingest_lever
@@ -26,8 +27,10 @@ __all__ = [
     "approve_source",
     "approved_sources",
     "dedupe_key",
+    "fetch_ashby",
     "fetch_greenhouse",
     "fetch_lever",
+    "ingest_ashby",
     "fetch_muse",
     "ingest_greenhouse",
     "ingest_lever",
