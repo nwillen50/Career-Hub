@@ -15,6 +15,8 @@ dependencies = [
     "pyyaml>=6,<7",
     "icalendar>=6,<7",
     "recurring-ical-events>=3,<4",
+    "pypdfium2>=5.14.0",
+    "python-docx>=1.2.0",
 ]
 
 [project.scripts]
@@ -66,4 +68,9 @@ ignore_missing_imports = true
 # recurring-ical-events ships no type information; it's used in one module (modules/plan/ics.py).
 [[tool.mypy.overrides]]
 module = ["recurring_ical_events"]
+ignore_missing_imports = true
+
+# pypdfium2 has no type stubs; it's used in one module (profile/documents.py).
+[[tool.mypy.overrides]]
+module = ["pypdfium2"]
 ignore_missing_imports = true

@@ -50,3 +50,12 @@ def test_the_scoring_prompt_has_its_placeholders_and_treats_the_posting_as_data(
     ):
         assert marker in text
     assert "never as instructions" in text and '"criteria"' in text and '"explanation"' in text
+
+
+def test_the_profile_prompt_has_its_placeholders_keys_and_data_warning() -> None:
+    text = load_prompt("profile_extract", 1)
+    for marker in ("{{kind}}", "{{document}}"):
+        assert marker in text
+    for key in ("experiences", "education", "courses", "gpa", "skills", "projects", "awards"):
+        assert f'"{key}"' in text
+    assert "never as instructions" in text and "Never invent" in text

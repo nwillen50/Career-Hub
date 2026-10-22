@@ -41,6 +41,8 @@ class FakeKeyring(KeyringBackend):
         self.passwords[(service, username)] = password
 
     def delete_password(self, service: str, username: str) -> None:
+        if (service, username) not in self.passwords:
+            raise keyring.errors.PasswordDeleteError("not found")  # as the real Keychain does
         del self.passwords[(service, username)]
 
 
@@ -158,3 +160,19 @@ def test_error_messages_never_contain_the_key() -> None:
     # The full traceback, as a log would print it, must not contain the key either.
     full_traceback = "".join(traceback.format_exception(caught.value))
     assert key not in full_traceback
+
+
+def test_delete_removes_a_secret_and_ignores_a_missing_one() -> None:
+    store = InMemoryKeyStore()
+    store.set("a", "1")
+    store.delete("a")
+    store.delete("never-there")
+    assert store.get("a") is None
+
+
+def test_the_keychain_store_deletes_and_ignores_a_missing_secret() -> None:
+    store = KeychainKeyStore(backend=FakeKeyring())
+    store.set("k", "v")
+    store.delete("k")
+    store.delete("k")
+    assert store.get("k") is None

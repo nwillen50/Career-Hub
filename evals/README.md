@@ -34,3 +34,9 @@ A `hub eval extract` command arrives with CH-64, which builds the router from se
   one-line `reason`. An unquoted `no` is fine.
 - Passing means no `great` posting is filtered out and at most one `no` is in the top 10. Also
   reported: how often label pairs are in the right order, and the mean score per label.
+
+## `profile/`
+
+`sample.yaml`: made-up resumes and transcripts with the facts a good reading must find (GPA,
+skills, schools, organizations, course codes). `careerhub.profile.evals.run_profile_eval` reports
+the share of expected items found per field and lists the misses.

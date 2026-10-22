@@ -21,9 +21,11 @@ from careerhub.llm.fake import FakeProvider
 from careerhub.modules.jobs import NormalizedJob, store_jobs
 from careerhub.modules.jobs.filters import assess_filters
 from careerhub.modules.jobs.scoring import ranked_jobs, score_job
-from careerhub.modules.jobs.tailoring import build_request, redact_contacts, resume_for_model
+from careerhub.modules.jobs.tailoring import build_request, resume_for_model
 from careerhub.modules.plan import IcsCalendar, Interval, PlanTask, plan_week
+from careerhub.profile.documents import latex_to_text
 from careerhub.profile.models import HardConstraints, ProfileDoc
+from careerhub.profile.redact import redact_contacts
 from careerhub.profile.rubric import Criterion, Rubric
 
 NY = ZoneInfo("America/New_York")
@@ -45,7 +47,7 @@ NY = ZoneInfo("America/New_York")
     ],
 )
 def test_contact_details_do_not_survive_in_realistic_forms(text: str, gone: str) -> None:
-    assert gone not in resume_for_model(text)
+    assert gone not in resume_for_model(latex_to_text(text))
 
 
 @pytest.mark.parametrize(
@@ -67,7 +69,9 @@ def test_the_users_name_and_profile_contacts_are_removed_from_the_prompt() -> No
     )
     job = Job(title="Engineer", raw_text="text")
     job.company = type("C", (), {"name": "Acme"})()  # type: ignore[assignment]
-    resume = resume_for_model(r"\textbf{Jane Sample} built a tool. Jane led it.", doc.name)
+    resume = resume_for_model(
+        latex_to_text(r"\textbf{Jane Sample} built a tool. Jane led it."), doc.name
+    )
     prompt = build_request(job, doc, resume).prompt
     assert "Jane" not in prompt and "Sample" not in prompt
     assert "jane@x.org" not in prompt and "555-0142" not in prompt and "[name]" in prompt
