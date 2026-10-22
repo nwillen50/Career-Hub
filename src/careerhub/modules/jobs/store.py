@@ -21,8 +21,8 @@ from typing import Any, cast
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, aliased
 
+from careerhub.core.companies import get_or_create_company
 from careerhub.core.models import Company, Job, Source, utcnow
-from careerhub.core.names import company_key
 
 
 @dataclass(frozen=True)
@@ -117,13 +117,11 @@ def store_jobs(
 
 
 def _company(session: Session, name: str) -> Company:
-    """Return the company called `name`, creating it if needed (matched ignoring case/spacing)."""
-    key = company_key(name)
-    company = session.scalars(select(Company).where(Company.name_key == key)).first()
-    if company is None:
-        company = Company(name=" ".join(name.split()), name_key=key)
-        session.add(company)
-        session.flush()
+    """Return the company called `name`, creating it if needed (matched by company key)."""
+    company = get_or_create_company(session, name)
+    if company is None:  # a posting with a blank company name
+        company = get_or_create_company(session, "unknown company")
+    assert company is not None
     return company
 
 
