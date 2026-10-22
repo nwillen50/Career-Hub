@@ -44,6 +44,7 @@ from careerhub.profile.facts import UnknownExtraction, decide, facts_text, pendi
 from careerhub.profile.files import ProfileFileError, load_preferences
 from careerhub.profile.models import ProfileDoc
 from careerhub.profile.profile import Profile, format_profile, load_profile
+from careerhub.profile.readiness import current_readiness, missing_items, set_scoring
 from careerhub.schedule import install_plist, launchctl_commands
 from careerhub.web.shortlist import write_shortlist
 
@@ -58,6 +59,7 @@ USAGE = """Usage:
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
   hub cache clear [--expired]               (delete saved model answers; prints how many)
+  hub profile ready [--off]                 (check the profile, then switch scoring on or off)
   hub profile facts                         (what was read from your resume and transcript)
   hub profile facts accept <number|all> | reject <number>
   hub shortlist build                        (write the shortlist page)
@@ -71,10 +73,13 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     store = store or KeychainKeyStore()
     try:
+        if args[:2] == ["profile", "ready"] and args[2:] in ([], ["--off"]):
+            return _with_session(store, lambda s: _profile_ready(s, off=bool(args[2:])))
         if args[:2] == ["profile", "facts"]:
             return _with_session(store, lambda s: _profile_facts(s, args[2:]))
         if args == ["profile", "show"]:
             print(format_profile(_load_profile(store)))
+            print(_readiness_summary())
             return 0
         if len(args) == 4 and args[:2] == ["ingest", "greenhouse"] and args[2] == "--company":
             return _with_session(store, lambda s: _ingest(s, args[3]))
@@ -232,6 +237,31 @@ def _cache_clear(store: KeyStore, expired_only: bool) -> int:
     cache = ResponseCache(session_factory(engine), load_settings().cache_ttl_days)
     removed = cache.prune() if expired_only else cache.clear()
     print(f"Removed {removed} saved model {'answer' if removed == 1 else 'answers'}.")
+    return 0
+
+
+def _readiness_summary() -> str:
+    """Describe whether scoring is on and, if not, what the profile still needs."""
+    readiness = current_readiness(None, load_settings().profile_min_skills)
+    if readiness.on:
+        return f"\nScoring: on since {readiness.since}."
+    items = "\n".join(f"  - {item}" for item in readiness.missing) or "  (nothing missing)"
+    return f"\nScoring: off. To switch it on, run `hub profile ready`. Still needed:\n{items}"
+
+
+def _profile_ready(session: Session, off: bool) -> int:
+    """Switch scoring on once the profile checklist passes, or off with `--off`."""
+    if off:
+        set_scoring(False, utcnow().date())
+        print("Scoring is off. Nightly runs still ingest, read, and filter jobs.")
+        return 0
+    missing = missing_items(session, load_settings().profile_min_skills)
+    if missing:
+        print("The profile isn't ready yet. Still needed:")
+        print("\n".join(f"  - {item}" for item in missing))
+        return 1
+    set_scoring(True, utcnow().date())
+    print("Scoring is on. The next nightly run will score and write tailoring notes.")
     return 0
 
 

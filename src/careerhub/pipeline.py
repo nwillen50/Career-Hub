@@ -57,6 +57,7 @@ from careerhub.profile.facts import accepted_facts
 from careerhub.profile.files import load_preferences, load_profile_doc
 from careerhub.profile.inputs import find_resume, find_transcript
 from careerhub.profile.models import HardConstraints, ProfileDoc
+from careerhub.profile.readiness import current_readiness
 from careerhub.profile.rubric import load_rubric
 from careerhub.web.shortlist import MAX_JOBS, write_shortlist
 
@@ -74,6 +75,8 @@ class NightlyReport:
     tailored: int = 0
     profile_facts: int = 0
     problems: list[str] = field(default_factory=list)
+    #: Things that happened on purpose that the user should see, e.g. "Acme: all 7 jobs closed".
+    notes: list[str] = field(default_factory=list)
     cache_pruned: int = 0
     shortlist_path: str | None = None
 
@@ -93,6 +96,7 @@ class NightlyReport:
             lines.append(f"Removed {self.cache_pruned} expired saved answers.")
         if self.shortlist_path:
             lines.append(f"Shortlist: {self.shortlist_path}")
+        lines += [f"Note: {note}" for note in self.notes]
         lines += [f"Problem: {problem}" for problem in self.problems]
         return "\n".join(lines)
 
@@ -185,7 +189,7 @@ def _understand_and_rank(
         if doc
         else Eligibility()
     )
-    if doc is None or rubric is None:
+    if (doc is None or rubric is None) and current_readiness(session).on:
         report.problems.append("scoring skipped: profile.md or rubric.yaml is missing")
     try:
         extract_routes = routes_for(settings, "extract", setup.built)
@@ -197,6 +201,14 @@ def _understand_and_rank(
     except NoRoute:
         score_routes = []
         report.problems.append("scoring skipped: no usable model for 'score'")
+    readiness = current_readiness(session, settings.profile_min_skills)
+    if not readiness.on:
+        # Ingesting, understanding and filtering are cheap, so they run; scoring and tailoring wait.
+        score_routes = []
+        report.notes.append(
+            "scoring starts when your profile is ready (hub profile ready); missing: "
+            + "; ".join(readiness.missing)
+        )
     budget_hit = False
     failures = 0
     for job in jobs:
@@ -230,7 +242,7 @@ def _understand_and_rank(
         report.problems.append(f"{failures} jobs could not be understood or scored")
     if doc is not None:
         _extract_profile_facts(session, setup, settings, doc, report)
-    if doc is not None and not budget_hit:
+    if doc is not None and not budget_hit and readiness.on:
         _tailor_top_jobs(session, setup, settings, doc, report)
 
 

@@ -109,3 +109,11 @@ file's hash so an unchanged file is never read twice. Nothing counts until the u
 Accepted facts (newest per document) are added to the profile text for scoring and tailoring, after
 redaction; what you typed in `profile.md` wins. See
 [ADR-0032](../../../docs/decisions/0032-accepting-extracted-facts.md).
+
+## Readiness (`readiness.py`)
+
+Scoring and tailoring stay off until `hub profile ready` passes its checklist (education with an
+expected graduation, at least 5 skills, interests or About, a readable resume, locations in
+`preferences.yaml`, a rubric; accepted resume facts count). `hub profile ready --off` switches it off
+again while you make big changes. Until it is on, `hub nightly` still ingests, reads, and filters, and
+the shortlist page says what is missing. See [ADR-0037](../../../docs/decisions/0037-profile-readiness.md).
