@@ -192,6 +192,8 @@ def _plan(session: Session) -> int:
     hours, minutes = divmod(plan.planned_minutes, 60)
     print(f"Suggested plan ({hours}h{minutes:02d}m of {budget:g}h):")
     print(_plan_sources(preferences))
+    for problem in plan.problems:
+        print(f"  Problem: {problem}")
     for block in plan.blocks:
         when = block.start.astimezone(zone)
         print(f"  {when:%a %b %d %H:%M}-{block.end.astimezone(zone):%H:%M}  {block.task.title}")

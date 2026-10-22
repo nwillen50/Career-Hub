@@ -74,6 +74,10 @@ class Settings(BaseModel):
     timezone: str = "America/New_York"
     #: Calendar files (.ics) whose busy time the weekly plan avoids. Only times are read.
     calendar_files: tuple[str, ...] = ()
+    #: Read busy time from the Mac's Calendar app (needs your permission; Mac only).
+    use_apple_calendar: bool = False
+    #: Which Calendar-app calendars count, by name. Empty means all of them.
+    apple_calendars: tuple[str, ...] = ()
     #: The models Career Hub may use. Empty until the user adds some.
     providers: tuple[ProviderSetting, ...] = ()
     #: Which providers handle each task, in order: the first is tried, later ones are escalations.
