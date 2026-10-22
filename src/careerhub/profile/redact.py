@@ -73,33 +73,32 @@ def redact_address(text: str) -> str:
     return _STATE_ZIP.sub("[address]", _STREET.sub("[address]", text))
 
 
-# --- Transcripts: identity numbers and addresses (CH-109) ---------------------------------------
+# --- Transcripts: identity numbers and birth dates (CH-109) --------------------------------------
 _SSN = re.compile(r"(?<!\d)\d{3}[- ]\d{2}[- ]\d{4}(?!\d)")
-_LABELLED_ID = re.compile(
-    r"(?i)\b(student\s*(?:id|no\.?|number)|id\s*(?:#|no\.?|number)|sid|ssn"
-    r"|social security(?: number)?)\s*[:#]?\s*[\w-]*\d[\w-]*"
+_ID_LABEL = (
+    r"(?:(?:student|university|campus|school|college|national|employee)\s+)?"
+    r"(?:id(?:entification)?|sid|uid|ssn|social security)(?:\s*(?:no\.?|number|#|code))?"
+)
+_LABELLED_ID = re.compile(rf"(?i)\b({_ID_LABEL})\s*[:#]?\s*[A-Za-z]{{0,3}}[\w-]*\d[\w-]*")
+_DATE = (
+    r"(?:\d{1,2}[/.\- ]\d{1,2}[/.\- ]\d{2,4}|\d{4}-\d{2}-\d{2}"
+    r"|\d{1,2}\s+[A-Za-z]{3,9}\.?,?\s+\d{4}|[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})"
 )
 _LABELLED_DOB = re.compile(
-    r"(?i)\b(date of birth|birth\s*date|birthday|dob)\s*[:#]?\s*"
-    r"(?:\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{4}-\d{2}-\d{2}|[A-Za-z]{3,9}\.? \d{1,2},? \d{4})"
+    rf"(?i)\b(date\s+of\s+birth|birth\s*date|birthday|d\.?o\.?b\.?|born)\b[^\n\d]{{0,30}}?{_DATE}"
 )
-_STREET = re.compile(
-    r"(?i)\b\d{1,6}\s+(?:[\w.'-]+\s+){1,4}"
-    r"(?:street|st|avenue|ave|road|rd|boulevard|blvd|drive|dr|lane|ln|court|ct|way|place|pl|"
-    r"terrace|ter|circle|cir|highway|hwy)\b\.?(?:,?\s*(?:apt|unit|suite|ste|#)\s*[\w-]+)?"
-)
-_STATE_ZIP = re.compile(r"\b[A-Z]{2}\s+\d{5}(?:-\d{4})?\b")
-_LONG_NUMBER = re.compile(r"(?<![\w.])\d{7,}(?![\w.])")
+# An unlabelled ID: 7 or more digits, with an optional letter prefix, standing alone.
+_LONG_NUMBER = re.compile(r"(?<![\w])[A-Za-z]?\d{7,}(?![\w])")
 
 
 def redact_identity_numbers(text: str) -> str:
     """Remove ID numbers, birth dates, SSN-shaped numbers, and addresses (for transcripts)."""
-    text = _LABELLED_ID.sub(lambda m: f"{m.group(1)}: [id]", text)
+    text = normalize(text)
+    text = _LABELLED_ID.sub(lambda m: f"{m.group(1).strip()}: [id]", text)
     text = _LABELLED_DOB.sub(lambda m: f"{m.group(1)}: [birth date]", text)
     text = _SSN.sub("[id]", text)
-    text = _STREET.sub("[address]", text)
-    text = _STATE_ZIP.sub("[address]", text)
-    return _LONG_NUMBER.sub("[id]", text)
+    text = _LONG_NUMBER.sub("[id]", text)
+    return redact_address(text)
 
 
 def transcript_text(text: str, name: str, aliases: Sequence[str] = ()) -> str:
