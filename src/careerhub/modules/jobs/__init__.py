@@ -3,6 +3,7 @@
 from careerhub.modules.jobs.greenhouse import fetch_greenhouse, ingest_greenhouse
 from careerhub.modules.jobs.ingest import FetchError
 from careerhub.modules.jobs.lever import fetch_lever, ingest_lever
+from careerhub.modules.jobs.muse import fetch_muse, ingest_muse
 from careerhub.modules.jobs.sources import (
     SourceNotApproved,
     UnknownSource,
@@ -27,8 +28,10 @@ __all__ = [
     "dedupe_key",
     "fetch_greenhouse",
     "fetch_lever",
+    "fetch_muse",
     "ingest_greenhouse",
     "ingest_lever",
+    "ingest_muse",
     "disable_source",
     "list_sources",
     "propose_source",

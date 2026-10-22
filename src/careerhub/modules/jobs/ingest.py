@@ -32,8 +32,13 @@ def ingest_source(
     fetch: Fetcher,
     label: str,
     client: httpx.Client | None = None,
+    partial: bool = False,
 ) -> IngestReport:
-    """Fetch and store one approved source, recording the fetch time and the source's health."""
+    """Fetch and store one approved source, recording the fetch time and the source's health.
+
+    `partial` is for search sources that never list everything: their jobs are not closed for being
+    missing, and an empty result is normal rather than a glitch.
+    """
     try:
         jobs = fetch(source, client)
     except FetchError:
@@ -41,13 +46,13 @@ def ingest_source(
             source.health = "failing"
             session.commit()
         raise
-    if not jobs and _has_open_jobs(session, source):
+    if not partial and not jobs and _has_open_jobs(session, source):
         # An empty answer for a board that had jobs is more likely a glitch than a company that
         # closed every role; closing everything would blank the shortlist.
         source.health = "failing"
         session.commit()
         raise FetchError(f"{label} listed no jobs for a board that had open jobs; kept them.")
-    report = store_jobs(session, source, jobs)
+    report = store_jobs(session, source, jobs, partial=partial)
     source.health = "ok"
     source.last_fetched_at = utcnow()
     session.commit()

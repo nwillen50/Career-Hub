@@ -1,9 +1,13 @@
 # 0010. The broad job source: Adzuna (proposed)
 
-- Status: Proposed
+- Status: Superseded by the decision to use The Muse (CH-95)
 - Date: 2026-10-21
 - Ticket: CH-10 (spike), for epic CH-21 (step 4)
 - Deciders: Sam (owner), Priya (reviewer), Nicholas (approver)
+
+> **Amended Oct 21 (Nicholas) and built Oct 22 (CH-95):** The Muse replaces Adzuna as the MVP broad
+> source. Adzuna stays a candidate for later (CH-58 is Post-MVP). The Muse's terms are still
+> unchecked by the build environment; Nicholas should read them (see the board).
 
 ## Context
 
