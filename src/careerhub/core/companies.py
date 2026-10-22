@@ -83,24 +83,33 @@ def suggest_merges(session: Session) -> int:
     companies = list(session.scalars(select(Company).order_by(Company.id)))
     seen = {p.title for p in session.scalars(select(Proposal).where(Proposal.kind == MERGE_KIND))}
     made = 0
-    for i, first in enumerate(companies):
-        for second in companies[i + 1 :]:
-            if not _near_miss(first.name_key, second.name_key):
-                continue
-            keep, drop = sorted((first, second), key=lambda c: len(c.name_key))
-            title = f"Merge {drop.name} into {keep.name}?"
-            if title in seen:
-                continue
-            session.add(
-                Proposal(
-                    kind=MERGE_KIND,
-                    title=title,
-                    body=f"keep={keep.id} drop={drop.id}",
-                    origin="agent",
-                )
+    # A near miss shares its first word, so only compare companies within the same group.
+    groups: dict[str, list[Company]] = {}
+    for company in companies:
+        groups.setdefault(company.name_key.split(" ")[0], []).append(company)
+    pairs = [
+        (first, second)
+        for group in groups.values()
+        for i, first in enumerate(group)
+        for second in group[i + 1 :]
+    ]
+    for first, second in sorted(pairs, key=lambda pair: (pair[0].id, pair[1].id)):
+        if not _near_miss(first.name_key, second.name_key):
+            continue
+        keep, drop = sorted((first, second), key=lambda c: len(c.name_key))
+        title = f"Merge {drop.name} into {keep.name}?"
+        if title in seen:
+            continue
+        session.add(
+            Proposal(
+                kind=MERGE_KIND,
+                title=title,
+                body=f"keep={keep.id} drop={drop.id}",
+                origin="agent",
             )
-            seen.add(title)
-            made += 1
+        )
+        seen.add(title)
+        made += 1
     session.commit()
     return made
 
