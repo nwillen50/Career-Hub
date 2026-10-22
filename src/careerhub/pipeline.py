@@ -16,6 +16,7 @@ sends or submits anything.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -149,6 +150,8 @@ def _run(
         )
     )
     _understand_and_rank(session, setup, settings, jobs, report)
+    for note, count in Counter(setup.router.skipped).items():
+        report.problems.append(f"fell back past a model ({note}, {count}x)")
 
 
 def _backup(engine: Engine, settings: Settings, report: NightlyReport) -> None:
