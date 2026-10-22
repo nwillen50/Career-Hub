@@ -18,6 +18,7 @@ from careerhub.core.models import utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore, SecretsError
 from careerhub.core.settings import SettingsError, load_settings
 from careerhub.core.storage import StorageError, open_database, session_factory
+from careerhub.llm.cache import ResponseCache
 from careerhub.llm.commands import (
     models_add,
     models_add_custom,
@@ -67,6 +68,7 @@ USAGE = """Usage:
   hub models remove <same names>
   hub models add-custom <name> <kind> <model> [--base-url U] [--input N] [--output N]
                         [--trains-on-data]
+  hub cache clear [--expired]               (delete saved model answers; prints how many)
   hub shortlist build                        (write the shortlist page)
   hub sources list
   hub sources add <kind> <name> <url>     (saved as proposed; nothing is fetched yet)
@@ -99,6 +101,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _nightly(store)
         if args[:1] == ["models"] and len(args) >= 2:
             return _models(store, args[1:])
+        if args[:2] == ["cache", "clear"] and args[2:] in ([], ["--expired"]):
+            return _cache_clear(store, expired_only=bool(args[2:]))
         if args == ["shortlist", "build"]:
             return _with_session(store, _shortlist_build)
         if args[:2] == ["sources", "list"] and len(args) == 2:
@@ -284,6 +288,16 @@ def _models(store: KeyStore, args: list[str]) -> int:
         return models_add_custom(store, load_settings(), options, secret)
     print(USAGE)
     return 2
+
+
+def _cache_clear(store: KeyStore, expired_only: bool) -> int:
+    """Delete saved model answers (only the expired ones with `--expired`) and print the count."""
+    engine = open_database(store)
+    migrate(engine)
+    cache = ResponseCache(session_factory(engine), load_settings().cache_ttl_days)
+    removed = cache.prune() if expired_only else cache.clear()
+    print(f"Removed {removed} saved model {'answer' if removed == 1 else 'answers'}.")
+    return 0
 
 
 def _shortlist_build(session: Session) -> int:

@@ -70,6 +70,8 @@ class Settings(BaseModel):
     #: Most the model router may spend on cloud models in a calendar month, in US dollars. When
     #: it is reached, calls not marked essential are paused (PRD, "Cost tracking").
     monthly_budget_usd: float = Field(default=20.0, ge=0)
+    #: Days a saved model answer is kept after it was last used (using it resets the clock).
+    cache_ttl_days: int = Field(default=30, ge=1, le=3650)
     #: Your timezone (an IANA name such as "America/New_York"), for working hours and calendars.
     timezone: str = "America/New_York"
     #: Calendar files (.ics) whose busy time the weekly plan avoids. Only times are read.

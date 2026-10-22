@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -97,3 +98,63 @@ def test_a_router_without_a_cache_calls_every_time() -> None:
     router.complete(ask(), "fake")
     router.complete(ask(), "fake")
     assert len(fake.requests) == 2
+
+
+class Clock:
+    """A clock the tests move by hand."""
+
+    def __init__(self) -> None:
+        self.now = datetime(2026, 1, 1, tzinfo=UTC)
+
+    def __call__(self) -> datetime:
+        return self.now
+
+    def advance(self, days: float) -> None:
+        self.now += timedelta(days=days)
+
+
+def cached_router(sessions, clock: Clock, ttl_days: int = 30):  # type: ignore[no-untyped-def]
+    fake = FakeProvider(replies=["first", "second", "third"])
+    cache = ResponseCache(sessions, ttl_days, clock)
+    return fake, cache, Router([fake], cache=cache)
+
+
+def test_an_expired_entry_is_a_miss(sessions) -> None:  # type: ignore[no-untyped-def]
+    clock = Clock()
+    fake, _, router = cached_router(sessions, clock)
+    router.complete(ask(), "fake")
+    clock.advance(29)
+    assert router.complete(ask(), "fake").cached
+    clock.advance(31)  # more than 30 days since the last use
+    assert router.complete(ask(), "fake").text == "second"
+    assert len(fake.requests) == 2
+
+
+def test_expiry_is_sliding_because_each_use_resets_the_clock(sessions) -> None:  # type: ignore[no-untyped-def]
+    clock = Clock()
+    _, _, router = cached_router(sessions, clock)
+    router.complete(ask(), "fake")
+    for _ in range(4):
+        clock.advance(20)  # 80 days in all, but never 30 unused
+        assert router.complete(ask(), "fake").cached
+
+
+def test_prune_removes_only_expired_entries_and_counts_them(sessions) -> None:  # type: ignore[no-untyped-def]
+    clock = Clock()
+    _, cache, router = cached_router(sessions, clock)
+    router.complete(ask("old"), "fake")
+    clock.advance(40)
+    router.complete(ask("new"), "fake")
+    assert cache.prune() == 1
+    with sessions() as session:
+        assert session.scalar(select(func.count()).select_from(LLMCacheEntry)) == 1
+    assert cache.prune() == 0
+
+
+def test_clear_removes_everything(sessions) -> None:  # type: ignore[no-untyped-def]
+    clock = Clock()
+    _, cache, router = cached_router(sessions, clock)
+    router.complete(ask("a"), "fake")
+    router.complete(ask("b"), "fake")
+    assert cache.clear() == 2
+    assert cache.clear() == 0
