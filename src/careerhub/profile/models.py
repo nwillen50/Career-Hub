@@ -56,6 +56,9 @@ class HardConstraints(_Strict):
     excluded_companies: list[str] = Field(default_factory=list)
     #: Words that rule a job out when they appear in its title, e.g. ["intern", "senior"].
     excluded_title_words: list[str] = Field(default_factory=list)
+    #: Other names for your places: {"New York, NY": ["the city", "Midtown"]}. Added to the
+    #: built-in list (NYC, Manhattan, SF, Bay Area...). A name matches only as whole words.
+    location_aliases: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class Timeline(_Strict):

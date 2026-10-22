@@ -37,6 +37,62 @@ def _words(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", text.lower()))
 
 
+#: Endings that still mean the same word: "intern" matches "interns" and "internship", but
+#: "internal" is a different word.
+_SUFFIXES = ("s", "es", "ed", "ing", "ship", "ships")
+#: Short forms and what they stand for (both directions are checked).
+ABBREVIATIONS = {
+    "sr": "senior",
+    "jr": "junior",
+    "mgr": "manager",
+    "eng": "engineer",
+    "swe": "software engineer",
+}
+#: Names for the same metro area. A wanted place in a group matches a job in any of its names.
+BUILT_IN_PLACES = (
+    ("new york", "nyc", "new york city", "manhattan", "brooklyn", "queens", "the bronx"),
+    ("san francisco", "sf", "bay area", "south san francisco"),
+    ("los angeles", "la"),
+    ("washington", "dc", "washington dc"),
+)
+
+
+def _loose_forms(word: str) -> set[str]:
+    """Return the other words that count as `word` (plurals, endings, abbreviations)."""
+    forms = {word + suffix for suffix in _SUFFIXES}
+    for short, long in ABBREVIATIONS.items():
+        if word == long.split()[0] and " " not in long:
+            forms.add(short)
+        if word == short:
+            forms.update(long.split() if " " not in long else {long.split()[0]})
+    return forms
+
+
+def _title_matches(excluded: list[str], title: str) -> tuple[list[str], list[str]]:
+    """Return (exact hits, loose-hit explanations) of excluded words in `title`.
+
+    An exact hit is the same whole word. A loose hit is a plural or ending of it, or an
+    abbreviation ("Sr." for "senior"); it is reported with the words involved so it can be shown.
+    """
+    title_words = _words(title)
+    exact = sorted(title_words & _words(" ".join(excluded)))
+    loose = []
+    for word in sorted(_words(" ".join(excluded)) - set(exact)):
+        for found in sorted(title_words & _loose_forms(word)):
+            loose.append(f"'{found}' in the title looks like your excluded word '{word}'")
+    return exact, loose
+
+
+def _aliases(city: str, extra: list[str]) -> set[str]:
+    """Return the other names for `city`: the built-in metro groups plus the user's own."""
+    names = {" ".join(name.lower().split()) for name in extra}
+    for group in BUILT_IN_PLACES:
+        if city in group:
+            names.update(group)
+    names.discard(city)
+    return {name for name in names if name}
+
+
 def _city(place: str) -> str:
     """Return the city part of "Boston, MA" in lowercase."""
     return " ".join(place.split(",")[0].lower().split())
@@ -64,11 +120,14 @@ def _location_ok(
         return True, ""  # a remote job passes from anywhere
     if not job_places:
         return None, "no location was found for this job"
-    wanted = {_city(place) for place in constraints.locations}
-    if any(
-        city and city in " ".join(place.lower().split()) for place in job_places for city in wanted
-    ):
-        return True, ""
+    places = [" ".join(place.lower().split()) for place in job_places]
+    for wanted in constraints.locations:
+        city = _city(wanted)
+        if city and any(city in place for place in places):
+            return True, ""
+        names = _aliases(city, constraints.location_aliases.get(wanted, []))
+        if any(re.search(rf"(?<!\w){re.escape(name)}(?!\w)", p) for name in names for p in places):
+            return True, ""
     return False, f"located in {', '.join(job_places)}, outside your locations"
 
 
@@ -119,9 +178,11 @@ def apply_filters(
     excluded = {company_key(name) for name in constraints.excluded_companies}
     if company_key(job.company.name) in excluded:
         reasons.append(f"company {job.company.name} is on your excluded list")
-    bad_words = _words(" ".join(constraints.excluded_title_words)) & _words(job.title)
+    bad_words, loose_hits = _title_matches(constraints.excluded_title_words, job.title)
     if bad_words:
-        reasons.append(f"title contains excluded word(s): {', '.join(sorted(bad_words))}")
+        reasons.append(f"title contains excluded word(s): {', '.join(bad_words)}")
+    # A wrong hard filter hides a job silently, so a loose match only raises a flag.
+    uncertain.extend(loose_hits)
     places = (
         list(fields.locations)
         if fields and fields.locations

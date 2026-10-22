@@ -78,6 +78,15 @@ sent. The resume goes to the model as plain text with emails, links, and phone n
 only to providers allowed to see Personal data. See
 [ADR-0024](../../../../docs/decisions/0024-tailoring-notes.md).
 
+## Looser matching (CH-87)
+
+Excluded title words match the exact word (rejects the job) and also plurals, endings and
+abbreviations: "intern" also sees "interns" and "internship", "senior" sees "Sr.", "manager" sees
+"Mgr". Those looser hits never filter a job out: they are listed as *uncertain* with the words
+involved ("'sr' in the title looks like your excluded word 'senior'"). "Internal" is not "intern".
+Places match by city substring as before, and also by built-in metro names (NYC, Manhattan, SF, Bay
+Area, DC...) and your own `location_aliases` in `preferences.yaml`, as whole words only.
+
 ## Posting age (CH-81)
 
 Each card on the shortlist ends with one muted line, such as "Posted 24 days ago" (past

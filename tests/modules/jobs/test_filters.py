@@ -168,3 +168,88 @@ def test_no_extracted_facts_means_unknown_mode() -> None:
 def test_with_no_locations_set_hybrid_and_onsite_pass_anywhere() -> None:
     assert apply_filters(job(), JobFields(remote="hybrid"), HardConstraints()).passed
     assert apply_filters(job(), JobFields(remote="onsite"), HardConstraints()).passed
+
+
+# --- Looser title and location matching (CH-87) -----------------------------------------------
+
+
+def titled(title: str, words: list[str]):  # type: ignore[no-untyped-def]
+    return apply_filters(job(title), None, HardConstraints(excluded_title_words=words))
+
+
+@pytest.mark.parametrize("title", ["Software Intern", "INTERN", "Intern, Summer"])
+def test_the_exact_word_still_rejects(title: str) -> None:
+    assert not titled(title, ["intern"]).passed
+
+
+@pytest.mark.parametrize(
+    ("title", "word", "found"),
+    [
+        ("Summer Internship", "intern", "internship"),
+        ("Engineering Interns", "intern", "interns"),
+        ("Sr. Software Engineer", "senior", "sr"),
+        ("Sr Engineer", "senior", "sr"),
+        ("Jr Developer", "junior", "jr"),
+        ("Engineering Mgr", "manager", "mgr"),
+        ("Senior Analyst", "sr", "senior"),
+    ],
+)
+def test_stems_and_abbreviations_are_flagged_as_uncertain_not_rejected(
+    title: str, word: str, found: str
+) -> None:
+    result = titled(title, [word])
+    assert result.passed, "a loose match must never filter a job out"
+    assert any(f"'{found}'" in note and f"'{word}'" in note for note in result.uncertain)
+
+
+@pytest.mark.parametrize(
+    "title", ["Internal Tools Engineer", "International Sales", "Seniority Review"]
+)
+def test_different_words_that_start_the_same_are_not_matched(title: str) -> None:
+    result = titled(title, ["intern", "senior"])
+    assert result.passed and result.uncertain == []
+
+
+def test_an_exact_hit_and_a_loose_hit_are_reported_separately() -> None:
+    result = titled("Sr. Intern", ["intern", "senior"])
+    assert not result.passed and "intern" in result.reasons[0]
+    assert any("'sr'" in note for note in result.uncertain)
+
+
+@pytest.mark.parametrize(
+    ("wanted", "place"),
+    [
+        ("New York, NY", "NYC"),
+        ("New York, NY", "Manhattan, NY"),
+        ("New York, NY", "Brooklyn"),
+        ("San Francisco, CA", "SF, CA"),
+        ("San Francisco, CA", "Bay Area"),
+        ("Washington, DC", "Washington, D.C."),
+        ("Washington, DC", "DC Metro"),
+    ],
+)
+def test_common_metro_names_match_the_wanted_city(wanted: str, place: str) -> None:
+    constraints = HardConstraints(locations=[wanted], remote_ok=False)
+    assert apply_filters(job(location=place), None, constraints).passed
+
+
+def test_aliases_match_whole_words_only() -> None:
+    constraints = HardConstraints(locations=["San Francisco, CA"], remote_ok=False)
+    assert not apply_filters(job(location="Sfax, Tunisia"), None, constraints).passed
+    ny = HardConstraints(locations=["New York, NY"], remote_ok=False)
+    assert not apply_filters(job(location="Anycity, LA"), None, ny).passed
+
+
+def test_your_own_aliases_are_added_to_the_built_in_ones() -> None:
+    constraints = HardConstraints(
+        locations=["Boston, MA"],
+        remote_ok=False,
+        location_aliases={"Boston, MA": ["Beantown", "Seaport"]},
+    )
+    assert apply_filters(job(location="Seaport District"), None, constraints).passed
+    assert not apply_filters(job(location="Denver, CO"), None, constraints).passed
+
+
+def test_the_plain_city_substring_check_is_unchanged() -> None:
+    constraints = HardConstraints(locations=["Boston, MA"], remote_ok=False)
+    assert apply_filters(job(location="Greater Boston Area"), None, constraints).passed
