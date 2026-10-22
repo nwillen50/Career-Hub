@@ -59,6 +59,9 @@ class Settings(BaseModel):
     #: Most the model router may spend on cloud models in a calendar month, in US dollars. When
     #: it is reached, calls not marked essential are paused (PRD, "Cost tracking").
     monthly_budget_usd: float = Field(default=20.0, ge=0)
+    #: A board that lists no jobs for this many nights in a row (and whose jobs could not be
+    #: checked one by one) is treated as having closed everything (CH-103).
+    empty_listing_backstop_nights: int = Field(default=3, ge=1, le=30)
     #: Your timezone (an IANA name such as "America/New_York"), for working hours and calendars.
     timezone: str = "America/New_York"
     #: Calendar files (.ics) whose busy time the weekly plan avoids. Only times are read.

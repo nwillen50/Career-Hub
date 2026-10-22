@@ -47,6 +47,8 @@ class IngestReport:
     reopened: int = 0
     closed: int = 0
     duplicates: int = 0
+    #: A line for the nightly summary, e.g. "Acme: all 7 jobs closed".
+    note: str | None = None
 
 
 def _squash(text: str | None) -> str:

@@ -63,6 +63,8 @@ class NightlyReport:
     scored: int = 0
     tailored: int = 0
     problems: list[str] = field(default_factory=list)
+    #: Things that happened on purpose that the user should see, e.g. "Acme: all 7 jobs closed".
+    notes: list[str] = field(default_factory=list)
     shortlist_path: str | None = None
 
     def summary(self) -> str:
@@ -75,6 +77,7 @@ class NightlyReport:
         ]
         if self.shortlist_path:
             lines.append(f"Shortlist: {self.shortlist_path}")
+        lines += [f"Note: {note}" for note in self.notes]
         lines += [f"Problem: {problem}" for problem in self.problems]
         return "\n".join(lines)
 
@@ -135,6 +138,8 @@ def _run(
             result = ADAPTERS[source.kind](session, source, client)
             report.sources_ok += 1
             report.new_jobs += result.new
+            if result.note:
+                report.notes.append(result.note)
         except (FetchError, SourceNotApproved) as caught:
             report.sources_failed += 1
             report.problems.append(f"source {source.id} failed: {type(caught).__name__}")

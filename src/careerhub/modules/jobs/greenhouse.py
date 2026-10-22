@@ -18,7 +18,7 @@ from typing import Any
 import httpx
 from sqlalchemy.orm import Session
 
-from careerhub.core.models import Source
+from careerhub.core.models import Job, Source
 from careerhub.modules.jobs.ingest import FetchError, ingest_source
 from careerhub.modules.jobs.sources import require_approved
 from careerhub.modules.jobs.store import IngestReport, NormalizedJob
@@ -95,8 +95,23 @@ def fetch_greenhouse(source: Source, client: httpx.Client | None = None) -> list
         raise FetchError("Greenhouse's reply had an unexpected shape.") from None
 
 
+def job_is_gone(source: Source, job: Job, client: httpx.Client | None = None) -> bool | None:
+    """Ask Greenhouse about one job: True if it says not found, False if it is still there.
+
+    None means the check itself failed (an error or an unexpected status), which is not an answer.
+    """
+    http = client or httpx.Client(timeout=TIMEOUT_SECONDS)
+    try:
+        reply = http.get(f"{API_BASE}/{board_token(source)}/jobs/{job.external_id}")
+    except (httpx.HTTPError, FetchError):
+        return None
+    return {404: True, 200: False}.get(reply.status_code)
+
+
 def ingest_greenhouse(
     session: Session, source: Source, client: httpx.Client | None = None
 ) -> IngestReport:
     """Fetch and store one approved source, recording the fetch time and the source's health."""
-    return ingest_source(session, source, fetch_greenhouse, "Greenhouse", client)
+    return ingest_source(
+        session, source, fetch_greenhouse, "Greenhouse", client, check_gone=job_is_gone
+    )
