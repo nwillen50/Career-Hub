@@ -27,6 +27,15 @@ from careerhub.modules.jobs import (
     propose_source,
     reject_source,
 )
+from careerhub.modules.jobs.targets import (
+    TargetsError,
+    load_targets,
+    matches_interests,
+    merge_import,
+    read_targets,
+    save_targets,
+    set_enabled,
+)
 from careerhub.modules.network import (
     UnknownPerson,
     find_company,
@@ -38,7 +47,7 @@ from careerhub.modules.network import (
 from careerhub.modules.plan import suggest_week
 from careerhub.modules.plan.ics import IcsError
 from careerhub.pipeline import run_nightly
-from careerhub.profile.files import ProfileFileError, load_preferences
+from careerhub.profile.files import ProfileFileError, load_preferences, load_profile_doc
 from careerhub.profile.profile import Profile, format_profile, load_profile
 from careerhub.schedule import install_plist, launchctl_commands
 from careerhub.web.shortlist import write_shortlist
@@ -53,6 +62,8 @@ USAGE = """Usage:
   hub people import-alumni <file.csv>
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
+  hub targets import <file> | list | enable <name>... | disable <name>... | enable-matching
+                          (companies you follow; the Engine list is in docs/seeds)
   hub shortlist build                        (write the shortlist page)
   hub sources list
   hub sources add <kind> <name> <url>     (saved as proposed; nothing is fetched yet)
@@ -83,6 +94,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _schedule_install()
         if args == ["nightly"]:
             return _nightly(store)
+        if args[:1] == ["targets"] and len(args) >= 2:
+            return _targets(args[1:])
         if args == ["shortlist", "build"]:
             return _with_session(store, _shortlist_build)
         if args[:2] == ["sources", "list"] and len(args) == 2:
@@ -212,6 +225,49 @@ def _nightly(store: KeyStore) -> int:
     report = run_nightly(engine, store)
     print(report.summary())
     return 1 if any(p.startswith("run failed") for p in report.problems) else 0
+
+
+def _targets(args: list[str]) -> int:
+    """Run a `hub targets ...` command on `targets.yaml` (no network, no database)."""
+    try:
+        targets = load_targets()
+        if args[0] == "import" and len(args) == 2:
+            merged, added = merge_import(targets, read_targets(Path(args[1])))
+            save_targets(merged)
+            followed = sum(t.enabled for t in merged)
+            print(f"Added {added} companies (disabled). You follow {followed}.")
+            return 0
+        if args[0] == "list" and len(args) == 1:
+            for target in targets:
+                board = f"{target.board_kind}:{target.board}" if target.board else "board unknown"
+                mark = "x" if target.enabled else " "
+                sectors = ", ".join(target.sectors) or "no sectors"
+                print(f"[{mark}] {target.name} ({sectors}); {board}")
+            print(f"{len(targets)} companies, {sum(t.enabled for t in targets)} followed.")
+            return 0
+        if args[0] in ("enable", "disable") and len(args) >= 2:
+            unknown = set_enabled(targets, args[1:], args[0] == "enable")
+            save_targets(targets)
+            for name in unknown:
+                print(f"No target named {name!r}.")
+            return 1 if unknown else 0
+        if args[0] == "enable-matching" and len(args) == 1:
+            doc = load_profile_doc()
+            if doc is None or not doc.interests:
+                print("Add interests to profile.md first.")
+                return 1
+            hits = [t for t in targets if matches_interests(t, doc.interests)]
+            for target in hits:
+                target.enabled = True
+            save_targets(targets)
+            print(f"Now following {len(hits)} companies whose sectors match your interests:")
+            print("\n".join(f"  {t.name}" for t in hits))
+            return 0
+    except (TargetsError, ProfileFileError) as error:
+        print(error)
+        return 1
+    print(USAGE)
+    return 2
 
 
 def _shortlist_build(session: Session) -> int:

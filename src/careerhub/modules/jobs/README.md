@@ -26,6 +26,16 @@ and fetching code must call `require_approved` first. Commands: `hub sources lis
 `hub sources add <kind> <name> <url>`, `hub sources approve|reject|disable <id>`.
 See [ADR-0012](../../../../docs/decisions/0012-source-approval.md).
 
+## Target companies
+
+`hub targets import docs/seeds/engine-resident-companies.yaml` adds The Engine's 137 resident
+companies (public list) to `targets.yaml` in your data folder, all **disabled**; importing again
+changes nothing and never touches a company you already have. `hub targets list` shows them;
+`hub targets enable <name>` / `disable <name>` follow or stop following one;
+`hub targets enable-matching` follows the ones whose sectors match your interests in `profile.md`
+(whole words: "robotics" matches "AUTONOMOUS SYSTEMS / ROBOTICS"). Finding each company's job board
+is the next ticket.
+
 ## Greenhouse
 
 `hub sources add greenhouse Acme https://boards.greenhouse.io/acme`, then
