@@ -16,6 +16,7 @@ sends or submits anything.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -31,6 +32,7 @@ from careerhub.core.settings import Settings, load_settings
 from careerhub.core.storage import session_factory
 from careerhub.llm import BudgetExceeded, PrivacyViolation
 from careerhub.llm.cache import ResponseCache
+from careerhub.llm.catalog import ollama_is_running, with_catalog
 from careerhub.llm.providers import ProviderError
 from careerhub.llm.setup import NoRoute, RouterSetup, build_router, routes_for
 from careerhub.llm.validated import ValidationFailed
@@ -136,6 +138,7 @@ def _run(
     run_id: int,
 ) -> None:
     sessions = session_factory(engine)
+    settings = with_catalog(settings, store, lambda: ollama_is_running(client)).settings
     report.cache_pruned = ResponseCache(sessions, settings.cache_ttl_days).prune()
     setup = build_router(settings, store, sessions, client, run_id)
     report.problems += [f"provider: {p}" for p in setup.problems]
@@ -153,6 +156,8 @@ def _run(
         )
     )
     _understand_and_rank(session, setup, settings, jobs, report)
+    for note, count in Counter(setup.router.skipped).items():
+        report.problems.append(f"fell back past a model ({note}, {count}x)")
 
 
 def _backup(engine: Engine, settings: Settings, report: NightlyReport) -> None:
