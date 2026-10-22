@@ -10,7 +10,8 @@ one approved source). `ingest_source` runs it, stores the result, and keeps the 
   job is closed; if any is still there, or a check fails, it is a glitch (jobs stay open, source
   `failing`). Systems with no per-job address rely on the backstop: after
   `empty_listing_backstop_nights` empty nights in a row the jobs are closed anyway and the nightly
-  summary says so. Any non-empty listing resets the count. Only one empty listing per calendar day counts, and a job the system says is still listed never counts toward the backstop.
+  summary says so. Any non-empty listing resets the count. Only one empty listing per calendar day
+  counts, and a job the system says is still listed never counts toward the backstop.
 """
 
 from __future__ import annotations
