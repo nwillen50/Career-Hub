@@ -31,6 +31,8 @@ class Eligibility:
     graduation: date | None = None
     #: From preferences.yaml: "us_citizen", "work_authorized", or "needs_sponsorship".
     work_authorization: str | None = None
+    #: Country codes where the user can already work; None when `work_rights` is not set (CH-122).
+    work_rights: tuple[str, ...] | None = None
 
 
 def degree_level(text: str) -> str | None:
@@ -67,4 +69,7 @@ def eligibility_from(
         level = degree_level(text)
         if rank(level) > rank(best):
             best, graduation = level, None
-    return Eligibility(best, graduation, preferences.work_authorization if preferences else None)
+    rights = tuple(preferences.work_rights) if preferences and preferences.work_rights else None
+    return Eligibility(
+        best, graduation, preferences.work_authorization if preferences else None, rights
+    )

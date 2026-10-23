@@ -92,3 +92,21 @@ def test_a_suggestion_whose_ids_now_name_other_companies_merges_nothing(session:
     assert "already gone" in decide_merge(session, item.id, accept=True)
     assert get_or_create_company(session, "Globex") is not None
     assert len(session.scalars(select(Company)).all()) == 2
+
+
+def test_merged_jobs_get_the_same_duplicate_key_ingest_would_give_them(session: Session) -> None:
+    """Review: the key must apply the user's aliases, or later duplicates stop linking."""
+    from careerhub.modules.jobs import dedupe_key
+
+    aliases = {"acme": "acme labs"}
+    get_or_create_company(session, "Acme", aliases)
+    s1 = source(session, "gh")
+    store_jobs(session, s1, [NormalizedJob("Acme Robotics", "1", "Engineer", "u", "Boston", "t")])
+    robotics = get_or_create_company(session, "Acme Robotics")
+    keep = get_or_create_company(session, "Acme", aliases)
+    assert robotics and keep
+    from careerhub.core.companies import merge_companies
+
+    merge_companies(session, keep, robotics, aliases)
+    job = session.scalars(select(Job)).one()
+    assert job.dedupe_key == dedupe_key("Acme", "Engineer", "Boston", aliases)
