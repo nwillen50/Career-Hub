@@ -17,7 +17,9 @@ epoch, not the profile text, in their input hash. `hub score --all` raises the e
 from __future__ import annotations
 
 import json
+import os
 import re
+import time
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -27,7 +29,7 @@ from careerhub.core.files import write_private
 from careerhub.core.paths import data_dir
 
 SNAPSHOT_FILENAME = "scored-snapshot.json"
-_NOT_WORD = re.compile(r"[^\w\s]")
+_NOT_WORD = re.compile(r"[^\w\s+#]")  # "+" and "#" stay: C, C++ and C# are different skills
 LIST_LABELS = {
     "education": "education",
     "skills": "skills",
@@ -42,7 +44,7 @@ def snapshot_path() -> Path:
 
 
 def normalize(text: str) -> str:
-    """Lowercase, drop punctuation, and collapse spaces, so formatting changes are not changes."""
+    """Lowercase, drop punctuation (not + or #), and collapse spaces: formatting is not a change."""
     return " ".join(_NOT_WORD.sub(" ", text.lower()).split())
 
 
@@ -80,12 +82,27 @@ def edit_distance(a: str, b: str) -> int:
     return previous[-1]
 
 
+def same_item(a: str, b: str, typo_distance: int) -> bool:
+    """Say whether two list items are the same up to a typo.
+
+    Short items must match exactly ("R" and "Go", "AWS" and "iOS" are different skills), the allowed
+    edits grow with length (about one per four letters, at most `typo_distance`), and any change in
+    the numbers (a salary, a year, a date) makes it a different item.
+    """
+    if a == b:
+        return True
+    if re.findall(r"\d+", a) != re.findall(r"\d+", b):
+        return False
+    allowed = min(typo_distance, (min(len(a), len(b)) - 1) // 4)
+    return allowed > 0 and edit_distance(a, b) <= allowed
+
+
 def _list_changes(old: Sequence[str], new: Sequence[str], typo_distance: int) -> tuple[int, int]:
-    """Count items added and removed, treating an item within `typo_distance` as the same one."""
+    """Count items added and removed, treating a typo-sized change as the same item."""
     unmatched = list(new)
     removed = 0
     for item in old:
-        match = next((n for n in unmatched if edit_distance(item, n) <= typo_distance), None)
+        match = next((n for n in unmatched if same_item(item, n, typo_distance)), None)
         if match is None:
             removed += 1
         else:
@@ -157,14 +174,16 @@ def check(
 
     With `save=True` (the nightly run) a meaningful change moves the snapshot forward and raises the
     epoch; with `save=False` (`hub profile show`) nothing is written, and the result says what would
-    happen. The first run just stores the snapshot (jobs have no score yet, so nothing is wasted).
+    happen. The first run stores the snapshot and starts the epoch at the current time, so an epoch
+    is never reused if the file is lost or damaged.
     """
     path = path or snapshot_path()
     stored = _load(path)
     if stored is None:
+        start = int(time.time())
         if save:
-            _write(path, current, 0)
-        return Fingerprint(0, [], first_run=True)
+            _write(path, current, start)
+        return Fingerprint(start, [], first_run=True)
     epoch = int(str(stored["epoch"]))
     old = stored.get("snapshot")
     old_map = {k: [str(x) for x in v] for k, v in old.items()} if isinstance(old, dict) else {}
@@ -175,12 +194,15 @@ def check(
     return Fingerprint(epoch + (0 if save else bool(reasons)), reasons)
 
 
-def force_rescore(path: Path | None = None) -> int:
-    """Raise the epoch so every job is scored again (`hub score --all`); return the new epoch."""
+def force_rescore(path: Path | None = None) -> int | None:
+    """Raise the epoch so every job is scored again (`hub score --all`); return the new epoch.
+
+    Returns None when nothing has been scored yet (the first run scores everything anyway).
+    """
     path = path or snapshot_path()
     stored = _load(path)
     if stored is None:
-        return 0  # nothing has been scored yet; the first run scores everything anyway
+        return None
     snapshot = stored.get("snapshot")
     epoch = int(str(stored["epoch"])) + 1
     _write(path, snapshot if isinstance(snapshot, dict) else {}, epoch)
@@ -188,5 +210,8 @@ def force_rescore(path: Path | None = None) -> int:
 
 
 def _write(path: Path, snapshot: Mapping[str, object], epoch: int) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    write_private(path, json.dumps({"epoch": epoch, "snapshot": snapshot}, indent=1) + "\n")
+    """Write the file whole or not at all (a crash must not leave half a file)."""
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    temporary = path.with_name(path.name + ".tmp")
+    write_private(temporary, json.dumps({"epoch": epoch, "snapshot": snapshot}, indent=1) + "\n")
+    os.replace(temporary, path)

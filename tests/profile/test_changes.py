@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -84,35 +85,69 @@ def test_facts_text_counts_as_free_text() -> None:
 def test_first_run_stores_a_snapshot_and_later_runs_keep_the_epoch(tmp_path: Path) -> None:
     path = tmp_path / "s.json"
     first = check(snap(), 2, 5, path=path)
-    assert first.first_run and first.epoch == 0 and path.exists()
+    assert first.first_run and first.epoch > 0 and path.exists()
     again = check(snap(skills=["Pyton", "SQL", "Machine Learning"]), 2, 5, path=path)
-    assert not again.changed and again.epoch == 0
+    assert not again.changed and again.epoch == first.epoch
 
 
 def test_a_meaningful_change_raises_the_epoch_once(tmp_path: Path) -> None:
     path = tmp_path / "s.json"
-    check(snap(), 2, 5, path=path)
+    base = check(snap(), 2, 5, path=path).epoch
     new = snap(skills=["Python", "SQL", "Machine Learning", "Rust"])
-    assert check(new, 2, 5, path=path).epoch == 1
-    assert check(new, 2, 5, path=path).epoch == 1  # the snapshot moved forward
+    assert check(new, 2, 5, path=path).epoch == base + 1
+    assert check(new, 2, 5, path=path).epoch == base + 1  # the snapshot moved forward
     assert not check(new, 2, 5, path=path).changed
 
 
 def test_checking_without_saving_reports_but_changes_nothing(tmp_path: Path) -> None:
     path = tmp_path / "s.json"
-    check(snap(), 2, 5, path=path)
+    base = check(snap(), 2, 5, path=path).epoch
     new = snap(skills=["Python", "SQL", "Machine Learning", "Rust"])
     preview = check(new, 2, 5, save=False, path=path)
-    assert preview.reasons == ["skills: 1 added"] and preview.epoch == 1
-    assert check(snap(), 2, 5, path=path).epoch == 0  # still the old snapshot, still epoch 0
+    assert preview.reasons == ["skills: 1 added"] and preview.epoch == base + 1
+    assert check(snap(), 2, 5, path=path).epoch == base  # still the old snapshot
 
 
 def test_force_rescore_raises_the_epoch(tmp_path: Path) -> None:
     path = tmp_path / "s.json"
-    assert force_rescore(path) == 0  # nothing scored yet
+    assert force_rescore(path) is None  # nothing scored yet
+    base = check(snap(), 2, 5, path=path).epoch
+    assert force_rescore(path) == base + 1
+    assert check(snap(), 2, 5, path=path).epoch == base + 1
+
+
+def test_a_lost_or_damaged_snapshot_never_reuses_an_old_epoch(tmp_path: Path) -> None:
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps({"epoch": 3, "snapshot": {}}), encoding="utf-8")
+    path.write_text("{ truncated", encoding="utf-8")  # a crash mid-write
+    assert check(snap(), 2, 5, path=path).epoch > 3
+
+
+def test_numbers_and_dates_are_never_typos() -> None:
+    """Review: a salary or graduation year within two letters was ignored."""
+    for old, new in (
+        ("Minimum salary: $60,000", "Minimum salary: $80,000"),
+        (
+            "Degree: BS CS, expected graduation May 2026",
+            "Degree: BS CS, expected graduation May 2027",
+        ),
+        ("start between 2026-06-01 and 2026-08-01", "start between 2026-06-01 and 2026-09-01"),
+    ):
+        assert changes(snap(prefs=[old]), snap(prefs=[new])), (old, new)
+
+
+def test_short_skills_and_symbols_are_different_items() -> None:
+    assert changes(snap(skills=["R"]), snap(skills=["Go"]))
+    assert changes(snap(skills=["AWS"]), snap(skills=["iOS"]))
+    assert changes(snap(skills=["C"]), snap(skills=["C", "C++", "C#"])) == ["skills: 2 added"]
+    assert changes(snap(skills=["Pyton"]), snap(skills=["Python"])) == []  # a typo is still a typo
+
+
+def test_a_snapshot_is_written_atomically_and_privately(tmp_path: Path) -> None:
+    path = tmp_path / "profile" / "s.json"
     check(snap(), 2, 5, path=path)
-    assert force_rescore(path) == 1
-    assert check(snap(), 2, 5, path=path).epoch == 1
+    assert not list(path.parent.glob("*.tmp"))
+    assert oct(path.parent.stat().st_mode & 0o777) == "0o700"
 
 
 def test_the_snapshot_file_is_private(tmp_path: Path) -> None:

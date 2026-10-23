@@ -150,3 +150,11 @@ meaningfully: a list item (skill, school, location, date) added, removed, or cha
 `score_typo_distance` letters (default 2), or at least `score_free_text_change_percent` (default 5)
 of the words in About or the accepted resume facts changed since the snapshot. Small edits add up.
 `hub profile show` says whether the next run will re-score and why; `hub score --all` forces it.
+
+The snapshot holds only what a model would be sent (it goes through `personal_text`: no name, email,
+phone, or link), is written whole-or-not-at-all, and its epoch starts at the current time so a lost
+file never reuses an old epoch. Numbers and dates in a line, and short or symbol-different skills
+(`R`/`Go`, `C`/`C++`/`C#`), are never treated as typos. The first nightly run after this change
+scores and tailors existing jobs once more, because the input hash now carries the epoch.
+One decisive edit inside a long About or facts text waits until the 5 percent is reached;
+`hub score --all` forces it sooner.

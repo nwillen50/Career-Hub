@@ -591,7 +591,9 @@ def _rescore_summary(store: KeyStore) -> str:
 
 def _score_all() -> int:
     """`hub score --all`: make the next nightly run score and tailor every job again."""
-    force_rescore()
+    if force_rescore() is None:
+        print("Nothing has been scored yet, so the first nightly run scores every job anyway.")
+        return 0
     print("The next nightly run will score and tailor every job again (this can cost money).")
     return 0
 

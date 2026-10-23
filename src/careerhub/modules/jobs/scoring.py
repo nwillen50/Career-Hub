@@ -184,15 +184,23 @@ def input_hash(
 def profile_snapshot(
     doc: ProfileDoc, facts: ProfileFacts | None, preferences: Preferences | None
 ) -> dict[str, list[str]]:
-    """Describe the profile for change detection (see `profile/changes.py`)."""
+    """Describe the profile for change detection (see `profile/changes.py`).
+
+    Everything goes through `personal_text` first, so the stored snapshot holds only what a model
+    would be sent: no name, email, phone number, or link.
+    """
+
+    def safe(text: str) -> str:
+        return personal_text(text, doc.name, doc.aliases)
+
     skills = [*doc.skills, *(facts.skills if facts else [])]
     return build_snapshot(
-        education=[f"{e.degree} {e.school}" for e in doc.education],
-        skills=skills,
-        interests=doc.interests,
-        preferences=preferences_text(doc, preferences).splitlines(),
-        about=doc.about,
-        facts=facts_text(facts, doc),
+        education=[safe(f"{e.degree} {e.school}") for e in doc.education],
+        skills=[safe(skill) for skill in skills],
+        interests=[safe(item) for item in doc.interests],
+        preferences=[safe(line) for line in preferences_text(doc, preferences).splitlines()],
+        about=safe(doc.about),
+        facts=safe(facts_text(facts, doc)),
     )
 
 
