@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -106,3 +107,15 @@ def test_the_query_only_accepts_the_one_value() -> None:
 def test_grouping_ignores_jobs_with_no_location_and_never_loses_them(session: Session) -> None:
     assert session.query(Job).filter(Job.location.is_(None)).count() == 1
     assert "Place not stated (1)" in web(session).get("/tracker?group=place").text
+
+
+def test_the_tracker_toggle_link_really_flips_the_grouping(session: Session) -> None:
+    """Review: the link used to carry the current setting, so clicking it changed nothing."""
+    c = web(session)
+    plain = c.get("/tracker").text
+    on = re.search(r'<a href="([^"]+)">Group by place</a>', plain)
+    assert on and "group=place" in on.group(1).replace("&amp;", "&")
+    grouped = c.get(on.group(1).replace("&amp;", "&")).text
+    off = re.search(r'<a href="([^"]+)">Show as one list</a>', grouped)
+    assert off and "group=place" not in off.group(1)
+    assert "Show as one list" not in c.get(off.group(1).replace("&amp;", "&")).text

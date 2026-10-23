@@ -63,8 +63,8 @@ class TrackerQuery:
             "sort": self.sort,
             "dir": "desc" if self.descending else "asc",
         }
-        values.update(change)
         values["group"] = "place" if self.group else ""
+        values.update(change)
         pairs = [(k, v) for k, v in values.items() if v and not (k == "view" and v == "all")]
         pairs += [("status", s) for s in self.statuses]
         return urlencode(pairs)
