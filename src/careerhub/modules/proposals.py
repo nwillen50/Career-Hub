@@ -167,6 +167,18 @@ class ConversationProposal(BaseModel):
     source: SourceChange | None = None
     rubric: RubricChange | None = None
 
+    @field_validator("change", "source", mode="before")
+    @classmethod
+    def _drop_a_bad_suggestion(cls, value: Any, info: Any) -> Any:
+        """Keep the answer when the attached suggestion is malformed; only the suggestion goes."""
+        if value is None:
+            return None
+        model = PreferenceChange if info.field_name == "change" else SourceChange
+        try:
+            return model.model_validate(value)
+        except ValidationError:
+            return None
+
 
 def _current() -> dict[str, Any]:
     path = preferences_path()

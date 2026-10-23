@@ -196,3 +196,41 @@ def test_the_declined_list_in_the_panel_and_the_reopen_button(session: Session) 
 
 def test_no_declined_heading_when_nothing_was_declined(session: Session) -> None:
     assert 'id="decl-h"' not in web(session, "{}").get("/conversation").text
+
+
+def test_one_bad_suggestion_keeps_the_answer_and_drops_only_the_suggestion(
+    session: Session,
+) -> None:
+    """Review: a board name like acme_corp used to make the whole answer fail."""
+    answer = json.dumps(
+        {
+            "answer": "Here is what I think.",
+            "source": {"kind": "lever", "company": "A", "token": "acme_corp"},
+        }
+    )
+    c = web(session, answer)
+    assert post(c, "/conversation", "question=follow+it").status_code == 303
+    assert "Here is what I think." in c.get("/conversation").text
+    assert pending_proposals(session) == []
+
+
+def test_a_board_saved_with_different_letter_case_is_not_added_twice(session: Session) -> None:
+    session.add(
+        Source(
+            kind="greenhouse",
+            name="Acme",
+            url="https://boards.greenhouse.io/Acme",
+            status="approved",
+        )
+    )
+    session.commit()
+    with pytest.raises(ProposalError, match="already in your sources"):
+        propose_source_change(session, ACME)
+    pending = Proposal(
+        kind="source_proposal", title="t", body=ACME.model_dump_json(), status="pending",
+        origin="conversation", target="source_list",
+    )  # fmt: skip
+    session.add(pending)
+    session.commit()
+    accept(session, pending.id)
+    assert session.query(Source).count() == 1

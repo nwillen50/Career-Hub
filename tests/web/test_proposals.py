@@ -197,9 +197,10 @@ def test_reject_in_the_page_and_a_model_suggestion_outside_the_allowed_keys(
     assert "Seattle" not in preferences_path().read_text(encoding="utf-8")
     forbidden = {"key": "min_salary_usd", "action": "set", "value": 1}
     c2 = web(session, reply("Sure.", forbidden))
-    page = post(c2, "/conversation", "question=raise+pay")
-    assert page.status_code == 200 and "No model could answer" in page.text  # invalid: refused
-    assert pending_proposals(session) == []
+    reply_page = post(c2, "/conversation", "question=raise+pay")
+    assert reply_page.status_code == 303  # the answer is kept...
+    assert "Sure." in c2.get("/conversation").text
+    assert pending_proposals(session) == []  # ...but a key outside the allowed list is dropped
 
 
 def test_deciding_needs_the_csrf_token_and_unknown_suggestions_are_friendly(

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from careerhub.core.models import Proposal, Source, utcnow
@@ -19,12 +19,19 @@ from careerhub.modules.jobs.sources import propose_source
 from careerhub.modules.proposals import SOURCE_KIND, ProposalError, SourceChange
 
 
+def _existing(session: Session, change: SourceChange) -> Source | None:
+    """Return the saved source for this board, ignoring upper/lower case in its address."""
+    return session.scalars(
+        select(Source).where(func.lower(Source.url) == change.url().lower())
+    ).first()
+
+
 def propose_source_change(
     session: Session, change: SourceChange, now: datetime | None = None
 ) -> Proposal:
     """Save a pending proposal to add `change`'s board. Raises `ProposalError` if pointless."""
     now = now or utcnow()
-    if session.scalars(select(Source).where(Source.url == change.url())).first() is not None:
+    if _existing(session, change) is not None:
         raise ProposalError("That job board is already in your sources.")
     body = change.model_dump_json()
     window = timedelta(days=load_settings().proposal_repeat_days)
@@ -62,7 +69,8 @@ def accept_source(session: Session, proposal: Proposal, when: datetime) -> Propo
         change = SourceChange.model_validate_json(proposal.body or "{}")
     except ValueError:
         raise ProposalError("That suggestion is damaged, so it was not applied.") from None
-    propose_source(session, change.kind, change.company, change.url(), {"board": change.token})
+    if _existing(session, change) is None:
+        propose_source(session, change.kind, change.company, change.url(), {"board": change.token})
     proposal.status = "accepted"
     proposal.decided_at = when
     session.commit()
