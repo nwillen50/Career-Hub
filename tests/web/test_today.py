@@ -125,7 +125,7 @@ def test_empty_state_scoring_off_and_failed_run(session: Session) -> None:
     assert "No follow-ups due." in html and "No deadlines this week." in html
     assert "Scoring starts when your profile is ready" in html  # the readiness checklist shows
     run = start_run(session, "nightly")
-    finish_run(session, run, "failed", "FetchError")
+    finish_run(session, run, 0, ConnectionError())
     html = web(session).get("/today").text
     assert 'role="alert"' in html and "The last nightly run failed" in html
 
@@ -175,7 +175,7 @@ def test_deadlines_this_week_only(session: Session) -> None:
 
 def test_last_successful_run_is_shown(session: Session) -> None:
     run = start_run(session, "nightly")
-    finish_run(session, run, "succeeded", None)
+    finish_run(session, run, 1)
     assert "Last successful run:" in web(session).get("/today").text
 
 
