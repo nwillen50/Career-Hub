@@ -214,6 +214,12 @@ def _safe_link(url: str) -> str | None:
 
 
 safe_link = _safe_link  # public names for the web app's views
+tailoring_notes = _notes
+stated_fields = _stated
+posting_footnotes = _footnotes
+from_muse = _from_muse
+salary_text = _salary
+deadline_of = _deadline
 
 
 def _first_sentence(text: str) -> str:
