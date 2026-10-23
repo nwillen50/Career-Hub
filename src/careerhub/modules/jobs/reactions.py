@@ -49,15 +49,22 @@ def react(
     return row
 
 
-def undo(session: Session, job_id: int, now: datetime | None = None) -> bool:
-    """Take back the newest reaction to a job if it was made within `UNDO_SECONDS`."""
+def undo(
+    session: Session, job_id: int, feedback_id: int | None = None, now: datetime | None = None
+) -> bool:
+    """Take back one reaction to a job if it was made within `UNDO_SECONDS`.
+
+    The card's Undo button carries the id of the reaction it made, so it can only take back that
+    one (not a newer reaction from another tab). Without an id, the newest reaction is meant.
+    """
     now = now or utcnow()
-    newest = session.scalars(
-        select(Feedback).where(Feedback.job_id == job_id).order_by(Feedback.id.desc()).limit(1)
-    ).first()
-    if newest is None or now - newest.created_at > timedelta(seconds=UNDO_SECONDS):
+    query = select(Feedback).where(Feedback.job_id == job_id)
+    if feedback_id is not None:
+        query = query.where(Feedback.id == feedback_id)
+    target = session.scalars(query.order_by(Feedback.id.desc()).limit(1)).first()
+    if target is None or now - target.created_at > timedelta(seconds=UNDO_SECONDS):
         return False
-    session.execute(delete(Feedback).where(Feedback.id == newest.id))
+    session.execute(delete(Feedback).where(Feedback.id == target.id))
     session.commit()
     return True
 
@@ -65,6 +72,21 @@ def undo(session: Session, job_id: int, now: datetime | None = None) -> bool:
 def reacted_job_ids(session: Session) -> set[int]:
     """Return the ids of jobs the user has reacted to (Today hides them)."""
     return set(session.scalars(select(Feedback.job_id).distinct()))
+
+
+def settled_job_ids(session: Session) -> set[int]:
+    """Return jobs whose newest reaction is "applied" or "not interested" (nothing left to plan).
+
+    A job marked only "interested" is not settled: the user may still want to apply.
+    """
+    newest = select(func.max(Feedback.id)).group_by(Feedback.job_id)
+    return set(
+        session.scalars(
+            select(Feedback.job_id).where(
+                Feedback.id.in_(newest), Feedback.reaction.in_(("applied", "not_interested"))
+            )
+        )
+    )
 
 
 def current_reaction(session: Session, job_id: int) -> str | None:
