@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, cast
@@ -67,6 +67,28 @@ def dedupe_key(
     """Return the hash that two postings of the same job share, whatever their source."""
     parts = "|".join((company_key(company_name, aliases), _squash(title), _squash(location)))
     return hashlib.sha256(parts.encode()).hexdigest()
+
+
+def link_duplicates(session: Session, keys: Sequence[str]) -> None:
+    """Link postings that share a duplicate key across sources to the earliest one (CH-154).
+
+    Used after a company merge, when postings that were different companies' become one job.
+    A posting already linked, and postings from the same source, are left alone.
+    """
+    for key in set(keys):
+        rows = list(
+            session.scalars(
+                select(Job).where(Job.dedupe_key == key).order_by(Job.first_seen_at, Job.id)
+            )
+        )
+        originals = [job for job in rows if job.duplicate_of_id is None]
+        if not originals:
+            continue
+        original = originals[0]
+        for job in originals[1:]:
+            if job.source_id != original.source_id:
+                job.duplicate_of_id = original.id
+    session.flush()
 
 
 #: A job from a search (partial) source closes after this many days without being seen.

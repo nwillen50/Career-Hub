@@ -31,13 +31,23 @@ def tag_person(
 ) -> Person:
     """Set how the user knows `person_id` (replaces the old text, e.g. "former manager").
 
+    Alumni tags ("alumni: Tufts") that an import added are kept: they feed warm paths, and only the
+    user's own words are replaced (CH-155).
+
     With `school`, also record a school this person attended (added to the ones already known).
     """
     person = session.get(Person, person_id)
     if person is None:
         raise UnknownPerson(person_id)
     if how_known.strip() or school is None:
-        person.how_known = how_known.strip() or None
+        kept = [
+            n.strip()
+            for n in (person.how_known or "").split(";")
+            if n.strip().startswith("alumni:")
+        ]
+        person.how_known = (
+            "; ".join([*([how_known.strip()] if how_known.strip() else []), *kept]) or None
+        )
     if (
         school
         and school.strip()

@@ -23,7 +23,7 @@ from careerhub.llm.validated import complete_validated
 from careerhub.prompts import load_prompt, render
 
 PROMPT_NAME = "extract_job"
-PROMPT_VERSION = 2
+PROMPT_VERSION = 3
 #: Postings are cut to this many characters before they reach the model, to bound cost.
 MAX_POSTING_CHARS = 12_000
 
@@ -31,7 +31,13 @@ Level = Literal["internship", "new_grad", "entry", "mid", "senior", "staff_plus"
 Remote = Literal["remote", "hybrid", "onsite", "unknown"]
 Visa = Literal["yes", "no", "unknown"]
 Degree = Literal["none", "associate", "bachelor", "master", "phd", "unknown"]
-WorkAuth = Literal["none_stated", "us_citizen_required", "clearance_required", "unknown"]
+WorkAuth = Literal[
+    "none_stated",
+    "us_citizen_required",
+    "clearance_required",
+    "local_right_to_work_required",
+    "unknown",
+]
 
 
 class JobFields(BaseModel):

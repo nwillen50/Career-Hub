@@ -11,7 +11,12 @@ one approved source). `ingest_source` runs it, stores the result, and keeps the 
   `failing`). Systems with no per-job address rely on the backstop: after
   `empty_listing_backstop_nights` empty nights in a row the jobs are closed anyway and the nightly
   summary says so. Any non-empty listing resets the count. Only one empty listing per calendar day
-  counts, and a job the system says is still listed never counts toward the backstop.
+  counts, and a job the system says is still listed never counts toward the backstop;
+- a listing that is not empty but drops more than `listing_drop_share` of the open jobs on a board
+  with at least `MIN_JOBS_FOR_DROP` of them may be cut off or paged (CH-132). Up to 3 of the missing
+  jobs are checked one by one; unless all answer "not found", nothing is closed for being missing
+  on this run (it is stored like a partial listing: a job closes only after it stays unseen for
+  `PARTIAL_CLOSE_DAYS`) and the summary says so.
 """
 
 from __future__ import annotations
@@ -32,6 +37,8 @@ Fetcher = Callable[[Source, httpx.Client | None], list[NormalizedJob]]
 GoneCheck = Callable[[Source, Job, httpx.Client | None], bool | None]
 #: How many open jobs are checked one by one when a board suddenly lists nothing.
 SPOT_CHECKS = 3
+#: A board needs at least this many open jobs before a drop in its listing is treated as suspicious.
+MIN_JOBS_FOR_DROP = 4
 STREAK_KEY = "empty_streak"
 STREAK_DATE_KEY = "empty_streak_date"
 _STREAK_KEYS = (STREAK_KEY, STREAK_DATE_KEY)
@@ -69,6 +76,9 @@ def ingest_source(
         note = _settle_empty_listing(session, source, label, client, check_gone, backstop_nights)
     elif source.config.get(STREAK_KEY):
         source.config = {k: v for k, v in source.config.items() if k not in _STREAK_KEYS}
+    if not partial and jobs:
+        note = _check_sharp_drop(session, source, jobs, client, check_gone)
+        partial = note is not None  # unconfirmed: close nothing just for being missing
     report = store_jobs(session, source, jobs, partial=partial, aliases=aliases)
     source.health = "ok"
     source.last_fetched_at = utcnow()
@@ -115,6 +125,50 @@ def _settle_empty_listing(
     source.health = "failing"
     session.commit()
     raise FetchError(f"{label} listed no jobs for a board that had open jobs; kept them.")
+
+
+def _check_sharp_drop(
+    session: Session,
+    source: Source,
+    jobs: list[NormalizedJob],
+    client: httpx.Client | None,
+    check_gone: GoneCheck | None,
+) -> str | None:
+    """Return a note when the listing lost so many open jobs that it may be cut off, else None.
+
+    None also means "the missing jobs were checked and are really gone", so they close as usual.
+    """
+    listed = {job.external_id for job in jobs}
+    open_jobs = list(
+        session.scalars(
+            select(Job).where(Job.source_id == source.id, Job.status != "closed").order_by(Job.id)
+        )
+    )
+    missing = [job for job in open_jobs if job.external_id not in listed]
+    if len(open_jobs) < MIN_JOBS_FOR_DROP or not missing:
+        return None
+    if len(missing) / len(open_jobs) <= load_settings().listing_drop_share:
+        return None
+    answers = [check_gone(source, job, client) for job in _spread(missing)] if check_gone else []
+    if answers and all(answer is True for answer in answers):
+        return None
+    still_listed = len(open_jobs) - len(missing)
+    return (
+        f"{source.name}: the listing dropped from {len(open_jobs)} to {still_listed} open jobs, "
+        f"so {len(missing)} were kept open until they stay missing"
+    )
+
+
+def _spread(jobs: list[Job]) -> list[Job]:
+    """Pick up to `SPOT_CHECKS` jobs spread across the list (oldest, middle, newest).
+
+    Checking only the oldest missing jobs would be biased: they are the likeliest to be really gone,
+    and a cut-off listing would then close newer jobs that are still open.
+    """
+    if len(jobs) <= SPOT_CHECKS:
+        return jobs
+    last = len(jobs) - 1
+    return [jobs[round(i * last / (SPOT_CHECKS - 1))] for i in range(SPOT_CHECKS)]
 
 
 def _reset_streak(source: Source) -> None:
