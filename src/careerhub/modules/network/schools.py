@@ -47,8 +47,12 @@ def school_key(name: str, aliases: dict[str, list[str]] | None = None) -> str:
     raw = [w for w in re.findall(r"[a-z0-9]+", name.lower())]
     words = [w for w in raw if w not in _NOISE]
     key = " ".join(words)
-    if key in _SHARED_NAMES and raw[:2] != ["university", "of"] and "university" in raw[1:]:
-        key = f"{key} university"
+    lead = [w for w in raw if w != "the"]
+    word_last = lead[:1] not in (["university"], ["univ"]) and (
+        "university" in lead or "univ" in lead
+    )
+    if key in _SHARED_NAMES and word_last:
+        key = f"{key} university"  # "Washington University", not "(The) University of Washington"
     for canonical, names in (aliases or {}).items():
         if key in {school_key(n) for n in [canonical, *names]}:
             return school_key(canonical)

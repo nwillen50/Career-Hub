@@ -76,7 +76,12 @@ class Table:
 
 
 def _decode(data: bytes) -> str:
-    """Decode a text export: UTF-16 (Excel's "Unicode Text"), UTF-8, then Windows-1252."""
+    """Decode a text export: UTF-32 or UTF-16 (Excel's "Unicode Text"), UTF-8, then Windows-1252."""
+    if data[:4] in (b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff"):
+        try:
+            return data.decode("utf-32")
+        except UnicodeDecodeError:
+            pass
     if data[:2] in (b"\xff\xfe", b"\xfe\xff") or (
         len(data) > 3 and data[1:2] == b"\x00" != data[:1]
     ):

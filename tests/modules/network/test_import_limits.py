@@ -108,3 +108,30 @@ def test_rows_with_no_group_are_named_in_the_report(tmp_path: Path, session: Ses
     path = tmp_path / "a.csv"
     path.write_text("Name,Company,Group\nAda Sample,Acme,\n", encoding="utf-8")
     assert import_alumni(session, path).skipped_for == ("group",)
+
+
+def test_the_university_of_x_keeps_its_key_with_a_leading_the() -> None:
+    """Review: 'The University of Washington' must not turn into 'Washington University'."""
+    assert school_key("The University of Washington") == school_key("University of Washington")
+    assert school_key("The University of Miami") != school_key("Miami University")
+    assert school_key("The Washington University") == school_key("Washington University")
+
+
+def test_a_utf32_export_is_read(tmp_path: Path, session: Session) -> None:
+    path = tmp_path / "u32.tsv"
+    path.write_bytes("Name\tCompany\tGroup\nAda Sample\tAcme\tClub\n".encode("utf-32"))
+    assert import_alumni(session, path).created == 1
+
+
+def test_the_truncation_notice_prints_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from careerhub.cli import main
+    from careerhub.core.secrets import InMemoryKeyStore
+
+    monkeypatch.setenv("CAREERHUB_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(layouts, "MAX_ROWS", 3)
+    path = tmp_path / "big.csv"
+    path.write_text(HEADER + "".join(f"P{i},Acme,Club\n" for i in range(8)), encoding="utf-8")
+    assert main(["alumni", "import", str(path)], InMemoryKeyStore()) == 0
+    assert capsys.readouterr().out.count("more rows than Career Hub reads") == 1
