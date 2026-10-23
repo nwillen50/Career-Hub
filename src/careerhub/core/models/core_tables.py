@@ -50,6 +50,8 @@ class Company(TimestampMixin, Base):
     size: Mapped[str | None] = mapped_column(String(50))
     industry: Mapped[str | None] = mapped_column(String(100))
     notes: Mapped[str | None] = mapped_column(Text)
+    #: Keys of companies merged into this one, so their old names still find it (CH-154).
+    merged_keys: Mapped[list[str] | None] = mapped_column(JSON)  # None until a merge
 
     people: Mapped[list[Person]] = relationship(back_populates="company")
 

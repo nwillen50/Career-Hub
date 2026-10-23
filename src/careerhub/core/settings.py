@@ -11,6 +11,7 @@ import json
 import re
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
@@ -18,6 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from careerhub.core.files import write_private
 from careerhub.core.paths import data_dir
 
+#: Host names that mean "this machine".
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 #: File name of the settings file inside the data folder.
 SETTINGS_FILENAME = "settings.json"
 
@@ -26,6 +29,18 @@ _CLOCK_TIME = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 class SettingsError(Exception):
     """The settings file can't be read or holds an invalid value."""
+
+
+def check_https(address: str, allow_this_machine: bool) -> None:
+    """Raise `ValueError` unless `address` is https with a host (or on this machine, if allowed)."""
+    parts = urlsplit(address.strip())
+    if not parts.hostname:
+        raise ValueError("the address needs a host, like https://api.example.com/v1")
+    if parts.scheme == "https":
+        return
+    if allow_this_machine and parts.scheme == "http" and parts.hostname in LOOPBACK_HOSTS:
+        return
+    raise ValueError("a model address must start with https:// (keys and prompts travel there)")
 
 
 class ProviderSetting(BaseModel):
@@ -40,11 +55,27 @@ class ProviderSetting(BaseModel):
     #: Override the API address (for local servers or compatible APIs).
     base_url: str | None = None
     #: True if the provider's terms let it train on API data; such providers never see
-    #: personal data (PRD, privacy tiers). Defaults to False; check your plan's terms.
-    trains_on_data: bool = False
+    #: personal data (PRD, privacy tiers). A cloud model with no value here is assumed to train
+    #: (CH-117); only the user can say it doesn't. A local model keeps data on this Mac.
+    trains_on_data: bool = True
     #: Dollars per million tokens, used to estimate cost. Leave unset for local models.
     input_per_mtok: float | None = Field(default=None, ge=0)
     output_per_mtok: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _assume_cloud_models_train(cls, data: object) -> object:
+        """Treat a missing `trains_on_data` as true for cloud kinds and false for `local`."""
+        if isinstance(data, dict) and "trains_on_data" not in data:
+            return {**data, "trains_on_data": data.get("kind") != "local"}
+        return data
+
+    @model_validator(mode="after")
+    def _cloud_address_is_https(self) -> ProviderSetting:
+        """Require a cloud model's address to be https with a host (keys travel there)."""
+        if self.kind != "local" and self.base_url is not None:
+            check_https(self.base_url, allow_this_machine=False)
+        return self
 
 
 class PresetOverride(BaseModel):
@@ -56,6 +87,14 @@ class PresetOverride(BaseModel):
     base_url: str | None = None
     input_per_mtok: float | None = Field(default=None, ge=0)
     output_per_mtok: float | None = Field(default=None, ge=0)
+
+    @field_validator("base_url")
+    @classmethod
+    def _address_is_safe(cls, value: str | None) -> str | None:
+        """Https with a host; plain http only for an address on this machine (local presets)."""
+        if value is not None:
+            check_https(value, allow_this_machine=True)
+        return value
 
 
 class Settings(BaseModel):
@@ -73,6 +112,17 @@ class Settings(BaseModel):
     #: A board that lists no jobs for this many nights in a row (and whose jobs could not be
     #: checked one by one) is treated as having closed everything (CH-103).
     empty_listing_backstop_nights: int = Field(default=3, ge=1, le=30)
+    #: A change you declined in the conversation is not proposed again for this many days (CH-159).
+    proposal_repeat_days: int = Field(default=90, ge=1, le=3650)
+    #: A profile list item (a skill, a school, a location) that changes by more than this many
+    #: letters counts as a new item and re-scores jobs; a smaller change is a typo fix (CH-115).
+    score_typo_distance: int = Field(default=2, ge=0, le=10)
+    #: Re-score once at least this percent of the words in About or the accepted resume facts have
+    #: changed since the last scoring run (CH-115). Small edits add up.
+    score_free_text_change_percent: float = Field(default=5.0, ge=0, le=100)
+    #: If a board's listing loses more than this share of its open jobs in one night, it may be cut
+    #: off, so the missing jobs are checked (or kept open for a while) rather than closed (CH-132).
+    listing_drop_share: float = Field(default=0.5, gt=0, le=1)
     #: Days a saved model answer is kept after it was last used (using it resets the clock).
     cache_ttl_days: int = Field(default=30, ge=1, le=3650)
     #: Skills the profile needs before scoring can be switched on (CH-102).
@@ -87,6 +137,15 @@ class Settings(BaseModel):
     #: Scores at or above this get the green bubble; at or above `score_tier_mid`, the brass one.
     score_tier_high: int = Field(default=75, ge=1, le=100)
     score_tier_mid: int = Field(default=55, ge=0, le=99)
+    #: How many more times a source fetch is tried after network trouble, a 5xx, or a 429 (CH-164).
+    source_retries: int = Field(default=2, ge=0, le=5)
+    #: Run the nightly job only while the Mac is plugged in (the plist passes --if-plugged-in).
+    nightly_require_power: bool = True
+    #: The port `hub web` listens on (always on 127.0.0.1, never another address).
+    web_port: int = Field(default=8765, ge=1024, le=65535)
+    #: How the shortlist page orders jobs: "rank" (best first) or "place" (a heading per country,
+    #: then per city; remote and unknown places last). Rank order holds inside each group (CH-121).
+    shortlist_group_by: Literal["rank", "place"] = "rank"
     #: Your timezone (an IANA name such as "America/New_York"), for working hours and calendars.
     timezone: str = "America/New_York"
     #: Calendar files (.ics) whose busy time the weekly plan avoids. Only times are read.

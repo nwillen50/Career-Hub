@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from urllib.parse import unquote, urlparse
 
@@ -153,35 +154,43 @@ def manual_source(session: Session) -> Source:
     return source
 
 
-def find_known(session: Session, company: str, title: str) -> Job | None:
+def find_known(
+    session: Session, company: str, title: str, aliases: Mapping[str, str] | None = None
+) -> Job | None:
     """Return a stored, open job at `company` with this title (ignoring case and punctuation)."""
     rows = session.scalars(
         select(Job)
         .join(Company, Job.company_id == Company.id)
-        .where(Company.name_key == company_key(company), Job.status != "closed")
+        .where(Company.name_key == company_key(company, aliases), Job.status != "closed")
         .order_by(Job.id)
     )
     return next((job for job in rows if _squash(job.title) == _squash(title)), None)
 
 
 def _from_company_board(
-    session: Session, company: str, title: str, client: httpx.Client | None
+    session: Session,
+    company: str,
+    title: str,
+    client: httpx.Client | None,
+    aliases: Mapping[str, str] | None = None,
 ) -> Job | None:
     """Refresh the company's own approved board sources, then look for the job again."""
     for source in session.scalars(select(Source).where(Source.status == "approved")):
-        if source.kind in ADAPTERS and company_key(source.name) == company_key(company):
+        if source.kind in ADAPTERS and company_key(source.name, aliases) == company_key(
+            company, aliases
+        ):
             try:
-                ADAPTERS[source.kind](session, source, client)
+                ADAPTERS[source.kind](session, source, client, aliases=aliases)
             except FetchError:
                 continue
-            found = find_known(session, company, title)
+            found = find_known(session, company, title, aliases)
             if found is not None:
                 return found
     return None
 
 
-def _store(session: Session, item: NormalizedJob) -> Job:
-    store_jobs(session, manual_source(session), [item], close_missing=False)
+def _store(session: Session, item: NormalizedJob, aliases: Mapping[str, str] | None = None) -> Job:
+    store_jobs(session, manual_source(session), [item], close_missing=False, aliases=aliases)
     job = session.scalars(
         select(Job).where(
             Job.source_id == manual_source(session).id, Job.external_id == item.external_id
@@ -197,26 +206,31 @@ def add_job(
     title: str | None = None,
     text: str | None = None,
     client: httpx.Client | None = None,
+    aliases: Mapping[str, str] | None = None,
 ) -> AddResult:
-    """Add the job at `url` by the first path that works. Raises `ManualJobError` if none does."""
+    """Add the job at `url` by the first path that works. Raises `ManualJobError` if none does.
+
+    `aliases` are the user's company aliases (already resolved), so a link pasted under an old
+    company name joins the company's current one (CH-130).
+    """
     ref = classify(url)
     if ref is not None:
         try:
             item = fetch_posting(ref, company, client)
-            return AddResult(_store(session, item), f"fetched from {ref.kind}")
+            return AddResult(_store(session, item, aliases), f"fetched from {ref.kind}")
         except ManualJobError:
             if not (text and text.strip() and company and title):
                 raise  # a closed posting can still be added from pasted text
     if company and title:
-        known = find_known(session, company, title) or _from_company_board(
-            session, company, title, client
+        known = find_known(session, company, title, aliases) or _from_company_board(
+            session, company, title, client, aliases
         )
         if known is not None:
             return AddResult(known, "already in your list from the company's own board")
     if text and text.strip() and company and title:
         digest = hashlib.sha256(f"{url}|{company}|{title}".encode()).hexdigest()[:16]
         item = NormalizedJob(company, digest, title, url, None, text.strip(), {"added": "manual"})
-        return AddResult(_store(session, item), "stored from the text you pasted")
+        return AddResult(_store(session, item, aliases), "stored from the text you pasted")
     missing = [
         n for n, v in (("company", company), ("title", title), ("description text", text)) if not v
     ]
@@ -225,3 +239,21 @@ def add_job(
         if missing
         else "The job could not be added."
     )
+
+
+def set_manual_job_closed(session: Session, job_id: int, closed: bool) -> Job:
+    """Close (or reopen) a job the user added by link, and return it. Never deletes anything.
+
+    Career Hub's own feeds never close these (ADR-0011), so this is the only way. Jobs that came
+    from a company feed are refused: the feed closes them when they disappear.
+    """
+    job = session.get(Job, job_id)
+    if job is None:
+        raise ManualJobError(f"No job numbered {job_id}.")
+    if job.source_id != manual_source(session).id:
+        raise ManualJobError(
+            f"Job {job_id} was not added by link; its company feed closes it when it disappears."
+        )
+    job.status = "closed" if closed else "new"
+    session.commit()
+    return job

@@ -1,0 +1,54 @@
+/* Layout for the local web app. Colors, fonts, sizes, and spacing come from tokens.css only. */
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--text); font-family: var(--font-body);
+  font-size: var(--size-body); line-height: var(--line-body); }
+h1, h2, h3 { font-family: var(--font-heading); font-weight: var(--heading-weight); }
+h1 { font-size: var(--size-h1); line-height: var(--line-h1); margin: 0 0 var(--space-4); }
+a { color: var(--accent); }
+a:hover { color: var(--accent-hover); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.skip { position: absolute; left: var(--space-2); top: -4rem; background: var(--surface);
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); z-index: 10; }
+.skip:focus { top: var(--space-2); }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4);
+  background: var(--header); color: var(--header-text); padding: var(--space-3) var(--space-5);
+  border-bottom: 3px solid var(--brass-rule); }
+.brand { font-family: var(--font-heading); font-weight: var(--heading-weight); }
+.tabs { display: flex; flex-wrap: wrap; gap: var(--space-3); list-style: none; margin: 0; padding: 0; }
+.tabs a { color: var(--tab-inactive); text-decoration: none; padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm); display: inline-block; }
+.tabs a[aria-current="page"] { color: var(--tab-active); border-bottom: 2px solid var(--brass-rule); }
+main { max-width: 56rem; margin: 0 auto; padding: var(--space-5); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: var(--space-4); box-shadow: var(--shadow-card); }
+.card.error { border-color: var(--overdue); }
+.muted { color: var(--muted); }
+.loading:empty { display: none; }
+footer { max-width: 56rem; margin: 0 auto; padding: 0 var(--space-5) var(--space-5); }
+button { font: inherit; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+.posting { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3); }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: var(--space-2); border-bottom: 1px solid var(--divider); vertical-align: top; }
+.reactions button { margin-right: var(--space-2); }
+.why { display: inline-block; }
+.chips ul { display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; padding: 0; }
+.chips a[aria-current="true"] { background: var(--chip-selected); color: var(--chip-selected-text);
+  border-color: var(--chip-selected-border); }
+.chips a { border: 1px solid var(--chip-border); border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3); text-decoration: none; display: inline-block; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.filters { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: end; margin: var(--space-4) 0; }
+.filters fieldset { border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.inline { display: inline-block; margin-right: var(--space-2); }
+tr.overdue td { border-bottom-color: var(--overdue); }
+.overdue-note { color: var(--overdue); }
+input, select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); }
+.ask { display: grid; gap: var(--space-2); max-width: 40rem; margin-top: var(--space-4); }
+textarea { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: var(--space-2); }
+.answer { border-left: 4px solid var(--brass-rule); }
+.inline-form { display: inline-block; margin-right: var(--space-2); }

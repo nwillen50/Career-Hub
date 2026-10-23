@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "macros.html" import reactions with context %}
+{% block content %}
+<p><a href="/today">&larr; Today</a></p>
+<article class="card job">
+  <p class="where">{{ job.company }}{% if job.location %} · {{ job.location }}{% endif %}{% if job.salary %} · {{ job.salary }}{% endif %}{% if job.source_credit %} · {{ job.source_credit }}{% endif %}</p>
+  <p>{% if job.score is not none %}Fit score <strong>{{ job.score|round|int }}</strong> out of 100{% else %}Not scored yet{% endif %}
+     · status: {{ job.status }} · first seen {{ job.first_seen.strftime("%b %d") }}</p>
+  <p>{% if job.link %}<a href="{{ job.link }}" rel="noopener noreferrer">Open the posting</a>{% else %}<span class="muted">No safe link to the posting.</span>{% endif %}</p>
+  {% if job.deadline %}<p>Application deadline: <strong>{{ job.deadline.strftime("%a %b %d") }}</strong></p>{% endif %}
+  <ul class="footnotes">{% for note in job.footnotes %}<li class="muted">{{ note }}</li>{% endfor %}</ul>
+  {% if job.reaction %}<p>Your reaction: <strong>{{ job.reaction|replace("_", " ") }}</strong></p>{% endif %}
+  {{ reactions(job.job_id, csrf, reasons) }}
+</article>
+
+<p><a href="/conversation?job={{ job.job_id }}">Ask a question about this job</a></p>
+
+<section aria-labelledby="what-h"><h2 id="what-h">What the job is</h2>
+  {% if job.summary %}<p>{{ job.summary }}</p>{% else %}<p class="muted">No summary was read from the posting.</p>{% endif %}
+  {% if job.role_focus %}<p class="muted">Role: {{ job.role_focus }}</p>{% endif %}
+</section>
+
+<section aria-labelledby="fit-h"><h2 id="fit-h">Why it fits</h2>
+  {% if job.explanation %}
+  <p>{{ job.explanation }}</p>
+  {% if job.criteria %}
+  <table>
+    <caption class="muted">How it scored on each criterion</caption>
+    <thead><tr><th scope="col">Criterion</th><th scope="col">Score</th><th scope="col">Why</th></tr></thead>
+    <tbody>{% for c in job.criteria %}<tr><td>{{ c.get("name", "") }}</td><td>{{ c.get("score", "") }}/10</td><td>{{ c.get("reason", "") }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% endif %}
+  {% else %}<p class="muted">This job has not been scored yet.</p>{% endif %}
+</section>
+
+<section aria-labelledby="elig-h"><h2 id="elig-h">Filters and eligibility</h2>
+  {% if job.filter_reasons %}<p>Filtered out because:</p><ul>{% for r in job.filter_reasons %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+  {% if job.filter_uncertain %}<p>Worth checking:</p><ul>{% for r in job.filter_uncertain %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+  {% if not job.filter_reasons and not job.filter_uncertain %}<p class="muted">Nothing to flag.</p>{% endif %}
+</section>
+
+<section aria-labelledby="who-h"><h2 id="who-h">Who to contact</h2>
+  {% if job.contacts %}
+  <ul>{% for path in job.contacts %}<li>{{ path.name }}{% if path.title %}, {{ path.title }}{% endif %}{% if path.same_school %} (same school: {{ path.same_school }}){% endif %}{% if path.reasons %}: {{ path.reasons|join("; ") }}{% endif %}</li>{% endfor %}</ul>
+  {% else %}<p class="muted">You don't know anyone here yet.</p>{% endif %}
+  {% if job.alumni_link %}<p><a href="{{ job.alumni_link }}" rel="noopener noreferrer">Search {{ job.alumni_school or "your school" }} alumni at {{ job.company }} on LinkedIn</a> <span class="muted">(opens LinkedIn; Career Hub does not visit it)</span></p>{% endif %}
+</section>
+
+<section aria-labelledby="tailor-h"><h2 id="tailor-h">Tailoring notes</h2>
+  {% if job.tailoring %}
+  {% for key, title in (("lead_with", "Lead with"), ("gaps", "Gaps to address"), ("resume_suggestions", "Resume edits to consider")) %}
+    {% if job.tailoring.get(key) %}<h3>{{ title }}</h3><ul>{% for item in job.tailoring[key] %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+  {% endfor %}
+  {% else %}<p class="muted">No tailoring notes yet (they are written for jobs on the shortlist).</p>{% endif %}
+</section>
+
+<section aria-labelledby="post-h"><h2 id="post-h">The posting, as the company wrote it</h2>
+  {% if job.posting %}
+  <details><summary>Show the posting text</summary><pre class="posting">{{ job.posting }}</pre></details>
+  {% else %}<p class="muted">No posting text was saved for this job.</p>{% endif %}
+</section>
+{% endblock %}
