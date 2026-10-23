@@ -347,6 +347,10 @@ def _people_import(session: Session, path: Path, options: list[str] | None = Non
         print(error)
         return 1
     missing = f" (missing {' or '.join(report.skipped_for)})" if report.skipped_for else ""
+    if report.truncated:
+        print("The file has more rows than Career Hub reads (50,000); the rest were ignored.")
+    if report.truncated:
+        print("The file has more rows than Career Hub reads (50,000); the rest were ignored.")
     print(
         f"{report.created} added, {report.tagged} tagged as alumni, {report.unchanged} unchanged, "
         f"{report.skipped} rows skipped{missing}."

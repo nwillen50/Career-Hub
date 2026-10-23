@@ -39,6 +39,8 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
 EXTRA_FIELDS = ("class_year", "major", "location")  # kept in a new person's notes
 HEADER_SEARCH_ROWS = 30
 MAX_ROWS = 50_000
+#: A spreadsheet row is read only this far to the right (a sheet can declare thousands of columns).
+MAX_COLUMNS = 200
 
 
 def normalize(header: str) -> str:
@@ -55,6 +57,7 @@ class Table:
     header_row: int  # 1-based position in the file, for the preview
     mapping: dict[str, int] = field(default_factory=dict)  # field -> column index
     ignored: list[str] = field(default_factory=list)  # headers that matched nothing
+    truncated: bool = False  # the file had more than MAX_ROWS rows; the rest were not read
 
     def get(self, row: list[str], name: str) -> str:
         """Return the cell for field `name` in `row` (empty if unmapped or short)."""
@@ -73,6 +76,14 @@ class Table:
 
 
 def _decode(data: bytes) -> str:
+    """Decode a text export: UTF-16 (Excel's "Unicode Text"), UTF-8, then Windows-1252."""
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff") or (
+        len(data) > 3 and data[1:2] == b"\x00" != data[:1]
+    ):
+        try:
+            return data.decode("utf-16")
+        except UnicodeDecodeError:
+            pass
     for encoding in ("utf-8-sig", "cp1252"):
         try:
             return data.decode(encoding)
@@ -81,7 +92,7 @@ def _decode(data: bytes) -> str:
     return data.decode("latin-1")
 
 
-def _read_delimited(path: Path) -> list[list[str]]:
+def _read_delimited(path: Path) -> tuple[list[list[str]], bool]:
     text = _decode(path.read_bytes())
     sample = text[:8192]
     if path.suffix.lower() == ".tsv":
@@ -96,11 +107,11 @@ def _read_delimited(path: Path) -> list[list[str]]:
     for row in reader:
         rows.append(row)
         if len(rows) > MAX_ROWS:
-            break
-    return rows
+            return rows[:MAX_ROWS], True
+    return rows, False
 
 
-def _read_excel(path: Path, sheet: str | None) -> list[list[str]]:
+def _read_excel(path: Path, sheet: str | None) -> tuple[list[list[str]], bool]:
     import openpyxl
 
     workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
@@ -109,11 +120,16 @@ def _read_excel(path: Path, sheet: str | None) -> list[list[str]]:
             raise ProfileFileError(f"{path.name} has no sheet named {sheet!r}.")
         worksheet = workbook[sheet] if sheet else workbook.worksheets[0]
         rows: list[list[str]] = []
-        for values in worksheet.iter_rows(values_only=True):
-            rows.append(["" if cell is None else str(cell) for cell in values])
+        for values in worksheet.iter_rows(values_only=True, max_col=MAX_COLUMNS):
+            row = ["" if cell is None else str(cell) for cell in values]
+            while row and not row[-1].strip():
+                row.pop()  # a sheet can pad every row with empty cells out to its declared width
+            if not row:
+                continue  # blank formatted rows must not use up the row limit
+            rows.append(row)
             if len(rows) > MAX_ROWS:
-                break
-        return rows
+                return rows[:MAX_ROWS], True
+        return rows, False
     finally:
         workbook.close()
 
@@ -136,9 +152,9 @@ def read_table(
         raise ProfileFileError(f"{path.name} does not exist.")
     try:
         if path.suffix.lower() in (".xlsx", ".xlsm"):
-            cells = _read_excel(path, sheet)
+            cells, truncated = _read_excel(path, sheet)
         else:
-            cells = _read_delimited(path)
+            cells, truncated = _read_delimited(path)
     except ProfileFileError:
         raise
     except Exception as error:  # a damaged file must not crash; the error carries no content
@@ -155,7 +171,7 @@ def read_table(
     index = best[1]
     header = [cell.strip() for cell in cells[index]]
     rows = [row for row in cells[index + 1 :] if any(cell.strip() for cell in row)]
-    table = Table(header, rows, header_row=index + 1)
+    table = Table(header, rows, header_row=index + 1, truncated=truncated)
     _map_columns(table, overrides or {})
     return table
 
