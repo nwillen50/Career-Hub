@@ -75,6 +75,8 @@ class Settings(BaseModel):
     empty_listing_backstop_nights: int = Field(default=3, ge=1, le=30)
     #: Days a saved model answer is kept after it was last used (using it resets the clock).
     cache_ttl_days: int = Field(default=30, ge=1, le=3650)
+    #: Skills the profile needs before scoring can be switched on (CH-102).
+    profile_min_skills: int = Field(default=5, ge=0, le=100)
     #: A posting older than this many days is ranked slightly lower (never hidden) (CH-81).
     stale_after_days: int = Field(default=21, ge=1, le=365)
     #: How many fit-score points (of 100) an old posting loses in the ordering. 0 turns it off.

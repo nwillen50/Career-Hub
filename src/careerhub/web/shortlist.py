@@ -23,11 +23,13 @@ from sqlalchemy.orm import Session
 from careerhub.core.files import write_private
 from careerhub.core.models import Assessment, Job, RunLog, Source, utcnow
 from careerhub.core.paths import data_dir
+from careerhub.core.settings import load_settings
 from careerhub.modules.jobs.age import age_days
 from careerhub.modules.jobs.muse import KIND as MUSE_KIND
 from careerhub.modules.jobs.muse import VIA
 from careerhub.modules.jobs.scoring import current_rank_adjustments, is_internship, ranked_jobs
 from careerhub.modules.network import WarmPath, warm_paths
+from careerhub.profile.readiness import current_readiness
 
 #: Today shows at most this many ranked jobs (PRD).
 MAX_JOBS = 5
@@ -66,6 +68,8 @@ class ShortlistData:
     last_success: datetime | None = None
     #: What went wrong in the latest run, if it failed (error type names only).
     last_error: str | None = None
+    #: While scoring is switched off, what the profile still needs (None once it is on).
+    waiting_for: tuple[str, ...] | None = None
 
 
 def gather_shortlist(
@@ -102,10 +106,12 @@ def gather_shortlist(
     )
     success = next((run for run in runs if run.status == "succeeded"), None)
     error = runs[0].error_summary if runs and runs[0].status == "failed" else None
+    readiness = current_readiness(session, load_settings().profile_min_skills)
     return ShortlistData(
         entries,
         success.finished_at if success is not None else None,
         error or ("The last run failed." if runs and runs[0].status == "failed" else None),
+        None if readiness.on else tuple(readiness.missing),
     )
 
 
@@ -198,6 +204,13 @@ def render_shortlist(data: ShortlistData, now: datetime) -> str:
         parts.append(
             '<section class="card error" role="alert"><h2>The last nightly run failed</h2>'
             f"<p>{escape(data.last_error)} The jobs below are from an earlier run.</p></section>"
+        )
+    if data.waiting_for is not None:
+        needs = "".join(f"<li>{escape(item)}</li>" for item in data.waiting_for)
+        parts.append(
+            '<section class="card"><h2>Scoring starts when your profile is ready</h2>'
+            f"<p>Still needed:</p><ul>{needs or '<li>Run <code>hub profile ready</code></li>'}</ul>"
+            "<p>Then run <code>hub profile ready</code> once to switch scoring on.</p></section>"
         )
     if not data.entries:
         parts.append(

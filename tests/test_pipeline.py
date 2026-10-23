@@ -87,6 +87,7 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
     (tmp_path / "profile" / "rubric.yaml").write_text(
         "version: 1\ncriteria:\n  - {name: field, weight: 1, description: d}\n"
     )
+    (tmp_path / "profile" / "ready.json").write_text('{"since": "2026-10-01"}')  # scoring is on
     engine = open_engine(tmp_path / "t.db", new_database_key())
     migrate(engine)
     with session_factory(engine)() as session:
@@ -280,3 +281,15 @@ def test_a_new_resume_is_read_into_pending_facts_once(env: Any) -> None:
     with session_factory(engine)() as session:
         row = session.scalars(select(ProfileExtraction)).one()
         assert (row.kind, row.status, row.facts["skills"]) == ("resume", "pending", ["Python"])
+
+
+def test_scoring_and_tailoring_wait_until_the_profile_is_switched_on(env: Any) -> None:
+    engine, data = env
+    (data / "profile" / "ready.json").unlink()
+    report = run_nightly(engine, InMemoryKeyStore(), SETTINGS, handler(), NOW)
+    assert report.extracted == 2 and report.scored == 0 and report.tailored == 0
+    assert any("scoring starts when your profile is ready" in n for n in report.notes)
+    assert "Note: scoring starts" in report.summary()
+    assert report.filtered_out == 1  # filtering still ran
+    page = (data / "shortlist" / "index.html").read_text(encoding="utf-8")
+    assert "Scoring starts when your profile is ready" in page

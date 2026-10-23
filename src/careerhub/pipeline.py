@@ -59,6 +59,7 @@ from careerhub.profile.facts import accepted_facts
 from careerhub.profile.files import load_preferences, load_profile_doc
 from careerhub.profile.inputs import find_resume, find_transcript
 from careerhub.profile.models import HardConstraints, ProfileDoc
+from careerhub.profile.readiness import current_readiness
 from careerhub.profile.rubric import load_rubric
 from careerhub.web.shortlist import MAX_JOBS, write_shortlist
 
@@ -197,7 +198,7 @@ def _understand_and_rank(
         if doc
         else Eligibility()
     )
-    if doc is None or rubric is None:
+    if (doc is None or rubric is None) and current_readiness(session).on:
         report.problems.append("scoring skipped: profile.md or rubric.yaml is missing")
     try:
         extract_routes = routes_for(settings, "extract", setup.built)
@@ -209,6 +210,14 @@ def _understand_and_rank(
     except NoRoute:
         score_routes = []
         report.problems.append("scoring skipped: no usable model for 'score'")
+    readiness = current_readiness(session, settings.profile_min_skills)
+    if not readiness.on:
+        # Ingesting, understanding and filtering are cheap, so they run; scoring and tailoring wait.
+        score_routes = []
+        report.notes.append(
+            "scoring starts when your profile is ready (hub profile ready); missing: "
+            + "; ".join(readiness.missing)
+        )
     budget_hit = False
     failures = 0
     for job in jobs:
@@ -242,7 +251,7 @@ def _understand_and_rank(
         report.problems.append(f"{failures} jobs could not be understood or scored")
     if doc is not None:
         _extract_profile_facts(session, setup, settings, doc, report)
-    if doc is not None and not budget_hit:
+    if doc is not None and not budget_hit and readiness.on:
         _tailor_top_jobs(session, setup, settings, doc, report)
 
 
