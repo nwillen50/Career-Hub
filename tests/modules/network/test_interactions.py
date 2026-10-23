@@ -58,8 +58,6 @@ def test_bad_contacts_are_refused(session: Session, ada: Person) -> None:
         log_interaction(session, 999, "email")
     with pytest.raises(InteractionError, match="channel"):
         log_interaction(session, ada.id, "carrier pigeon")
-    with pytest.raises(InteractionError, match="before"):
-        log_interaction(session, ada.id, "call", follow_up_due=utcnow() - timedelta(days=1))
     with pytest.raises(InteractionError, match="1000"):
         log_interaction(session, ada.id, "call", "x" * 1001)
     assert recent_interactions(session) == []
@@ -115,3 +113,12 @@ def test_existing_databases_gain_the_column_with_everything_not_done(session: Se
     session.add(Interaction(person_id=other.id, occurred_at=utcnow(), channel="call"))
     session.commit()
     assert session.query(Interaction).one().follow_up_done is False
+
+
+def test_a_follow_up_dated_today_is_accepted_and_shows_as_due(
+    session: Session, ada: Person
+) -> None:
+    """Review: today's date is the start of today, which is earlier than now."""
+    start_of_today = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    log_interaction(session, ada.id, "call", follow_up_due=start_of_today)
+    assert len(gather_today(session, utcnow()).follow_ups) == 1
