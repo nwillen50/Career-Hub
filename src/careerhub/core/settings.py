@@ -47,6 +47,17 @@ class ProviderSetting(BaseModel):
     output_per_mtok: float | None = Field(default=None, ge=0)
 
 
+class PresetOverride(BaseModel):
+    """Changes to a catalog preset. Only these fields can change; privacy fields can't."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model: str | None = Field(default=None, min_length=1)
+    base_url: str | None = None
+    input_per_mtok: float | None = Field(default=None, ge=0)
+    output_per_mtok: float | None = Field(default=None, ge=0)
+
+
 class Settings(BaseModel):
     """Every user setting, with its default. Unknown names are rejected to catch typos."""
 
@@ -59,14 +70,35 @@ class Settings(BaseModel):
     #: Most the model router may spend on cloud models in a calendar month, in US dollars. When
     #: it is reached, calls not marked essential are paused (PRD, "Cost tracking").
     monthly_budget_usd: float = Field(default=20.0, ge=0)
+    #: A board that lists no jobs for this many nights in a row (and whose jobs could not be
+    #: checked one by one) is treated as having closed everything (CH-103).
+    empty_listing_backstop_nights: int = Field(default=3, ge=1, le=30)
     #: Days a saved model answer is kept after it was last used (using it resets the clock).
     cache_ttl_days: int = Field(default=30, ge=1, le=3650)
+    #: Skills the profile needs before scoring can be switched on (CH-102).
+    profile_min_skills: int = Field(default=5, ge=0, le=100)
+    #: A posting older than this many days is ranked slightly lower (never hidden) (CH-81).
+    stale_after_days: int = Field(default=21, ge=1, le=365)
+    #: How many fit-score points (of 100) an old posting loses in the ordering. 0 turns it off.
+    stale_penalty_points: float = Field(default=5.0, ge=0, le=50)
+    #: Your school's LinkedIn page name (the last part of linkedin.com/school/<name>), so the
+    #: shortlist can offer a link to its alumni at each company. Career Hub only builds the link.
+    linkedin_school_slug: str | None = Field(default=None, pattern=r"^[A-Za-z0-9-]+$")
+    #: Scores at or above this get the green bubble; at or above `score_tier_mid`, the brass one.
+    score_tier_high: int = Field(default=75, ge=1, le=100)
+    score_tier_mid: int = Field(default=55, ge=0, le=99)
     #: Your timezone (an IANA name such as "America/New_York"), for working hours and calendars.
     timezone: str = "America/New_York"
     #: Calendar files (.ics) whose busy time the weekly plan avoids. Only times are read.
     calendar_files: tuple[str, ...] = ()
+    #: Read busy time from the Mac's Calendar app (needs your permission; Mac only).
+    use_apple_calendar: bool = False
+    #: Which Calendar-app calendars count, by name. Empty means all of them.
+    apple_calendars: tuple[str, ...] = ()
     #: The models Career Hub may use. Empty until the user adds some.
     providers: tuple[ProviderSetting, ...] = ()
+    #: Changes to built-in catalog presets by preset name, e.g. a newer model id or new prices.
+    preset_overrides: dict[str, PresetOverride] = Field(default_factory=dict)
     #: Which providers handle each task, in order: the first is tried, later ones are escalations.
     #: Example: {"extract": ["claude-cheap", "claude-strong"]}.
     model_routes: dict[str, tuple[str, ...]] = Field(default_factory=dict)
@@ -82,7 +114,9 @@ class Settings(BaseModel):
         for task, route in self.model_routes.items():
             if not route:
                 raise ValueError(f"route {task!r} names no providers")
-            unknown = [name for name in route if name not in names]
+            from careerhub.llm.catalog import preset_names  # lazy: llm imports this module
+
+            unknown = [name for name in route if name not in names and name not in preset_names()]
             if unknown:
                 raise ValueError(f"route {task!r} names unknown providers: {', '.join(unknown)}")
         return self

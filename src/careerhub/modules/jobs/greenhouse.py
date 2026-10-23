@@ -17,21 +17,18 @@ from html.parser import HTMLParser
 from typing import Any
 
 import httpx
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from careerhub.core.models import Job, Source, utcnow
+from careerhub.core.models import Job, Source
+from careerhub.modules.jobs.ingest import FetchError, ingest_source
 from careerhub.modules.jobs.sources import require_approved
-from careerhub.modules.jobs.store import IngestReport, NormalizedJob, store_jobs
+from careerhub.modules.jobs.store import IngestReport, NormalizedJob
 
 _BOARD_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 API_BASE = "https://boards-api.greenhouse.io/v1/boards"
+_SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 KIND = "greenhouse"
 TIMEOUT_SECONDS = 30.0
-
-
-class FetchError(Exception):
-    """A source couldn't be read. The message has no response content."""
 
 
 class _TextOnly(HTMLParser):
@@ -100,6 +97,21 @@ def fetch_greenhouse(source: Source, client: httpx.Client | None = None) -> list
         raise FetchError("Greenhouse's reply had an unexpected shape.") from None
 
 
+def job_is_gone(source: Source, job: Job, client: httpx.Client | None = None) -> bool | None:
+    """Ask Greenhouse about one job: True if it says not found, False if it is still there.
+
+    None means the check itself failed (an error or an unexpected status), which is not an answer.
+    """
+    if not _SAFE_ID.match(job.external_id):
+        return None  # never put an odd id into a request path
+    http = client or httpx.Client(timeout=TIMEOUT_SECONDS)
+    try:
+        reply = http.get(f"{API_BASE}/{board_token(source)}/jobs/{job.external_id}")
+    except (httpx.HTTPError, FetchError):
+        return None
+    return {404: True, 200: False}.get(reply.status_code)
+
+
 def ingest_greenhouse(
     session: Session,
     source: Source,
@@ -107,31 +119,12 @@ def ingest_greenhouse(
     aliases: Mapping[str, str] | None = None,
 ) -> IngestReport:
     """Fetch and store one approved source, recording the fetch time and the source's health."""
-    try:
-        jobs = fetch_greenhouse(source, client)
-    except FetchError:
-        if source.status == "approved":
-            source.health = "failing"
-            session.commit()
-        raise
-    if not jobs and _has_open_jobs(session, source):
-        # An empty answer for a board that had jobs is more likely a glitch than a company that
-        # closed every role; closing everything would blank the shortlist.
-        source.health = "failing"
-        session.commit()
-        raise FetchError("Greenhouse listed no jobs for a board that had open jobs; kept them.")
-    report = store_jobs(session, source, jobs, aliases=aliases)
-    source.health = "ok"
-    source.last_fetched_at = utcnow()
-    session.commit()
-    return report
-
-
-def _has_open_jobs(session: Session, source: Source) -> bool:
-    """Say whether `source` has any job not yet closed."""
-    return (
-        session.scalars(
-            select(Job.id).where(Job.source_id == source.id, Job.status != "closed").limit(1)
-        ).first()
-        is not None
+    return ingest_source(
+        session,
+        source,
+        fetch_greenhouse,
+        "Greenhouse",
+        client,
+        check_gone=job_is_gone,
+        aliases=aliases,
     )

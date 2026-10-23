@@ -21,3 +21,14 @@ message someone you know there first (30 minutes), soonest deadline first, in yo
 the `weekly_time_budget_hours` in `preferences.yaml`, and never more than half the budget on one day.
 It only suggests: nothing is put on a calendar or sent. Tasks that don't fit are listed with the
 reason. See [ADR-0027](../../../../docs/decisions/0027-weekly-plan.md).
+
+## Apple Calendar (CH-83)
+
+Set `use_apple_calendar: true` in `settings.json` (and optionally `apple_calendars: ["Home"]`; empty
+means all) and the plan avoids times your Mac's Calendar app shows as busy. To include Google or
+Outlook calendars, add the account in System Settings > Internet Accounts with Calendars turned on.
+macOS asks for permission once; allow the terminal (or app) you run `hub` from under Privacy &
+Security > Calendars. Career Hub reads only each event's start, end, all-day flag, availability, and
+status (never the title, notes, place, link, or attendees), skips events marked free and cancelled
+ones, and falls back to your `.ics` files with a clear message if access is denied. Mac only. See
+[ADR-0040](../../../../docs/decisions/0040-apple-calendar.md).
