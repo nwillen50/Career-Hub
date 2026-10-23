@@ -155,3 +155,8 @@ def test_reading_a_job_changes_nothing(session: Session) -> None:
 def test_today_cards_link_to_the_detail_page(session: Session) -> None:
     job = add_job(session, 1, 80)
     assert f'href="/jobs/{job.id}"' in web(session).get("/today").text
+
+
+def test_a_huge_job_number_is_refused_not_a_server_error(session: Session) -> None:
+    """Review: a 23-digit id used to raise OverflowError and answer 500."""
+    assert web(session).get(f"/jobs/{'9' * 23}").status_code == 422
