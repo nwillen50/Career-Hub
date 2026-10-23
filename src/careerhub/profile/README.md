@@ -140,3 +140,13 @@ plan:
 
 Bad values are rejected with the field name (never the value). The working window has one source of
 truth: nothing else has its own default hours.
+
+
+## Re-scoring only for meaningful changes (CH-115)
+
+`changes.py` keeps a private snapshot of the profile as of the last scoring run
+(`profile/scored-snapshot.json`). Scoring and tailoring re-run only when it has changed
+meaningfully: a list item (skill, school, location, date) added, removed, or changed by more than
+`score_typo_distance` letters (default 2), or at least `score_free_text_change_percent` (default 5)
+of the words in About or the accepted resume facts changed since the snapshot. Small edits add up.
+`hub profile show` says whether the next run will re-score and why; `hub score --all` forces it.

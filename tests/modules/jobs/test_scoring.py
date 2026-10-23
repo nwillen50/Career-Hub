@@ -173,3 +173,15 @@ def test_ranking_orders_by_score_and_hides_closed_duplicate_and_filtered_jobs(
     third.status = "closed"
     session.commit()
     assert [job.title for job, _ in ranked_jobs(session)] == ["High", "Low"]
+
+
+def test_with_a_profile_epoch_only_a_new_epoch_scores_again(session: Session) -> None:
+    """CH-115: a profile edit alone does not re-score; a raised epoch does."""
+    job = add_job(session, "1", "Engineer")
+    provider = FakeProvider("m", replies=[answer(), answer()])
+    router = Router([provider])
+    assert score_job(session, router, job, DOC, RUBRIC, ["m"], profile_epoch=0)
+    edited = DOC.model_copy(update={"about": "Completely different about text."})
+    assert score_job(session, router, job, edited, RUBRIC, ["m"], profile_epoch=0) is None
+    assert score_job(session, router, job, edited, RUBRIC, ["m"], profile_epoch=1)
+    assert len(provider.requests) == 2
