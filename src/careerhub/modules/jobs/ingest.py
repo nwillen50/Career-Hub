@@ -149,9 +149,7 @@ def _check_sharp_drop(
         return None
     if len(missing) / len(open_jobs) <= load_settings().listing_drop_share:
         return None
-    answers = (
-        [check_gone(source, job, client) for job in missing[:SPOT_CHECKS]] if check_gone else []
-    )
+    answers = [check_gone(source, job, client) for job in _spread(missing)] if check_gone else []
     if answers and all(answer is True for answer in answers):
         return None
     still_listed = len(open_jobs) - len(missing)
@@ -159,6 +157,18 @@ def _check_sharp_drop(
         f"{source.name}: the listing dropped from {len(open_jobs)} to {still_listed} open jobs, "
         f"so {len(missing)} were kept open until they stay missing"
     )
+
+
+def _spread(jobs: list[Job]) -> list[Job]:
+    """Pick up to `SPOT_CHECKS` jobs spread across the list (oldest, middle, newest).
+
+    Checking only the oldest missing jobs would be biased: they are the likeliest to be really gone,
+    and a cut-off listing would then close newer jobs that are still open.
+    """
+    if len(jobs) <= SPOT_CHECKS:
+        return jobs
+    last = len(jobs) - 1
+    return [jobs[round(i * last / (SPOT_CHECKS - 1))] for i in range(SPOT_CHECKS)]
 
 
 def _reset_streak(source: Source) -> None:

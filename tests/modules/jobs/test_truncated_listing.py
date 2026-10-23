@@ -78,3 +78,15 @@ def test_a_small_drop_closes_normally_without_any_check(session: Session) -> Non
 
 def test_the_share_is_a_setting(session: Session) -> None:
     assert Settings().listing_drop_share == 0.5
+
+
+def test_the_spot_check_samples_across_the_missing_jobs_not_just_the_oldest(
+    session: Session,
+) -> None:
+    """Review: the three oldest missing jobs were really gone, the newest was still open."""
+    source = approved(session)
+    ingest_greenhouse(session, source, Board(BIG).client())
+    third = {"jobs": BIG["jobs"][:3]}  # missing: ids 4 to 10
+    board = Board(third, per_job={"10": 200})  # 4..9 answer 404, the newest is still there
+    report = ingest_greenhouse(session, source, board.client())
+    assert open_count(session) == 10 and report.closed == 0
