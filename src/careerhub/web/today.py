@@ -121,7 +121,11 @@ def _follow_ups(session: Session, now: datetime, zone: ZoneInfo) -> tuple[list[F
     rows = session.execute(
         select(Interaction, Person)
         .join(Person, Person.id == Interaction.person_id)
-        .where(Interaction.follow_up_due.is_not(None), Interaction.follow_up_due <= end_of_today)
+        .where(
+            Interaction.follow_up_due.is_not(None),
+            Interaction.follow_up_due <= end_of_today,
+            Interaction.follow_up_done.is_(False),
+        )
         .order_by(Interaction.follow_up_due, Interaction.id)
     ).all()
     items: list[FollowUp] = []
