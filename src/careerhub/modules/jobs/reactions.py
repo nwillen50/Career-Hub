@@ -15,6 +15,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from careerhub.core.models import REACTIONS, REASONS, Feedback, Job, utcnow
+from careerhub.modules.jobs.applications import track
 
 #: How long after reacting the user may undo it.
 UNDO_SECONDS = 10
@@ -43,6 +44,8 @@ def react(
     row = Feedback(job_id=job_id, reaction=reaction, reason=reason or None)
     session.add(row)
     session.commit()
+    if reaction in ("interested", "applied"):  # these start tracking the job (CH-142)
+        track(session, job_id, reaction)
     return row
 
 
