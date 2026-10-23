@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.models import Source
 from careerhub.modules.jobs.greenhouse import board_token, html_to_text
-from careerhub.modules.jobs.ingest import FetchError, ingest_source
+from careerhub.modules.jobs.ingest import FetchError, ingest_source, retryable_status
 from careerhub.modules.jobs.sources import require_approved
 from careerhub.modules.jobs.store import IngestReport, NormalizedJob
 
@@ -74,9 +74,14 @@ def fetch_ashby(source: Source, client: httpx.Client | None = None) -> list[Norm
     try:
         reply = http.get(f"{API_BASE}/{token}", params={"includeCompensation": "true"})
     except httpx.HTTPError as error:
-        raise FetchError(f"Ashby request failed ({type(error).__name__}).") from None
+        raise FetchError(
+            f"Ashby request failed ({type(error).__name__}).", retryable=True
+        ) from None
     if reply.status_code != 200:
-        raise FetchError(f"Ashby answered HTTP {reply.status_code} for board {token!r}.")
+        raise FetchError(
+            f"Ashby answered HTTP {reply.status_code} for board {token!r}.",
+            retryable=retryable_status(reply.status_code),
+        )
     try:
         records = reply.json()["jobs"]
         return [

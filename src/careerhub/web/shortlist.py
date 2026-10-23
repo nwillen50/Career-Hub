@@ -27,11 +27,14 @@ from careerhub.core.models import Assessment, Job, RunLog, Source, utcnow
 from careerhub.core.paths import data_dir
 from careerhub.core.settings import load_settings
 from careerhub.modules.jobs.age import age_days
+from careerhub.modules.jobs.extract import JobFields
 from careerhub.modules.jobs.muse import KIND as MUSE_KIND
 from careerhub.modules.jobs.muse import VIA
 from careerhub.modules.jobs.scoring import current_rank_adjustments, is_internship, ranked_jobs
+from careerhub.modules.jobs.visa import visa_flag
 from careerhub.modules.network import WarmPath, warm_paths
 from careerhub.modules.network.schools import alumni_search_link, my_schools
+from careerhub.profile.files import load_preferences
 from careerhub.profile.readiness import current_readiness
 from careerhub.web.assets import copy_fonts, tokens_css
 from careerhub.web.grouping import group_by_place
@@ -72,6 +75,8 @@ class ShortlistEntry:
     deadline: date | None = None
     #: The job's id in the database, for reactions (None in tests that don't need it).
     job_id: int | None = None
+    #: A work-visa note for a job abroad, in words ("Needs a work visa for Germany: ...").
+    visa_flag: str | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +115,8 @@ def gather_shortlist(
         for row in ranked_jobs(session, wanted + len(hide), now=now, **adjustments)
         if row[0].id not in hide
     ][:wanted]
+    preferences = load_preferences()
+    rights = preferences.work_rights if preferences else []
     entries = [
         ShortlistEntry(
             title=job.title,
@@ -128,6 +135,7 @@ def gather_shortlist(
             salary=_salary(job),
             deadline=_deadline(job),
             job_id=job.id,
+            visa_flag=_visa_note(job, rights),
         )
         for job, assessment in ranked
     ]
@@ -195,6 +203,14 @@ def _deadline(job: Job) -> date | None:
         return date.fromisoformat(str(_stated(job).get("deadline")))
     except ValueError:
         return None
+
+
+def _visa_note(job: Job, work_rights: list[str]) -> str | None:
+    """Return the work-visa flag for a job abroad, or None."""
+    saved = (job.structured_fields or {}).get("fields")
+    fields = JobFields.model_validate(saved) if saved else None
+    flag = visa_flag(fields, job.location, work_rights)
+    return flag.text if flag else None
 
 
 def _from_muse(session: Session, job: Job) -> bool:
@@ -265,6 +281,7 @@ main { max-width:46rem; margin:0 auto; padding:var(--space-5) var(--space-4) var
 .where { color:var(--muted); margin:var(--space-1) 0 var(--space-3); font-size:15px; }
 .same-school { font-size:13px; font-weight:600; background:var(--panel); color:var(--panel-text);
   border-radius:var(--radius-pill); padding:1px var(--space-2); }
+.visa { font-size:.9rem; margin:var(--space-2) 0 0; }
 .footnote { color:var(--muted); font-size:.85rem; margin:var(--space-2) 0 0; }
 a { color:var(--accent); } a:hover { color:var(--accent-hover); }
 a:focus-visible, summary:focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
@@ -380,7 +397,7 @@ def _render_entry(
     return (
         f'<article class="card"><div class="head"><div><h{level}>{index}. {heading}</h{level}>'
         f'<p class="where">{where}</p></div>{_bubble(entry.score, high, mid)}</div>'
-        f"<p>{escape(_first_sentence(entry.explanation))}</p>"
+        f"<p>{escape(_first_sentence(entry.explanation))}</p>{_render_visa(entry.visa_flag)}"
         f"{_render_contacts(entry.contacts)}{_render_alumni_link(entry)}"
         f"<details><summary>Full explanation</summary><p>{escape(entry.explanation)}</p>{table}"
         f"</details>{_render_tailoring(entry.tailoring)}{_render_footnotes(entry.footnotes)}"
@@ -393,6 +410,11 @@ _TAILORING_TITLES = (
     ("gaps", "Gaps to address"),
     ("resume_suggestions", "Resume edits to consider"),
 )
+
+
+def _render_visa(flag: str | None) -> str:
+    """Render the work-visa note in words (never by color alone); nothing when there is none."""
+    return f'<p class="visa"><strong>Work visa:</strong> {escape(flag)}</p>' if flag else ""
 
 
 def _render_footnotes(footnotes: tuple[str, ...]) -> str:

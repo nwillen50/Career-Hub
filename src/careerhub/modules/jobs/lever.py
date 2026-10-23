@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.models import Job, Source
 from careerhub.modules.jobs.greenhouse import board_token, html_to_text
-from careerhub.modules.jobs.ingest import FetchError, ingest_source
+from careerhub.modules.jobs.ingest import FetchError, ingest_source, retryable_status
 from careerhub.modules.jobs.sources import require_approved
 from careerhub.modules.jobs.store import IngestReport, NormalizedJob
 
@@ -73,9 +73,14 @@ def fetch_lever(source: Source, client: httpx.Client | None = None) -> list[Norm
     try:
         reply = http.get(f"{API_BASES[region]}/{token}", params={"mode": "json"})
     except httpx.HTTPError as error:
-        raise FetchError(f"Lever request failed ({type(error).__name__}).") from None
+        raise FetchError(
+            f"Lever request failed ({type(error).__name__}).", retryable=True
+        ) from None
     if reply.status_code != 200:
-        raise FetchError(f"Lever answered HTTP {reply.status_code} for {token!r}.")
+        raise FetchError(
+            f"Lever answered HTTP {reply.status_code} for {token!r}.",
+            retryable=retryable_status(reply.status_code),
+        )
     try:
         records = reply.json()
         if not isinstance(records, list):
