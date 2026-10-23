@@ -17,6 +17,7 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | `ashby` | Same for Ashby (`api.ashbyhq.com`), with stated pay added to the text; `hub ingest ashby` | CH-94 | Built |
 | `muse` | The Muse search (partial listing; shortlist says "via The Muse"); `themuse` sources | CH-95 | Built |
 | `manual` | `hub add-job <url>`: a link from an ATS, or any site with pasted text | CH-96 | Built |
+| `find_boards` | `hub targets find-boards`: guess each followed company's board, verify by name, propose a source (on demand only) | CH-112 | Built |
 | `ingest`, `adapters` | The shared fetch-and-store routine and the adapter registry | CH-93 | Built |
 
 An adapter turns its feed into `NormalizedJob`s and calls `store_jobs(session, source, jobs)` with

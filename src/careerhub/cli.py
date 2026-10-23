@@ -39,6 +39,7 @@ from careerhub.modules.jobs import (
     reject_source,
 )
 from careerhub.modules.jobs.adapters import ADAPTERS, BOARD_KINDS
+from careerhub.modules.jobs.find_boards import find_boards
 from careerhub.modules.jobs.manual import ManualJobError, add_job, classify, guess_from_link
 from careerhub.modules.jobs.targets import (
     TargetsError,
@@ -48,6 +49,7 @@ from careerhub.modules.jobs.targets import (
     read_targets,
     save_targets,
     set_enabled,
+    set_unsupported,
 )
 from careerhub.modules.network import (
     UnknownPerson,
@@ -80,10 +82,11 @@ USAGE = """Usage:
                                              (CSV, TSV or Excel; also `hub alumni import`)
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
-  hub targets import <file> | list | enable <name>... | disable <name>... | enable-matching
-                          (companies you follow; the Engine list is in docs/seeds)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
                                              are never requested; text can also come from stdin)
+  hub targets find-boards | note <name> <ats> | import <file> | list | enable-matching
+  hub targets enable <name>... | disable <name>...
+                          (companies you follow; the Engine list is in docs/seeds)
   hub models list | routes
   hub models add <anthropic|openai|gemini --tier free|paid|local|preset>   (asks for the key)
   hub models remove <same names>
@@ -140,10 +143,12 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _schedule_install()
         if args == ["nightly"]:
             return _nightly(store)
-        if args[:1] == ["targets"] and len(args) >= 2:
-            return _targets(args[1:])
         if args[:1] == ["add-job"] and len(args) >= 2 and len(args) % 2 == 0:
             return _with_session(store, lambda s: _add_job(s, args[1], args[2:]))
+        if args == ["targets", "find-boards"]:
+            return _with_session(store, _find_boards)
+        if args[:1] == ["targets"] and len(args) >= 2:
+            return _targets(args[1:])
         if args[:1] == ["models"] and len(args) >= 2:
             return _models(store, args[1:])
         if args[:2] == ["cache", "clear"] and args[2:] in ([], ["--expired"]):
@@ -364,49 +369,6 @@ def _nightly(store: KeyStore) -> int:
     return 1 if any(p.startswith("run failed") for p in report.problems) else 0
 
 
-def _targets(args: list[str]) -> int:
-    """Run a `hub targets ...` command on `targets.yaml` (no network, no database)."""
-    try:
-        targets = load_targets()
-        if args[0] == "import" and len(args) == 2:
-            merged, added = merge_import(targets, read_targets(Path(args[1])))
-            save_targets(merged)
-            followed = sum(t.enabled for t in merged)
-            print(f"Added {added} companies (disabled). You follow {followed}.")
-            return 0
-        if args[0] == "list" and len(args) == 1:
-            for target in targets:
-                board = f"{target.board_kind}:{target.board}" if target.board else "board unknown"
-                mark = "x" if target.enabled else " "
-                sectors = ", ".join(target.sectors) or "no sectors"
-                print(f"[{mark}] {target.name} ({sectors}); {board}")
-            print(f"{len(targets)} companies, {sum(t.enabled for t in targets)} followed.")
-            return 0
-        if args[0] in ("enable", "disable") and len(args) >= 2:
-            unknown = set_enabled(targets, args[1:], args[0] == "enable")
-            save_targets(targets)
-            for name in unknown:
-                print(f"No target named {name!r}.")
-            return 1 if unknown else 0
-        if args[0] == "enable-matching" and len(args) == 1:
-            doc = load_profile_doc()
-            if doc is None or not doc.interests:
-                print("Add interests to profile.md first.")
-                return 1
-            hits = [t for t in targets if matches_interests(t, doc.interests)]
-            for target in hits:
-                target.enabled = True
-            save_targets(targets)
-            print(f"Now following {len(hits)} companies whose sectors match your interests:")
-            print("\n".join(f"  {t.name}" for t in hits))
-            return 0
-    except (TargetsError, ProfileFileError) as error:
-        print(error)
-        return 1
-    print(USAGE)
-    return 2
-
-
 def _add_job(
     session: Session,
     url: str,
@@ -446,6 +408,81 @@ def _add_job(
         return 1
     print(f"Added #{result.job.id} {result.job.title}: {result.how}. Run `hub nightly` to rank it.")
     return 0
+
+
+def _find_boards(session: Session, client: httpx.Client | None = None) -> int:
+    """Look for the job boards of followed companies; hits become proposed sources."""
+    try:
+        targets = load_targets()
+        report = find_boards(session, targets, client)
+        save_targets(targets)
+    except TargetsError as error:
+        print(error)
+        return 1
+    for name, hit in report.found:
+        print(
+            f"Found {name}: {hit.kind} board {hit.token!r} (proposed; approve it with hub sources)."
+        )
+    for name, hit in report.uncertain:
+        print(
+            f"Unsure about {name}: a {hit.kind} board {hit.token!r} answered, "
+            "but it doesn't name them."
+        )
+    if report.missed:
+        print("No board found for: " + ", ".join(report.missed))
+    if report.stopped:
+        print(report.stopped)
+    return 0
+
+
+def _targets(args: list[str]) -> int:
+    """Run a `hub targets ...` command on `targets.yaml` (no network, no database)."""
+    try:
+        targets = load_targets()
+        if args[0] == "import" and len(args) == 2:
+            merged, added = merge_import(targets, read_targets(Path(args[1])))
+            save_targets(merged)
+            followed = sum(t.enabled for t in merged)
+            print(f"Added {added} companies (disabled). You follow {followed}.")
+            return 0
+        if args[0] == "list" and len(args) == 1:
+            for target in targets:
+                board = f"{target.board_kind}:{target.board}" if target.board else "board unknown"
+                if target.unsupported_ats and not target.board:
+                    board = f"board not supported ({target.unsupported_ats})"
+                mark = "x" if target.enabled else " "
+                sectors = ", ".join(target.sectors) or "no sectors"
+                print(f"[{mark}] {target.name} ({sectors}); {board}")
+            print(f"{len(targets)} companies, {sum(t.enabled for t in targets)} followed.")
+            return 0
+        if args[0] in ("enable", "disable") and len(args) >= 2:
+            unknown = set_enabled(targets, args[1:], args[0] == "enable")
+            save_targets(targets)
+            for name in unknown:
+                print(f"No target named {name!r}.")
+            return 1 if unknown else 0
+        if args[0] == "note" and len(args) >= 3:
+            missing = set_unsupported(targets, args[1], " ".join(args[2:]))
+            save_targets(targets)
+            print(f"No target named {args[1]!r}." if missing else "Noted.")
+            return 1 if missing else 0
+        if args[0] == "enable-matching" and len(args) == 1:
+            doc = load_profile_doc()
+            if doc is None or not doc.interests:
+                print("Add interests to profile.md first.")
+                return 1
+            hits = [t for t in targets if matches_interests(t, doc.interests)]
+            for target in hits:
+                target.enabled = True
+            save_targets(targets)
+            print(f"Now following {len(hits)} companies whose sectors match your interests:")
+            print("\n".join(f"  {t.name}" for t in hits))
+            return 0
+    except (TargetsError, ProfileFileError) as error:
+        print(error)
+        return 1
+    print(USAGE)
+    return 2
 
 
 #: The `--flag value` options `hub models` accepts.

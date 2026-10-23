@@ -41,6 +41,8 @@ class Target(BaseModel):
     board_kind: Literal["greenhouse", "lever", "ashby"] | None = None
     board: str | None = Field(default=None, max_length=100)
     enabled: bool = False
+    #: A job system we can't read (for example "Workday"); shown so the gap is visible.
+    unsupported_ats: str | None = Field(default=None, max_length=50)
 
 
 class TargetsFile(BaseModel):
@@ -116,6 +118,15 @@ def matches_interests(target: Target, interests: list[str]) -> bool:
         (wanted := _tokens(interest)) and any(wanted <= words for words in sector_words)
         for interest in interests
     )
+
+
+def set_unsupported(targets: list[Target], name: str, ats: str) -> bool:
+    """Record that `name` uses a job system we can't read; return True if no target matches."""
+    for target in targets:
+        if company_key(target.name) == company_key(name):
+            target.unsupported_ats = " ".join(ats.split())[:50] or None
+            return False
+    return True
 
 
 def set_enabled(targets: list[Target], names: list[str], enabled: bool) -> list[str]:
