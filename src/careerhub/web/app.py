@@ -39,6 +39,7 @@ from careerhub.core.migrate import migrate
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
 from careerhub.core.settings import SettingsError
 from careerhub.core.storage import StorageError, open_database, session_factory
+from careerhub.llm.catalog import ollama_is_running
 from careerhub.modules.jobs.reactions import (
     UNDO_SECONDS,
     ReactionError,
@@ -49,6 +50,7 @@ from careerhub.modules.jobs.reactions import (
 from careerhub.profile.files import ProfileFileError
 from careerhub.web.job_detail import gather_job
 from careerhub.web.plan_view import gather_plan
+from careerhub.web.status_view import gather_status
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
 
 #: A job id the database can hold (SQLite integers are 64-bit); anything else is a 422, not a 500.
@@ -127,6 +129,8 @@ def create_app(
     port: int,
     check_database: Callable[[], bool] = database_opens,
     open_session: Callable[[], Session] | None = None,
+    key_store: KeyStore | None = None,
+    local_running: Callable[[], bool] = ollama_is_running,
 ) -> FastAPI:
     """Build the app. `token` is this start's secret; `check_database` says if data is usable.
 
@@ -221,7 +225,7 @@ def create_app(
         return render
 
     for path in PAGES:
-        if path not in ("/today", "/plan"):
+        if path not in ("/today", "/plan", "/status"):
             app.add_api_route(path, tab(path), methods=["GET"], response_class=HTMLResponse)
 
     @app.get("/today", response_class=HTMLResponse)
@@ -282,6 +286,28 @@ def create_app(
                 "title": "Plan",
                 "heading": "Plan",
                 "plan": view,
+            },
+        )
+
+    @app.get("/status", response_class=HTMLResponse)
+    def status_tab(request: Request) -> Response:
+        if open_session is None:
+            return tab("/status")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/status")(request)
+        with open_session() as session:
+            view = gather_status(session, key_store, local_running=local_running)
+        return templates.TemplateResponse(
+            request,
+            "status.html",
+            {
+                "tabs": TABS,
+                "current": "/status",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": "System status",
+                "heading": "System status",
+                "status": view,
             },
         )
 
