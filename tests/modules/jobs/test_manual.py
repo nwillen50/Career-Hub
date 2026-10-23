@@ -339,3 +339,38 @@ def test_the_company_board_refresh_keeps_the_aliases(session: Session) -> None:
     # the board's company is "Name Now"; the job must sit on that one company
     names = {c.name_key for c in session.scalars(select(Company))}
     assert names == {"name now"}
+
+
+def test_a_manual_job_can_be_closed_and_reopened_but_never_a_feed_job(session: Session) -> None:
+    """CH-135: only jobs added by link are closed by hand; nothing is deleted."""
+    from careerhub.modules.jobs.manual import set_manual_job_closed
+
+    manual = add_job(session, LINKEDIN, "Acme", "Dev", "text", client({}, [])).job
+    board = approve_source(
+        session, propose_source(session, "greenhouse", "Acme", "u", {"board": "acme"}).id
+    )
+    store_jobs(session, board, [NormalizedJob("Acme", "g1", "Other", "https://g/1", "Boston")])
+    feed_job = session.scalars(select(Job).where(Job.external_id == "g1")).one()
+
+    set_manual_job_closed(session, manual.id, True)
+    assert session.get(Job, manual.id).status == "closed"  # type: ignore[union-attr]
+    set_manual_job_closed(session, manual.id, False)
+    assert session.get(Job, manual.id).status == "new"  # type: ignore[union-attr]
+    with pytest.raises(ManualJobError, match="added by link"):
+        set_manual_job_closed(session, feed_job.id, True)
+    with pytest.raises(ManualJobError, match="No job"):
+        set_manual_job_closed(session, 999, True)
+    assert len(session.scalars(select(Job)).all()) == 2  # nothing deleted
+
+
+def test_hub_jobs_close_asks_first(session: Session, capsys: pytest.CaptureFixture[str]) -> None:
+    from careerhub.cli import _jobs_close
+
+    job = add_job(session, LINKEDIN, "Acme", "Dev", "text", client({}, [])).job
+    assert _jobs_close(session, True, job.id, ask=lambda prompt: "n") == 1
+    assert session.get(Job, job.id).status == "new"  # type: ignore[union-attr]
+    assert _jobs_close(session, True, job.id, ask=lambda prompt: "y") == 0
+    assert session.get(Job, job.id).status == "closed"  # type: ignore[union-attr]
+    assert _jobs_close(session, False, job.id, ask=lambda prompt: "yes") == 0
+    assert _jobs_close(session, True, 999, ask=lambda prompt: "y") == 1
+    assert "No job numbered 999" in capsys.readouterr().out

@@ -239,3 +239,21 @@ def add_job(
         if missing
         else "The job could not be added."
     )
+
+
+def set_manual_job_closed(session: Session, job_id: int, closed: bool) -> Job:
+    """Close (or reopen) a job the user added by link, and return it. Never deletes anything.
+
+    Career Hub's own feeds never close these (ADR-0011), so this is the only way. Jobs that came
+    from a company feed are refused: the feed closes them when they disappear.
+    """
+    job = session.get(Job, job_id)
+    if job is None:
+        raise ManualJobError(f"No job numbered {job_id}.")
+    if job.source_id != manual_source(session).id:
+        raise ManualJobError(
+            f"Job {job_id} was not added by link; its company feed closes it when it disappears."
+        )
+    job.status = "closed" if closed else "new"
+    session.commit()
+    return job

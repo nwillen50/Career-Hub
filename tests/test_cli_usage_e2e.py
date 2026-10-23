@@ -37,6 +37,7 @@ INVOCATIONS: dict[str, list[str]] = {
         "--title",
         "Engineer",
     ],
+    "jobs close": ["jobs", "close", "1"],
     "companies": ["companies", "suggestions"],
     "targets find-boards": ["targets", "find-boards"],
     "targets list": ["targets", "list"],
@@ -66,6 +67,7 @@ COVERS = {
     "hub schedule install": "schedule install",
     "hub nightly": "nightly",
     "hub add-job": "add-job",
+    "hub jobs close": "jobs close",
     "hub companies": "companies",
     "hub targets find-boards": "targets find-boards",
     "hub targets enable": "targets enable",
@@ -92,6 +94,7 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def no_network(*args: object, **kwargs: object) -> None:
         raise OSError("network is off in tests")
 
+    monkeypatch.setattr("builtins.input", lambda *args: "n")  # any yes/no question gets "no"
     monkeypatch.setattr(socket, "create_connection", no_network)
     monkeypatch.setattr(socket.socket, "connect", no_network)
 
