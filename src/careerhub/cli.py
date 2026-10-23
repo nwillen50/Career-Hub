@@ -400,13 +400,13 @@ def _add_job(
     text: str | None = None
     try:
         try:
-            result = add_job(session, url, company, title, None, client)
+            result = add_job(session, url, company, title, None, client, aliases=_aliases())
         except ManualJobError:
             if "--text-file" in flags:
                 text = Path(flags["--text-file"]).read_text(encoding="utf-8")
             elif not stdin.isatty():
                 text = stdin.read()
-            result = add_job(session, url, company, title, text, client)
+            result = add_job(session, url, company, title, text, client, aliases=_aliases())
     except (ManualJobError, OSError) as error:
         print(f"Couldn't add the job. {error}")
         return 1
