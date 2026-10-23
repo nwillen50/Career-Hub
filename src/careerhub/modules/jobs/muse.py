@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.models import Source
 from careerhub.modules.jobs.greenhouse import html_to_text
-from careerhub.modules.jobs.ingest import FetchError, ingest_source
+from careerhub.modules.jobs.ingest import FetchError, ingest_source, retryable_status
 from careerhub.modules.jobs.sources import require_approved
 from careerhub.modules.jobs.store import IngestReport, NormalizedJob
 
@@ -73,9 +73,14 @@ def fetch_muse(source: Source, client: httpx.Client | None = None) -> list[Norma
         try:
             reply = http.get(API_URL, params={"page": page, **filters})
         except httpx.HTTPError as error:
-            raise FetchError(f"The Muse request failed ({type(error).__name__}).") from None
+            raise FetchError(
+                f"The Muse request failed ({type(error).__name__}).", retryable=True
+            ) from None
         if reply.status_code != 200:
-            raise FetchError(f"The Muse answered HTTP {reply.status_code}.")
+            raise FetchError(
+                f"The Muse answered HTTP {reply.status_code}.",
+                retryable=retryable_status(reply.status_code),
+            )
         try:
             body = reply.json()
             jobs += [normalize(record) for record in body["results"]]

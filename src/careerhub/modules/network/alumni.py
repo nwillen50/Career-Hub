@@ -15,6 +15,7 @@ happen, without saving anything and without showing anyone's details.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,7 +40,8 @@ class AlumniReport:
     tagged: int = 0  # already known; the alumni tag was added
     unchanged: int = 0
     skipped: int = 0  # rows missing a name or company
-    skipped_for: tuple[str, ...] = ()  # which of "name" and "company" the skipped rows lacked
+    skipped_for: tuple[str, ...] = ()  # which of "name", "company", "group" the skipped rows lacked
+    truncated: bool = False  # the file had more rows than are read; the rest were ignored
 
 
 @dataclass(frozen=True)
@@ -54,7 +56,8 @@ class Preview:
 
 def tag_for(group: str) -> str:
     """Return the `how_known` text for membership in `group`."""
-    return f"alumni: {group.strip()}"
+    # ";" separates notes in `how_known`, so one inside a group name would split the tag apart
+    return f"alumni: {group.strip().replace(';', ',')}"
 
 
 def _check(table: Table, path: Path, group: str | None) -> None:
@@ -88,12 +91,18 @@ def import_alumni(
         name = table.person_name(row)
         company_name = table.get(row, "company")
         row_group = (table.get(row, "group") or (group or "")).strip()
+        if _placeholder(company_name):
+            company_name = ""  # "N/A" is not an employer; every such person would share one
         if not (name and company_name and row_group):
             skipped += 1
-            lacked.update(n for n, v in (("name", name), ("company", company_name)) if not v)
+            lacked.update(
+                n
+                for n, v in (("name", name), ("company", company_name), ("group", row_group))
+                if not v
+            )
             continue
         company = _company(session, company_name, aliases)
-        email, url = table.get(row, "email"), table.get(row, "url")
+        email, url = _valid_email(table.get(row, "email")), _valid_url(table.get(row, "url"))
         person = _find(session, name, company, email, url)
         tag = tag_for(row_group)
         school = table.get(row, "school")
@@ -127,7 +136,7 @@ def import_alumni(
         session.flush()  # so a repeat of the same person later in the file is found
     if commit:
         session.commit()
-    return AlumniReport(created, tagged, unchanged, skipped, tuple(sorted(lacked)))
+    return AlumniReport(created, tagged, unchanged, skipped, tuple(sorted(lacked)), table.truncated)
 
 
 def preview_alumni(
@@ -165,21 +174,63 @@ def _company(session: Session, name: str, aliases: Mapping[str, str] | None = No
     return company
 
 
+_EMAIL_SHAPE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s.]+")
+_URL_SHAPE = re.compile(r"(?i)(?:https?://)?[\w-]+(?:\.[\w-]+)+(?:[/?#]\S*)?")
+
+
+_PLACEHOLDERS = frozenset({"n/a", "na", "none", "null", "unknown", "tbd", "-", "--", ".", "?"})
+
+
+def _placeholder(value: str) -> bool:
+    """Say whether a cell holds a stand-in for "nothing" ("N/A", "-", "unknown")."""
+    return value.strip().lower() in _PLACEHOLDERS
+
+
+def _valid_email(value: str) -> str:
+    """Return `value` if it looks like an email address, else '' (so 'N/A' or '-' is ignored)."""
+    value = value.strip()
+    return value if _EMAIL_SHAPE.fullmatch(value) else ""
+
+
+def _valid_url(value: str) -> str:
+    """Return `value` if it looks like a web address, else ''."""
+    value = value.strip()
+    return value if _URL_SHAPE.fullmatch(value) else ""
+
+
+def _same_person(a: str, b: str) -> bool:
+    """Say whether two names can be one person: they share every word of the shorter name.
+
+    "Ada Sample" and "Augusta Ada Sample" can; "John Smith" and "Jane Smith" cannot (relatives can
+    share an email address). Commas and hyphens count as spaces.
+    """
+    words_a, words_b = (set(re.split(r"[\s,\-]+", _name_key(n))) - {""} for n in (a, b))
+    shorter, longer = sorted((words_a, words_b), key=len)
+    return bool(shorter) and shorter <= longer
+
+
+def _name_key(name: str) -> str:
+    """Fold case (all alphabets, not just ASCII) and collapse spaces, so names compare fairly."""
+    return " ".join(name.split()).casefold()
+
+
 def _find(session: Session, name: str, company: Company, email: str, url: str) -> Person | None:
-    """Find an existing person by URL, then email, then name at the same company."""
-    for column, value in ((Person.profile_url, url.strip()), (Person.email, email.strip().lower())):
+    """Find an existing person: a matching link or email, or the same name at the same company.
+
+    A shared email or link also needs the names to be compatible ("Ada Sample" and "Augusta Ada
+    Sample"), because an office address, a copied cell, or a relative's shared address must not
+    merge different people. Names are compared in Python because SQLite folds only ASCII case.
+    """
+    wanted = _name_key(name)
+    for column, value in ((Person.profile_url, url), (Person.email, email.lower())):
         if value:
-            found = session.scalars(
-                select(Person).where(func.lower(column) == value.lower())
-            ).first()
-            if found is not None:
-                return found
-    return session.scalars(
-        select(Person).where(
-            func.lower(Person.full_name) == " ".join(name.split()).lower(),
-            Person.company_id == company.id,
-        )
-    ).first()
+            for found in session.scalars(select(Person).where(func.lower(column) == value.lower())):
+                if _same_person(found.full_name, name):
+                    return found
+    for found in session.scalars(select(Person).where(Person.company_id == company.id)):
+        if _name_key(found.full_name) == wanted:
+            return found
+    return None
 
 
 def _notes(how_known: str | None) -> list[str]:

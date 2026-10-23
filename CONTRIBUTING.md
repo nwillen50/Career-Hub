@@ -25,6 +25,11 @@ the PRD's Team tab.
 - [ ] Reviewed by a second persona and approved by Nicholas
 - [ ] Ticket updated on the board
 
+## Release checklist
+
+- [ ] Restore a backup once: `hub backup restore <file> --to <new folder>` must report that the
+      integrity check passed and the row counts match (PRD: backups are tested once per release).
+
 ## Spikes and decisions
 
 A **spike** is a short experiment that answers one question before we depend on a tool. Each epic
