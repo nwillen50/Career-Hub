@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -132,6 +133,13 @@ def models_remove(
     return 0
 
 
+def _why(error: Any) -> str:
+    """Say what is wrong with one field, in plain words (never echoing a secret)."""
+    field = str(error["loc"][0]) if error["loc"] else "model"
+    detail = str(error.get("ctx", {}).get("error", "")).strip()
+    return f"{field}: {detail}" if detail else field
+
+
 def models_add_custom(
     store: KeyStore,
     settings: Settings,
@@ -140,13 +148,15 @@ def models_add_custom(
 ) -> int:
     """Add your own model (any OpenAI-compatible address, or another kind) to settings.
 
-    `options` holds name, kind, model, and optionally base_url, input, output, trains_on_data.
+    `options` holds name, kind, model, and optionally base_url, input, output, no_training.
+    A cloud model is assumed to train on your data unless `no_training` is set (CH-117).
     """
     taken = {p.name for p in settings.providers} | {p.name for p in load_catalog().presets}
     if options.get("name") in taken:
         print(f"The name {options.get('name')!r} is already used.")
         return 1
     try:
+        kind = options.get("kind")
         provider = ProviderSetting.model_validate(
             {
                 "name": options.get("name"),
@@ -155,19 +165,25 @@ def models_add_custom(
                 "base_url": options.get("base_url"),
                 "input_per_mtok": options.get("input"),
                 "output_per_mtok": options.get("output"),
-                "trains_on_data": bool(options.get("trains_on_data", False)),
+                "trains_on_data": not options.get("no_training", False) and kind != "local",
             }
         )
     except ValidationError as error:
-        print("Invalid model: " + "; ".join(str(e["loc"][0]) for e in error.errors()))
+        print("Invalid model: " + "; ".join(_why(e) for e in error.errors()))
         return 1
+    key_name = api_key_name(provider.name)
     if provider.kind != "local":
         key = ask_secret(f"API key for {provider.name} (input is hidden): ").strip()
         if not key:
             print("No key entered; nothing saved.")
             return 1
-        store.set(api_key_name(provider.name), key)
-    save_settings(settings.model_copy(update={"providers": (*settings.providers, provider)}))
+        store.set(key_name, key)
+    try:
+        save_settings(settings.model_copy(update={"providers": (*settings.providers, provider)}))
+    except BaseException:
+        if provider.kind != "local":
+            store.delete(key_name)  # a failed save must not leave a key with no model
+        raise
     print(f"Added {provider.name}. Add it to model_routes in settings.json to use it.")
     return 0
 
