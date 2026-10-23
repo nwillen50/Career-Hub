@@ -67,9 +67,14 @@ def gather_contacts(session: Session, text: str = "") -> list[ContactView]:
     zone = ZoneInfo(load_settings().timezone)
     query = select(Person).outerjoin(Company, Person.company_id == Company.id)
     if text.strip():
-        like = f"%{text.strip().lower()}%"
+        # escape LIKE wildcards so a typed % or _ matches itself, not everyone
+        typed = text.strip().lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = f"%{typed}%"
         query = query.where(
-            or_(func.lower(Person.full_name).like(like), func.lower(Company.name).like(like))
+            or_(
+                func.lower(Person.full_name).like(like, escape="\\"),
+                func.lower(Company.name).like(like, escape="\\"),
+            )
         )
     people = session.scalars(query.order_by(Person.full_name, Person.id).limit(MAX_CONTACTS)).all()
     latest = {

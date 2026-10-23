@@ -155,3 +155,11 @@ def test_a_follow_up_for_today_is_accepted(session: Session, ada: Person) -> Non
     today = utcnow().date().isoformat()
     reply = post(web(session), "/interactions", f"person={ada.id}&channel=call&follow_up={today}")
     assert reply.status_code == 303 and session.query(Interaction).count() == 1
+
+
+def test_a_typed_wildcard_matches_itself_not_everyone(session: Session, ada: Person) -> None:
+    session.add(Person(full_name="100% Bo"))
+    session.commit()
+    c = web(session)
+    assert "1 person." in c.get("/contacts?q=%25").text
+    assert "Nobody matches that." in c.get("/contacts?q=_").text
