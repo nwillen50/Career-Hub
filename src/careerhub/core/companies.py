@@ -62,7 +62,9 @@ def find_companies(
     return [c for c in everyone if word.search(c.name_key)]
 
 
-def merge_companies(session: Session, keep: Company, drop: Company) -> None:
+def merge_companies(
+    session: Session, keep: Company, drop: Company, aliases: Mapping[str, str] | None = None
+) -> None:
     """Move everything from `drop` to `keep` and delete `drop`.
 
     `drop`'s name stays findable (`merged_keys`), so a later import under the old name joins `keep`
@@ -77,7 +79,7 @@ def merge_companies(session: Session, keep: Company, drop: Company) -> None:
     moved = list(session.scalars(select(Job).where(Job.company_id == drop.id)))
     for job in moved:
         job.company_id = keep.id
-        job.dedupe_key = dedupe_key(keep.name, job.title, job.location)
+        job.dedupe_key = dedupe_key(keep.name, job.title, job.location, aliases)
     keep.merged_keys = sorted({*(keep.merged_keys or []), drop.name_key, *(drop.merged_keys or [])})
     for person in session.scalars(select(Person).where(Person.company_id == drop.id)):
         person.company_id = keep.id
@@ -162,7 +164,9 @@ def pending_merges(session: Session) -> list[Proposal]:
     )
 
 
-def decide_merge(session: Session, proposal_id: int, accept: bool) -> str:
+def decide_merge(
+    session: Session, proposal_id: int, accept: bool, aliases: Mapping[str, str] | None = None
+) -> str:
     """Accept (merge) or reject suggestion `proposal_id`; return a sentence saying what happened.
 
     The shorter name is kept. If either company has since been merged or removed, the suggestion
@@ -182,7 +186,7 @@ def decide_merge(session: Session, proposal_id: int, accept: bool) -> str:
         if keep is None or drop is None or not _same_keys(ids, keep, drop):
             message = "One of those companies is already gone; nothing merged."
         else:
-            merge_companies(session, keep, drop)
+            merge_companies(session, keep, drop, aliases)
             message = f"Merged {drop.name} into {keep.name}."
     session.commit()
     return message

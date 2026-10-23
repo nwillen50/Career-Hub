@@ -166,3 +166,53 @@ def test_latex_accents_become_real_letters_so_names_can_be_matched(source: str, 
 
     assert latex_to_text(source) == text
     assert "[name]" in personal_text(latex_to_text(source), text)
+
+
+def test_a_partly_scanned_pdf_keeps_the_text_pages_and_names_the_scanned_ones(
+    tmp_path: Path,
+) -> None:
+    """CH-118: decided per page, not by the document's average."""
+    path = make_pdf(tmp_path / "t.pdf", ["Course CS101 grade A in the fall term", "", ""])
+    result = read_document(path)
+    assert "CS101" in result.text and result.pages == 3
+    assert result.problems == ("Pages 2 and 3 look scanned and were skipped (no text layer).",)
+
+
+def test_one_scanned_page_among_text_pages_is_named_in_the_singular(tmp_path: Path) -> None:
+    path = make_pdf(
+        tmp_path / "t.pdf", ["First page has plenty of text", "", "Third page has text too ok"]
+    )
+    result = read_document(path)
+    assert "First page" in result.text and "Third page" in result.text
+    assert result.problems == ("Page 2 looks scanned and was skipped (no text layer).",)
+
+
+_TEXT_BOX = (
+    '<w:r xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+    'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
+    "<mc:AlternateContent><mc:Choice><w:txbxContent><w:p><w:r><w:t>Skills: Python, SQL</w:t></w:r>"
+    "</w:p></w:txbxContent></mc:Choice><mc:Fallback><w:txbxContent><w:p><w:r>"
+    "<w:t>Skills: Python, SQL</w:t></w:r></w:p></w:txbxContent></mc:Fallback>"
+    "</mc:AlternateContent></w:r>"
+)
+
+
+def test_docx_text_boxes_and_nested_tables_are_read_once(tmp_path: Path) -> None:
+    """CH-118: some resume templates keep skills in a text box or a table inside a table."""
+    from docx.oxml import parse_xml
+
+    document = docx.Document()
+    paragraph = document.add_paragraph("Jane Sample, Software Engineer")
+    paragraph._p.append(parse_xml(_TEXT_BOX))
+    outer = document.add_table(rows=1, cols=1)
+    cell = outer.rows[0].cells[0]
+    cell.text = "Experience"
+    inner = cell.add_table(rows=1, cols=2)
+    inner.rows[0].cells[0].text = "Acme Corp"
+    inner.rows[0].cells[1].text = "2024"
+    document.sections[0].header.paragraphs[0].text = "jane@example.com 555 123 4567"
+    document.save(str(tmp_path / "r.docx"))
+    text = read_document(tmp_path / "r.docx").text
+    assert text.count("Skills: Python, SQL") == 1  # the fallback copy is skipped
+    assert "Acme Corp | 2024" in text and "Experience" in text
+    assert "jane@example.com" not in text  # headers stay skipped
