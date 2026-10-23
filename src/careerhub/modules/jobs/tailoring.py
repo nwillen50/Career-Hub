@@ -84,6 +84,7 @@ def tailor_job(
     doc: ProfileDoc,
     resume_text: str,
     routes: Sequence[str],
+    profile_epoch: int | None = None,
 ) -> TailoringNotes | None:
     """Write and save tailoring notes. Returns None if the job isn't scored or is up to date."""
     assessment = session.scalars(select(Assessment).where(Assessment.job_id == job.id)).first()
@@ -91,7 +92,10 @@ def tailor_job(
         return None  # only scored (shortlisted) jobs get notes
     resume = resume_for_model(resume_text, doc.name, doc.aliases)
     facts = accepted_facts(session)
-    about_me = profile_text(doc, facts)
+    # with an epoch (CH-115) the profile counts only once it has changed meaningfully
+    about_me = (
+        profile_text(doc, facts) if profile_epoch is None else f"profile-epoch:{profile_epoch}"
+    )
     wanted = ", ".join(preferred_skills(job))
     material = (
         f"{resume}\n{about_me}\n{job.company.name}\n{job.title}\n{job.raw_text or ''}\n{wanted}"

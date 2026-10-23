@@ -69,23 +69,44 @@ def missing_items(session: Session | None, min_skills: int = DEFAULT_MIN_SKILLS)
         return ["profile.md or preferences.yaml has a problem (run hub profile show)"]
     facts = accepted_facts(session) if session is not None else None
     if doc is None:
-        return ["profile.md is missing"]
+        return ["profile.md is missing: create it so Career Hub knows who you are (see the README)"]
     skills = {s.strip().lower() for s in doc.skills if s.strip()}
     if facts:
         skills |= {s.strip().lower() for s in facts.skills if s.strip()}
     if not any(e.graduation for e in doc.education):
-        missing.append("education with an expected graduation date (in profile.md)")
+        missing.append(
+            "Education: add your school and expected graduation date to profile.md; "
+            "filters and scoring use your graduation window"
+        )
     if len(skills) < min_skills:
-        missing.append(f"at least {min_skills} skills (you have {len(skills)})")
+        missing.append(
+            f"Skills: {len(skills)} of {min_skills} needed. Scoring compares your skills with each "
+            f"job, so it waits until it knows at least {min_skills}. Add them under skills: in "
+            "profile.md, or accept the skills read from your resume with `hub profile facts "
+            "accept`. Both places count and a skill listed twice counts once. The number is the "
+            "profile_min_skills setting (0 turns this check off)"
+        )
     if not (doc.interests or doc.about.strip()):
-        missing.append("interests or an About section")
+        missing.append(
+            "Interests: add interests: or a few lines under About in profile.md, so scoring "
+            "knows what you want to do"
+        )
     resume, _ = find_resume()
     if resume is None or not read_document(resume.main).text.strip():
-        missing.append("a resume that can be read (inputs/resume)")
+        missing.append(
+            "Resume: put a resume Career Hub can read in inputs/resume (a scanned PDF has no text; "
+            "export a text PDF or use .docx)"
+        )
     if preferences is None or not preferences.hard_constraints.locations:
-        missing.append("locations in preferences.yaml (work modes default to all allowed)")
+        missing.append(
+            "Locations: list where you would work under locations in preferences.yaml "
+            "(work modes such as remote default to all allowed)"
+        )
     if load_rubric() is None:
-        missing.append("rubric.yaml")
+        missing.append(
+            "Rubric: rubric.yaml is missing. It lists what makes a job a good fit, and scoring "
+            "needs it"
+        )
     return missing
 
 

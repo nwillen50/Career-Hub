@@ -50,3 +50,7 @@ yours with `school_aliases` in `preferences.yaml`). Put `linkedin_school_slug` (
 `tufts-university`) in `settings.json` and each shortlist card links to LinkedIn's alumni search for
 that company. Career Hub only builds the link; it never visits it. See
 [ADR-0039](../../../../docs/decisions/0039-same-school.md).
+
+## Remembered column mappings (CH-116)
+
+`mappings.py` saves the `--map`, `--sheet`, and `--group` given to `hub alumni import` per file name in `alumni-mappings.json` (private, header and field names only). A later import of a file with the same name uses them; flags given again win and update them; `hub alumni mappings` lists them and `hub alumni forget <file>` removes one. A header that no longer exists is a clear error, not a guess.
