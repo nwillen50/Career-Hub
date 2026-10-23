@@ -73,6 +73,9 @@ class Settings(BaseModel):
     #: A board that lists no jobs for this many nights in a row (and whose jobs could not be
     #: checked one by one) is treated as having closed everything (CH-103).
     empty_listing_backstop_nights: int = Field(default=3, ge=1, le=30)
+    #: If a board's listing loses more than this share of its open jobs in one night, it may be cut
+    #: off, so the missing jobs are checked (or kept open for a while) rather than closed (CH-132).
+    listing_drop_share: float = Field(default=0.5, gt=0, le=1)
     #: Days a saved model answer is kept after it was last used (using it resets the clock).
     cache_ttl_days: int = Field(default=30, ge=1, le=3650)
     #: Skills the profile needs before scoring can be switched on (CH-102).
