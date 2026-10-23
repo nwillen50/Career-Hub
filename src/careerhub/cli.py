@@ -40,7 +40,13 @@ from careerhub.modules.jobs import (
 )
 from careerhub.modules.jobs.adapters import ADAPTERS, BOARD_KINDS
 from careerhub.modules.jobs.find_boards import find_boards
-from careerhub.modules.jobs.manual import ManualJobError, add_job, classify, guess_from_link
+from careerhub.modules.jobs.manual import (
+    ManualJobError,
+    add_job,
+    classify,
+    guess_from_link,
+    set_manual_job_closed,
+)
 from careerhub.modules.jobs.targets import (
     TargetsError,
     load_targets,
@@ -84,6 +90,7 @@ USAGE = """Usage:
   hub nightly                                (run the whole pipeline once)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
                                              are never requested; text can also come from stdin)
+  hub jobs close <id> | reopen <id>      (only for jobs you added by link; nothing is deleted)
   hub companies suggestions | merge <id> | skip <id>   (near-duplicate company names)
   hub targets find-boards | note <name> <ats> | import <file> | list | enable-matching
   hub targets enable <name>... | disable <name>...
@@ -146,6 +153,13 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _nightly(store)
         if args[:1] == ["add-job"] and len(args) >= 2 and len(args) % 2 == 0:
             return _with_session(store, lambda s: _add_job(s, args[1], args[2:]))
+        if (
+            len(args) == 3
+            and args[0] == "jobs"
+            and args[1] in ("close", "reopen")
+            and args[2].isdigit()
+        ):
+            return _with_session(store, lambda s: _jobs_close(s, args[1] == "close", int(args[2])))
         if args[:1] == ["companies"]:
             return _with_session(store, lambda s: _companies(s, args[1:]))
         if args == ["targets", "find-boards"]:
@@ -609,6 +623,26 @@ def _profile_facts(session: Session, args: list[str]) -> int:
         print(error)
         return 1
     print(f"{'Accepted' if accept else 'Rejected'} {len(ids)} set(s) of facts.")
+    return 0
+
+
+def _jobs_close(
+    session: Session, close: bool, job_id: int, ask: Callable[[str], str] | None = None
+) -> int:
+    """`hub jobs close <id>` or `reopen <id>`: asks yes or no, then marks the job; never deletes."""
+    verb = "close" if close else "reopen"
+    if (ask or input)(f"{verb.capitalize()} job {job_id}? [y/N] ").strip().lower() not in (
+        "y",
+        "yes",
+    ):
+        print("Nothing changed.")
+        return 1
+    try:
+        job = set_manual_job_closed(session, job_id, close)
+    except ManualJobError as error:
+        print(error)
+        return 1
+    print(f"Job {job_id} ({job.title}) is now {job.status}.")
     return 0
 
 
