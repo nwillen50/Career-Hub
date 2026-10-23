@@ -629,7 +629,7 @@ def _companies(session: Session, args: list[str]) -> int:
         return 0
     if len(args) == 2 and args[0] in ("merge", "skip") and args[1].isdigit():
         try:
-            print(decide_merge(session, int(args[1]), accept=args[0] == "merge"))
+            print(decide_merge(session, int(args[1]), args[0] == "merge", _aliases()))
         except LookupError as error:
             print(error)
             return 1
