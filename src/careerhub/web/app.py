@@ -47,6 +47,7 @@ from careerhub.modules.jobs.reactions import (
     undo,
 )
 from careerhub.profile.files import ProfileFileError
+from careerhub.web.job_detail import gather_job
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
 
 #: A job id the database can hold (SQLite integers are 64-bit); anything else is a 422, not a 500.
@@ -260,6 +261,37 @@ def create_app(
         if section in SECTIONS:  # remember the choice between visits
             response.set_cookie(SECTION_COOKIE, chosen, samesite="strict", path="/")
         return response
+
+    @app.get("/jobs/{job_id}", response_class=HTMLResponse)
+    def job_page(request: Request, job_id: JobId) -> Response:
+        if open_session is None:
+            return tab("/today")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/today")(request)
+        with open_session() as session:
+            detail = gather_job(session, job_id)
+        if detail is None:
+            return page(
+                request,
+                404,
+                title="No such job",
+                heading="No such job",
+                message="That job is not in your list. It may have been removed.",
+            )
+        return templates.TemplateResponse(
+            request,
+            "job.html",
+            {
+                "tabs": TABS,
+                "current": "/today",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": detail.title,
+                "heading": detail.title,
+                "job": detail,
+                "reasons": REASON_LABELS,
+            },
+        )
 
     def reaction_page(request: Request, name: str, **context: Any) -> Response:
         """Answer a reaction: a small card fragment for HTMX, or back to Today for a plain form."""
