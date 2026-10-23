@@ -46,7 +46,12 @@ class HardConstraints(_Strict):
 
     #: Places the user will work, e.g. ["New York, NY", "Boston, MA"]. Empty means anywhere.
     locations: list[str] = Field(default_factory=list)
+    #: A fully remote job passes from anywhere.
     remote_ok: bool = True
+    #: A hybrid job passes only if it is in one of your locations (you'd go in some days).
+    hybrid_ok: bool = True
+    #: An onsite job passes only if it is in one of your locations.
+    onsite_ok: bool = True
     min_salary_usd: int | None = Field(default=None, ge=0)
     excluded_companies: list[str] = Field(default_factory=list)
     #: Words that rule a job out when they appear in its title, e.g. ["intern", "senior"].

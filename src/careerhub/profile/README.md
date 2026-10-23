@@ -31,7 +31,9 @@ Anything else Career Hub should know.
 ```yaml
 hard_constraints:
   locations: ["Boston, MA"]     # empty means anywhere
-  remote_ok: true
+  remote_ok: true     # fully remote jobs pass from anywhere
+  hybrid_ok: true     # hybrid jobs pass only in one of your locations
+  onsite_ok: true     # onsite jobs pass only in one of your locations
   min_salary_usd: 90000
   excluded_companies: [Acme]
   excluded_title_words: [senior]

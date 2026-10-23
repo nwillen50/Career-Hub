@@ -98,3 +98,73 @@ def test_results_are_saved_once_per_job_and_overwritten_on_rerun(session: Sessio
     second = assess_filters(session, saved, HardConstraints())
     assert second.id == first.id and second.filter_passed
     assert len(session.scalars(select(Assessment)).all()) == 1
+
+
+# --- Work modes (CH-85) ----------------------------------------------------------------------
+
+
+def mode_result(mode: str, place: str, **switches: bool):  # type: ignore[no-untyped-def]
+    fields = JobFields(remote=mode, locations=[place])  # type: ignore[arg-type]
+    constraints = HardConstraints(locations=["Boston, MA"], **switches)
+    return apply_filters(job(location=place), fields, constraints)
+
+
+@pytest.mark.parametrize("mode", ["remote", "hybrid", "onsite"])
+@pytest.mark.parametrize("place", ["Boston, MA", "Denver, CO"])
+def test_with_every_switch_on_only_the_location_rule_applies(mode: str, place: str) -> None:
+    passed = mode_result(mode, place).passed
+    assert passed is (mode == "remote" or place == "Boston, MA")
+
+
+def test_remote_jobs_pass_from_anywhere_when_remote_is_on_and_fail_when_off() -> None:
+    assert mode_result("remote", "Denver, CO").passed
+    off = mode_result("remote", "Denver, CO", remote_ok=False)
+    assert not off.passed and off.reasons == ["remote, and you turned remote off"]
+    assert not mode_result("remote", "Boston, MA", remote_ok=False).passed
+
+
+def test_hybrid_passes_only_in_your_locations_and_can_be_turned_off() -> None:
+    assert mode_result("hybrid", "Boston, MA").passed
+    assert not mode_result("hybrid", "Denver, CO").passed
+    off = mode_result("hybrid", "Boston, MA", hybrid_ok=False)
+    assert off.reasons == ["hybrid, and you turned hybrid off"]
+    assert mode_result("hybrid", "Boston, MA", remote_ok=False, onsite_ok=False).passed
+
+
+def test_onsite_passes_only_in_your_locations_and_can_be_turned_off() -> None:
+    assert mode_result("onsite", "Boston, MA").passed
+    assert not mode_result("onsite", "Denver, CO").passed
+    off = mode_result("onsite", "Boston, MA", onsite_ok=False)
+    assert off.reasons == ["onsite, and you turned onsite off"]
+
+
+def test_one_clear_reason_when_a_mode_is_off_not_two() -> None:
+    result = mode_result("hybrid", "Denver, CO", hybrid_ok=False)
+    assert result.reasons == ["hybrid, and you turned hybrid off"]
+
+
+def test_an_unknown_mode_is_never_filtered_on_mode_only_noted_when_a_switch_is_off() -> None:
+    quiet = apply_filters(job(), JobFields(), HardConstraints(locations=["Boston, MA"]))
+    assert quiet.passed and quiet.uncertain == []
+    noted = apply_filters(
+        job(), JobFields(), HardConstraints(locations=["Boston, MA"], hybrid_ok=False)
+    )
+    assert noted.passed and "remote, hybrid, or onsite" in noted.uncertain[0]
+    far = apply_filters(
+        job(location="Denver, CO"),
+        JobFields(),
+        HardConstraints(locations=["Boston, MA"], onsite_ok=False),
+    )
+    assert (
+        not far.passed and "outside your locations" in far.reasons[0]
+    )  # the location rule still applies
+
+
+def test_no_extracted_facts_means_unknown_mode() -> None:
+    result = apply_filters(job(), None, HardConstraints(onsite_ok=False))
+    assert result.passed and "remote, hybrid, or onsite" in result.uncertain[0]
+
+
+def test_with_no_locations_set_hybrid_and_onsite_pass_anywhere() -> None:
+    assert apply_filters(job(), JobFields(remote="hybrid"), HardConstraints()).passed
+    assert apply_filters(job(), JobFields(remote="onsite"), HardConstraints()).passed
