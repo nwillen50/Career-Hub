@@ -11,6 +11,7 @@ empty and error states.
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from html import escape
@@ -68,6 +69,8 @@ class ShortlistEntry:
     salary: str | None = None
     #: The application deadline, if the posting states one.
     deadline: date | None = None
+    #: The job's id in the database, for reactions (None in tests that don't need it).
+    job_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -86,15 +89,24 @@ class ShortlistData:
 
 
 def gather_shortlist(
-    session: Session, limit: int = MAX_JOBS, now: datetime | None = None
+    session: Session,
+    limit: int = MAX_JOBS,
+    now: datetime | None = None,
+    hide: Collection[int] = (),
 ) -> ShortlistData:
-    """Collect the top jobs and the state of the latest nightly run."""
+    """Collect the top jobs and the state of the latest nightly run (`hide`: job ids to skip)."""
     now = now or utcnow()
     adjustments = current_rank_adjustments()
     penalty = adjustments["internship_penalty"]
     slug = load_settings().linkedin_school_slug
     schools = my_schools(session) if slug else []
     stale_days = adjustments["stale_after_days"]
+    wanted = min(limit, MAX_JOBS)
+    ranked = [
+        row
+        for row in ranked_jobs(session, wanted + len(hide), now=now, **adjustments)
+        if row[0].id not in hide
+    ][:wanted]
     entries = [
         ShortlistEntry(
             title=job.title,
@@ -112,8 +124,9 @@ def gather_shortlist(
             via=VIA if _from_muse(session, job) else None,
             salary=_salary(job),
             deadline=_deadline(job),
+            job_id=job.id,
         )
-        for job, assessment in ranked_jobs(session, min(limit, MAX_JOBS), now=now, **adjustments)
+        for job, assessment in ranked
     ]
     runs = list(
         session.scalars(
@@ -204,6 +217,12 @@ def _safe_link(url: str) -> str | None:
 
 
 safe_link = _safe_link  # public names for the web app's views
+tailoring_notes = _notes
+stated_fields = _stated
+posting_footnotes = _footnotes
+from_muse = _from_muse
+salary_text = _salary
+deadline_of = _deadline
 
 
 def _first_sentence(text: str) -> str:

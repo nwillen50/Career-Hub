@@ -117,3 +117,17 @@ def test_the_page_is_read_only_and_passes_the_accessibility_checks(session: Sess
 def test_sources_text_lists_files_by_name_only() -> None:
     names = sources_used(Settings(calendar_files=("/home/me/private/cal.ics",)))
     assert names == ["Working hours", "Calendar file cal.ics"]
+
+
+def test_jobs_already_reacted_to_are_not_planned_again(session: Session) -> None:
+    """Review: the Plan kept suggesting 'Apply: X' for jobs already applied to or declined."""
+    from careerhub.modules.jobs.reactions import react
+
+    jobs = [add_job(session, n, 90 - n) for n in range(1, 4)]
+    react(session, jobs[0].id, "applied")
+    react(session, jobs[1].id, "not_interested")
+    react(session, jobs[2].id, "interested")  # still worth applying to: stays in the plan
+    view = gather_plan(session, MONDAY)
+    titles = " ".join(b.title for day in view.days for b in day.blocks)
+    assert jobs[2].title in titles
+    assert jobs[0].title not in titles and jobs[1].title not in titles

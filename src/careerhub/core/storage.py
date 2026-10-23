@@ -20,10 +20,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 import sqlcipher3
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from careerhub.core.paths import database_path
 from careerhub.core.secrets import KeyStore, get_or_create_database_key, is_valid_database_key
@@ -43,11 +45,14 @@ class WrongKeyError(StorageError):
     """The key doesn't open this database (or the file isn't a Career Hub database)."""
 
 
-def open_engine(path: Path, key: str) -> Engine:
+def open_engine(path: Path, key: str, one_connection_per_use: bool = False) -> Engine:
     """Return a SQLAlchemy engine for the encrypted database at ``path``.
 
     The file is created if it doesn't exist. The key is checked on every new connection, so a
     wrong key fails here rather than on the first query.
+
+    By default one connection is kept per thread; ``one_connection_per_use=True`` uses none kept
+    (a web server's worker threads would otherwise leave connections the pool cannot close).
 
     Raises:
         ValueError: ``key`` is not a valid database key.
@@ -74,7 +79,8 @@ def open_engine(path: Path, key: str) -> Engine:
             ) from None
         return conn
 
-    engine = create_engine("sqlite://", creator=connect, module=sqlcipher3.dbapi2)
+    pool: dict[str, Any] = {"poolclass": NullPool} if one_connection_per_use else {}
+    engine = create_engine("sqlite://", creator=connect, module=sqlcipher3.dbapi2, **pool)
 
     @event.listens_for(engine, "connect")
     def _configure(dbapi_conn: sqlcipher3.Connection, _record: object) -> None:
@@ -103,13 +109,17 @@ def _make_private(path: Path) -> None:
             os.chmod(candidate, _PRIVATE_FILE_MODE)
 
 
-def open_database(store: KeyStore, path: Path | None = None) -> Engine:
+def open_database(
+    store: KeyStore, path: Path | None = None, one_connection_per_use: bool = False
+) -> Engine:
     """Open the user's database, creating the key and the file on first use.
 
     ``path`` defaults to ``careerhub.db`` in the data folder (see ``careerhub.core.paths``).
+    ``one_connection_per_use`` opens a fresh connection for each session and closes it after, which
+    a server answering requests on many threads needs.
     """
     key = get_or_create_database_key(store)
-    return open_engine(path if path is not None else database_path(), key)
+    return open_engine(path if path is not None else database_path(), key, one_connection_per_use)
 
 
 def session_factory(engine: Engine) -> sessionmaker[Session]:

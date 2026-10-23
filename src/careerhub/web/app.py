@@ -25,10 +25,10 @@ import secrets
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from importlib import resources
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import parse_qs, urlsplit
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Path, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -37,14 +37,38 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.migrate import migrate
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
+from careerhub.core.settings import SettingsError
 from careerhub.core.storage import StorageError, open_database, session_factory
 from careerhub.llm.catalog import ollama_is_running
+from careerhub.modules.jobs.reactions import (
+    UNDO_SECONDS,
+    ReactionError,
+    react,
+    reacted_job_ids,
+    undo,
+)
+from careerhub.profile.files import ProfileFileError
+from careerhub.web.job_detail import gather_job
 from careerhub.web.plan_view import gather_plan
 from careerhub.web.status_view import gather_status
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
 
+#: A job id the database can hold (SQLite integers are 64-bit); anything else is a 422, not a 500.
+JobId = Annotated[int, Path(ge=1, le=2**63 - 1)]
 SESSION_COOKIE = "ch_session"
 SECTION_COOKIE = "ch_today_section"
+REACTION_LABELS = {
+    "interested": "interested",
+    "not_interested": "not interested",
+    "applied": "applied",
+}
+REASON_LABELS = (
+    ("level", "Wrong level"),
+    ("location", "Wrong location"),
+    ("field", "Wrong field"),
+    ("company", "Not this company"),
+    ("pay", "Pay"),
+)
 SECTION_LABELS = (
     ("all", "All"),
     ("top", "Top jobs"),
@@ -86,13 +110,15 @@ def database_opens(store: KeyStore | None = None) -> bool:
 def make_session_opener(store: KeyStore | None = None) -> Callable[[], Session]:
     """Return a function that opens a database session, opening the encrypted database on first use.
 
-    The engine keeps one connection per thread, so a page served on any worker thread is safe.
+    Each session gets its own connection and releases it, so any worker thread is safe.
     """
     holder: dict[str, Engine] = {}
 
     def open_session() -> Session:
         if "engine" not in holder:
-            holder["engine"] = open_database(store or KeychainKeyStore())
+            holder["engine"] = open_database(
+                store or KeychainKeyStore(), one_connection_per_use=True
+            )
         return session_factory(holder["engine"])()
 
     return open_session
@@ -221,13 +247,14 @@ def create_app(
                 "current": "/today",
                 "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
                 "title": "Today",
-                "heading": f"Today, {data.now:%a %b %d}",
-                "built": f"{data.now:%a %b %d, %H:%M}",
+                "heading": f"Today, {data.local_now or data.now:%a %b %d}",
+                "built": f"{data.local_now or data.now:%a %b %d, %H:%M}",
                 "last_run": f"{shortlist.last_success:%a %b %d, %H:%M}"
                 if shortlist.last_success
                 else None,
                 "last_error": shortlist.last_error,
                 "waiting_for": shortlist.waiting_for,
+                "reasons": REASON_LABELS,
                 "sections": SECTION_LABELS,
                 "section": chosen,
                 "jobs": job_cards(data.jobs),
@@ -284,6 +311,84 @@ def create_app(
             },
         )
 
+    @app.get("/jobs/{job_id}", response_class=HTMLResponse)
+    def job_page(request: Request, job_id: JobId) -> Response:
+        if open_session is None:
+            return tab("/today")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/today")(request)
+        with open_session() as session:
+            detail = gather_job(session, job_id)
+        if detail is None:
+            return page(
+                request,
+                404,
+                title="No such job",
+                heading="No such job",
+                message="That job is not in your list. It may have been removed.",
+            )
+        return templates.TemplateResponse(
+            request,
+            "job.html",
+            {
+                "tabs": TABS,
+                "current": "/today",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": detail.title,
+                "heading": detail.title,
+                "job": detail,
+                "reasons": REASON_LABELS,
+            },
+        )
+
+    def reaction_page(request: Request, name: str, **context: Any) -> Response:
+        """Answer a reaction: a small card fragment for HTMX, or back to Today for a plain form."""
+        csrf = sessions.get(request.cookies.get(SESSION_COOKIE, ""), "")
+        if request.headers.get("hx-request") != "true":
+            return RedirectResponse("/today", status_code=303)
+        return templates.TemplateResponse(request, name, {"csrf": csrf, **context})
+
+    @app.post("/jobs/{job_id}/react")
+    async def react_to_job(request: Request, job_id: JobId, reason: str | None = None) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data to react to.", status_code=404)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"))
+        reaction = form.get("reaction", [""])[0]
+        with open_session() as session:
+            try:
+                saved = react(session, job_id, reaction, reason)
+            except ReactionError as error:
+                return reaction_page(request, "note.html", message=str(error))
+            feedback_id = saved.id
+        return reaction_page(
+            request,
+            "reacted.html",
+            job_id=job_id,
+            feedback_id=feedback_id,
+            label=REACTION_LABELS.get(reaction, reaction),
+            reason_label=dict(REASON_LABELS).get(reason or ""),
+            seconds=UNDO_SECONDS,
+        )
+
+    @app.post("/jobs/{job_id}/undo")
+    async def undo_reaction(request: Request, job_id: JobId) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data.", status_code=404)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"))
+        given = form.get("feedback_id", [""])[0]
+        feedback_id = int(given) if given.isdigit() else None
+        with open_session() as session:
+            taken_back = undo(session, job_id, feedback_id)
+            still_hidden = job_id in reacted_job_ids(session)
+        if not taken_back:
+            message = "It is too late to undo that."
+        elif still_hidden:
+            message = "Reaction undone. An earlier reaction still keeps this job off Today."
+        else:
+            message = "Reaction undone. The job is back on Today after a reload."
+        return reaction_page(request, "note.html", message=message)
+
     @app.post("/session/end")
     def end_session(request: Request) -> Response:
         sessions.pop(request.cookies.get(SESSION_COOKIE, ""), None)
@@ -297,6 +402,23 @@ def create_app(
         )
         response.delete_cookie(SESSION_COOKIE)
         return response
+
+    @app.exception_handler(SettingsError)
+    @app.exception_handler(ProfileFileError)
+    def settings_problem(request: Request, error: Exception) -> Response:
+        """Show a designed error page, not a stack trace, for a broken settings or profile file."""
+        return page(
+            request,
+            503,
+            title="A settings file has a problem",
+            heading="A settings file has a problem",
+            message=(
+                "Career Hub could not read settings.json, preferences.yaml, or profile.md. "
+                "Run `hub profile show` in the terminal to see which line to fix, then reload. "
+                "Nothing was changed."
+            ),
+            error=True,
+        )
 
     return app
 
