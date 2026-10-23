@@ -124,3 +124,37 @@ def test_hub_people_commands(
     assert main(["people", "tag", "1", "mentor", "from", "club"], store) == 0
     assert "mentor from club" in capsys.readouterr().out
     assert main(["people", "tag", "9", "x"], store) == 1
+
+
+def test_reimport_with_non_ascii_capitals_creates_no_duplicate(
+    tmp_path: Path, session: Session
+) -> None:
+    """CH-152: SQLite lower() folds only ASCII, so 'Émile' once never matched itself."""
+    path = write(tmp_path, HEADER + "Émile  Zola,Acme Corp,,Example University,,\n")
+    import_alumni(session, path)
+    again = import_alumni(session, path)
+    assert again.created == 0 and again.unchanged == 1
+    assert len(session.scalars(select(Person)).all()) == 1
+
+
+def test_placeholder_emails_and_links_do_not_merge_people(tmp_path: Path, session: Session) -> None:
+    """CH-153: 'N/A', '-' and a shared office address are not identities."""
+    rows = (
+        "Ada Sample,Acme Corp,,Example University,N/A,-\n"
+        "Ben Example,Globex,,Example University,N/A,-\n"
+        "Cam Other,Initech,,Example University,info@school.edu,\n"
+        "Dee Person,Hooli,,Example University,info@school.edu,\n"
+    )
+    report = import_alumni(session, write(tmp_path, HEADER + rows))
+    assert report.created == 4
+    assert {p.email for p in session.scalars(select(Person))} == {None, "info@school.edu"}
+
+
+def test_semicolon_in_a_group_name_stays_one_tag(tmp_path: Path, session: Session) -> None:
+    """CH-153: ';' splits notes, so a group like 'Tufts; Class of 2020' broke re-import."""
+    path = write(tmp_path, HEADER + "Ada Sample,Acme Corp,,Tufts; Class of 2020,,\n")
+    import_alumni(session, path)
+    again = import_alumni(session, path)
+    assert again.unchanged == 1 and again.tagged == 0
+    person = session.scalars(select(Person)).one()
+    assert person.how_known == "alumni: Tufts, Class of 2020"
