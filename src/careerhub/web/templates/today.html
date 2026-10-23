@@ -26,7 +26,7 @@
 </article>
 {% endmacro %}
 {% block content %}
-<p class="muted">Page built {{ built }} UTC.{% if last_run %} Last successful run: {{ last_run }} UTC.{% else %} No successful run yet.{% endif %}</p>
+<p class="muted">Page built {{ built }}.{% if last_run %} Last successful run: {{ last_run }} UTC.{% else %} No successful run yet.{% endif %}</p>
 <nav aria-label="Sections" class="chips">
   <ul>
   {% for key, label in sections %}
