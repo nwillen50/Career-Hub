@@ -64,8 +64,29 @@ Record each result on the matching ticket or ADR. Tick the box when it passes.
   weekly plan make sense.
 - [ ] Back up the data folder by copying it (there is no `hub backup` command yet) and open the copy with the same Keychain key.
 
-## 6. Later (when those tickets land)
+## 6. The local web app and attention (CH-138 to CH-147, once their PRs are merged)
 
-- [ ] Menu-bar helper count and error state (CH-146).
-- [ ] Morning notification after the nightly run (CH-33 spike, CH-147).
-- [ ] School job board saved-search emails (CH-129 and CH-128).
+- [ ] `uv run hub web` prints a link like `http://127.0.0.1:8765/?t=...`. Open it in your browser.
+  Success: Today opens with your real top jobs; Plan, Tracker and System status open; a page
+  loaded from any other address (try `http://localhost:8765/today` without the token) says to
+  open the link.
+- [ ] On Today, press Interested on a job. Success: the card is replaced by a note with Undo; the
+  job is gone from Today after a reload and appears in the Tracker once CH-157 lands.
+- [ ] System status shows your models and this month's spend.
+- [ ] `uv run hub attention --json` prints the counts the menu-bar icon will show (counts only).
+- [ ] `uv run hub attention --notify` shows one banner on this Mac and a second run the same day
+  shows nothing. Check whether clicking it can open Today without a signed app (CH-33 spike); if
+  not, the menu-bar icon alone is the fallback.
+- [ ] The menu-bar helper (CH-146's Mac half): an icon with the count, a red dot after a failed
+  run, and one menu item, "Open Today".
+
+## 7. Needs open web access (not a Mac, but not possible from the cloud sandbox either)
+
+- [ ] CH-126: check Y Combinator's terms and robots rules for the public company directory, and run
+  `hub targets find-boards` on a sample of 30 YC companies. The cloud sandbox cannot reach
+  ycombinator.com, so the spike could not be done overnight.
+
+## 8. Later
+
+- [ ] School job board saved-search emails (CH-129, then CH-128): forward one sample alert email
+  (names removed) so the parser can be written against the real layout.
