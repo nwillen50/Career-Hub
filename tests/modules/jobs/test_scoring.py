@@ -192,3 +192,29 @@ def test_rubric_text_is_redacted_before_it_reaches_a_model() -> None:
     assert "jane@example.com" not in prompt
     assert "https://x.io" not in prompt
     assert "Jane Sample" not in prompt
+
+
+def test_a_redacted_criterion_name_still_scores(session: Session) -> None:
+    """CH-133 review: the model echoes the redacted name, and it must still match."""
+    rubric = Rubric(
+        version=1,
+        criteria=[
+            Criterion(name="Fit with jane@example.com's lab", weight=1, description="Likes it"),
+            Criterion(name="level", weight=1, description="Call 617-555-0100 to ask"),
+        ],
+    )
+    job = add_job(session, "1", "Engineer")
+    prompt = build_request(job, DOC, rubric).prompt
+    assert "jane@example.com" not in prompt and "617-555-0100" not in prompt
+    reply = json.dumps(
+        {
+            "criteria": [
+                {"name": "Fit with [email]'s lab", "score": 8, "reason": "r"},
+                {"name": "level", "score": 4, "reason": "r"},
+            ],
+            "explanation": "Fine.",
+        }
+    )
+    router = Router([FakeProvider("m", replies=[reply])])
+    saved = score_job(session, router, job, DOC, rubric, ["m"])
+    assert saved is not None and saved.fit_score == 60.0

@@ -80,14 +80,31 @@ def profile_text(doc: ProfileDoc, facts: ProfileFacts | None = None) -> str:
     return personal_text("\n".join(lines), doc.name, doc.aliases)
 
 
-def rubric_text(rubric: Rubric, name: str = "", aliases: Sequence[str] = ()) -> str:
-    """List the criteria with their weights and descriptions, as safe for a cloud model.
+def safe_rubric(rubric: Rubric, name: str = "", aliases: Sequence[str] = ()) -> Rubric:
+    """Return `rubric` with each criterion's name and description made safe for a cloud model.
 
     The user writes rubric.yaml by hand, so it goes through `personal_text` like the profile: a
-    name, email, phone number, or link typed into a criterion can't reach a model.
+    name, email, phone number, or link typed into a criterion can't reach a model. The same safe
+    copy is used to check the model's answer, so a redacted name still matches (CH-133).
     """
-    lines = "\n".join(f"- {c.name} (weight {c.weight:g}): {c.description}" for c in rubric.criteria)
-    return personal_text(lines, name, aliases)
+    criteria = [
+        c.model_copy(
+            update={
+                "name": personal_text(c.name, name, aliases) or c.name,
+                "description": personal_text(c.description, name, aliases),
+            }
+        )
+        for c in rubric.criteria
+    ]
+    return rubric.model_copy(update={"criteria": criteria})
+
+
+def rubric_text(rubric: Rubric, name: str = "", aliases: Sequence[str] = ()) -> str:
+    """List the criteria with their weights and descriptions, as safe for a cloud model."""
+    return "\n".join(
+        f"- {c.name} (weight {c.weight:g}): {c.description}"
+        for c in safe_rubric(rubric, name, aliases).criteria
+    )
 
 
 def combine(rubric: Rubric, answer: ScoreAnswer) -> float:
@@ -224,14 +241,15 @@ def score_job(
         and assessment.input_hash == digest
     ):
         return None
+    safe = safe_rubric(rubric, doc.name, doc.aliases)  # what the model sees, and answers by name
     answer, response = complete_validated_detailed(
         router,
-        build_request(job, doc, rubric, facts, preferences),
+        build_request(job, doc, safe, facts, preferences),
         ScoreAnswer,
         routes,
-        check=lambda parsed: combine(rubric, parsed),
+        check=lambda parsed: combine(safe, parsed),
     )
-    assessment.fit_score = combine(rubric, answer)
+    assessment.fit_score = combine(safe, answer)
     assessment.criteria_scores = [item.model_dump() for item in answer.criteria]
     assessment.explanation = answer.explanation
     assessment.model_used = f"{response.provider}:{response.model}"
