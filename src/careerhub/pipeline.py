@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.backup import backup_database
 from careerhub.core.models import Job, utcnow
-from careerhub.core.runlog import finish_run, start_run
+from careerhub.core.runlog import close_interrupted_runs, finish_run, start_run
 from careerhub.core.secrets import KeyStore
 from careerhub.core.settings import Settings, load_settings
 from careerhub.core.storage import session_factory
@@ -118,6 +118,9 @@ def run_nightly(
     sessions = session_factory(engine)
     report = NightlyReport()
     with sessions() as session:
+        interrupted = close_interrupted_runs(session, "nightly")
+        if interrupted:
+            report.notes.append(f"an earlier run was interrupted ({interrupted}x); marked failed")
         run = start_run(session, "nightly")
         error: BaseException | None = None
         try:

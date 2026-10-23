@@ -89,6 +89,8 @@ class Settings(BaseModel):
     score_tier_mid: int = Field(default=55, ge=0, le=99)
     #: The port `hub web` listens on (always on 127.0.0.1, never another address).
     web_port: int = Field(default=8765, ge=1024, le=65535)
+    #: How many more times a source fetch is tried after network trouble, a 5xx, or a 429 (CH-164).
+    source_retries: int = Field(default=2, ge=0, le=5)
     #: Your timezone (an IANA name such as "America/New_York"), for working hours and calendars.
     timezone: str = "America/New_York"
     #: Calendar files (.ics) whose busy time the weekly plan avoids. Only times are read.
