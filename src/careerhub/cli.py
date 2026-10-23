@@ -99,7 +99,7 @@ USAGE = """Usage:
   hub models add <anthropic|openai|gemini --tier free|paid|local|preset>   (asks for the key)
   hub models remove <same names>
   hub models add-custom <name> <kind> <model> [--base-url U] [--input N] [--output N]
-                        [--trains-on-data]
+                        [--no-training]   (without it the model is assumed to train on your data)
   hub cache clear [--expired]               (delete saved model answers; prints how many)
   hub profile ready [--off]                 (check the profile, then switch scoring on or off)
   hub profile facts                         (what was read from your resume and transcript)
@@ -513,12 +513,12 @@ def _flags(args: list[str]) -> tuple[list[str], dict[str, str | bool]] | None:
     flags: dict[str, str | bool] = {}
     i = 0
     while i < len(args):
-        if args[i] == "--trains-on-data":
-            flags["trains_on_data"] = True
+        if args[i] == "--no-training":
+            flags["no_training"] = True
         elif args[i].startswith("--"):
             name = args[i][2:].replace("-", "_")
-            # An unknown flag is an error: dropping a mistyped --trains-on-data would silently
-            # save the less restrictive value.
+            # An unknown flag is an error: dropping a mistyped flag would silently save a
+            # different value than the user meant.
             if name not in _MODEL_FLAGS or i + 1 >= len(args):
                 return None
             flags[name] = args[i + 1]
@@ -663,7 +663,7 @@ def _companies(session: Session, args: list[str]) -> int:
         return 0
     if len(args) == 2 and args[0] in ("merge", "skip") and args[1].isdigit():
         try:
-            print(decide_merge(session, int(args[1]), accept=args[0] == "merge"))
+            print(decide_merge(session, int(args[1]), args[0] == "merge", _aliases()))
         except LookupError as error:
             print(error)
             return 1
