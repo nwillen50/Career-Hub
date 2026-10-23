@@ -167,13 +167,18 @@ class ConversationProposal(BaseModel):
     source: SourceChange | None = None
     rubric: RubricChange | None = None
 
-    @field_validator("change", "source", mode="before")
+    @field_validator("change", "source", "rubric", mode="before")
     @classmethod
     def _drop_a_bad_suggestion(cls, value: Any, info: Any) -> Any:
         """Keep the answer when the attached suggestion is malformed; only the suggestion goes."""
         if value is None:
             return None
-        model = PreferenceChange if info.field_name == "change" else SourceChange
+        models: dict[str, type[BaseModel]] = {
+            "change": PreferenceChange,
+            "source": SourceChange,
+            "rubric": RubricChange,
+        }
+        model = models[info.field_name]
         try:
             return model.model_validate(value)
         except ValidationError:

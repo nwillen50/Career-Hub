@@ -8,6 +8,7 @@ so the next nightly run re-scores the jobs. Nothing else is touched.
 
 from __future__ import annotations
 
+import difflib
 import os
 from datetime import datetime, timedelta
 from typing import Any
@@ -66,35 +67,34 @@ def apply_rubric_change(data: dict[str, Any], change: RubricChange) -> dict[str,
             criteria[index]["weight"] = change.weight
         else:
             criteria[index]["description"] = change.description
-    version = data.get("version")
-    return {
-        **data,
-        "version": (version if isinstance(version, int) else 0) + 1,
-        "criteria": criteria,
-    }
+    try:
+        version = Rubric.model_validate(data).version  # reads "3" as 3, like the loader does
+    except ValidationError:
+        raise ProposalError("rubric.yaml has a problem, so it was not changed.") from None
+    return {**data, "version": version + 1, "criteria": criteria}
 
 
-def _line(sign: str, criterion: dict[str, Any] | None) -> str:
-    if criterion is None:
-        return f"{sign} (none)"
+def _line(criterion: dict[str, Any]) -> str:
     weight = criterion.get("weight")
     shown = f"{weight:g}" if isinstance(weight, int | float) else str(weight)
-    return f"{sign} {criterion.get('name')}: weight {shown}, {criterion.get('description')}"
+    return f"{criterion.get('name')}: weight {shown}, {criterion.get('description')}"
 
 
 def render_rubric_diff(old: dict[str, Any], new: dict[str, Any], name: str) -> str:
-    """Show the one criterion that changes, before and after, and the version bump."""
-    key = name.casefold()
+    """Show the whole rubric before and after: unchanged criteria plain, the change as -/+ lines.
 
-    def find(data: dict[str, Any]) -> dict[str, Any] | None:
-        return next((c for c in _criteria(data) if str(c.get("name", "")).casefold() == key), None)
-
+    Showing every criterion means Accept can refuse if anything in the file differs from what the
+    user was shown (not only the criterion being changed). `name` is kept for callers' symmetry.
+    """
+    before = [_line(c) for c in _criteria(old)]
+    after = [_line(c) for c in _criteria(new)]
+    body = [line for line in difflib.ndiff(before, after) if not line.startswith("? ")]
     return "\n".join(
         [
             f"rubric.yaml version {old.get('version')} -> {new.get('version')}",
-            _line("-", find(old)),
-            _line("+", find(new)),
+            *body,
             "Jobs are scored again on the next nightly run.",
+            "Saving rewrites rubric.yaml without its comments; a copy of the old file is kept.",
         ]
     )
 

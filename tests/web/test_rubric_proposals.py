@@ -92,9 +92,11 @@ def test_the_diff_shows_the_criterion_and_the_version_bump(session: Session) -> 
     )  # fmt: skip
     assert proposal.diff == (
         "rubric.yaml version 3 -> 4\n"
+        "  field: weight 3, Work matches my fields.\n"
         "- location: weight 2, Based where I can work.\n"
         "+ location: weight 5, Based where I can work.\n"
-        "Jobs are scored again on the next nightly run."
+        "Jobs are scored again on the next nightly run.\n"
+        "Saving rewrites rubric.yaml without its comments; a copy of the old file is kept."
     )
     assert rubric_path().read_text(encoding="utf-8") == RUBRIC  # nothing changed yet
 
@@ -216,3 +218,31 @@ def test_accept_in_the_page_writes_the_rubric(session: Session) -> None:
     assert post(c, f"/proposals/{proposal.id}/accept").status_code == 303
     rubric = load_rubric()
     assert rubric is not None and rubric.version == 4
+
+
+def test_a_change_to_another_criterion_since_the_diff_was_shown_blocks_accept(
+    session: Session,
+) -> None:
+    """Review: only the target criterion was compared, so other edits slipped through."""
+    proposal = propose_rubric_change(session, REWEIGH)
+    rubric_path().write_text(RUBRIC.replace("weight: 3", "weight: 9"), encoding="utf-8")
+    with pytest.raises(ProposalError, match="changed since this was suggested"):
+        accept(session, proposal.id)
+    assert "weight: 5" not in rubric_path().read_text(encoding="utf-8")
+
+
+def test_a_quoted_version_is_read_like_the_loader_does_not_reset_to_one(
+    session: Session,
+) -> None:
+    """Review: version: "3" used to be treated as no version and became 1."""
+    rubric_path().write_text(RUBRIC.replace("version: 3", 'version: "3"'), encoding="utf-8")
+    accept(session, propose_rubric_change(session, REWEIGH).id)
+    rubric = load_rubric()
+    assert rubric is not None and rubric.version == 4
+
+
+def test_a_malformed_rubric_suggestion_keeps_the_answer(session: Session) -> None:
+    answer = json.dumps({"answer": "Noted.", "rubric": {"action": "reweigh", "name": "x"}})
+    c = web(session, answer)
+    assert post(c, "/conversation", "question=more+location").status_code == 303
+    assert "Noted." in c.get("/conversation").text
