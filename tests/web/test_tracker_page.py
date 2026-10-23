@@ -216,3 +216,34 @@ def test_a_follow_up_date_is_read_in_the_users_timezone() -> None:
     assert when.astimezone(UTC).hour in (4, 5)  # midnight in New York is 04:00 or 05:00 UTC
     with pytest.raises(ValueError):
         follow_up_from_text("15/01/2030")
+
+
+def test_a_bad_date_does_not_leave_the_status_half_changed(session: Session) -> None:
+    """Review: the status was saved, then the bad date was reported as an error."""
+    apps = tracked(session)
+    c = web(session)
+    bad = post(c, f"/applications/{apps[0].id}", "status=offer&follow_up=garbage", htmx=True)
+    assert "YYYY-MM-DD" in bad.text
+    session.expire_all()
+    saved = session.get(Application, apps[0].id)
+    assert saved is not None and saved.status == "applied"
+
+
+def test_the_csv_dates_use_the_users_timezone_like_the_page(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review: 2026-11-01 in Tokyo was written as 2026-10-31 (the UTC date)."""
+    from careerhub.core.settings import Settings, save_settings
+
+    save_settings(Settings(timezone="Asia/Tokyo"))
+    apps = tracked(session)
+    c = web(session)
+    post(c, f"/applications/{apps[0].id}", "follow_up=2026-11-01", htmx=True)
+    assert 'value="2026-11-01"' in c.get("/tracker").text
+    rows = list(csv.reader(io.StringIO(c.get("/tracker.csv").text)))
+    assert rows[1][4] == "2026-11-01"
+
+
+def test_save_buttons_say_which_row_they_save(session: Session) -> None:
+    tracked(session)
+    assert 'aria-label="Save changes for Role 1 at Acme"' in web(session).get("/tracker").text

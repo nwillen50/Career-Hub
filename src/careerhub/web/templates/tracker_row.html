@@ -14,5 +14,5 @@
   <td>{{ row.applied or "—" }}</td>
   <td><input type="date" name="follow_up" value="{{ row.follow_up }}" form="row-{{ row.application_id }}" aria-label="Follow-up date for {{ row.title }} at {{ row.company }}">{% if row.overdue %} <span class="overdue-note">due</span>{% endif %}</td>
   <td><input type="text" name="next_step" value="{{ row.next_step }}" maxlength="500" form="row-{{ row.application_id }}" aria-label="Next step for {{ row.title }} at {{ row.company }}"></td>
-  <td><button type="submit" form="row-{{ row.application_id }}">Save</button>{% if error %} <span role="alert" class="overdue-note">{{ error }}</span>{% endif %}</td>
+  <td><button type="submit" form="row-{{ row.application_id }}" aria-label="Save changes for {{ row.title }} at {{ row.company }}">Save</button>{% if error %} <span role="alert" class="overdue-note">{{ error }}</span>{% endif %}</td>
 </tr>
