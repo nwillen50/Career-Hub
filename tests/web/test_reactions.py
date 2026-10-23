@@ -210,3 +210,13 @@ def test_today_builds_cards_only_for_the_jobs_it_shows(session: Session) -> None
     html = web(session).get("/today").text
     assert "Top jobs (5)" in html and "Role 36" in html and "Role 35" not in html
     assert len(counted) < 120
+
+
+def test_a_huge_job_id_is_refused_not_a_server_error(session: Session) -> None:
+    """Review: a 23-digit job id used to raise OverflowError and answer 500."""
+    add_job(session, 1, 80)
+    c = web(session)
+    huge = "9" * 23
+    assert post(c, f"/jobs/{huge}/react", "reaction=interested").status_code == 422
+    assert post(c, f"/jobs/{huge}/undo", "").status_code == 422
+    assert post(c, "/jobs/0/react", "reaction=interested").status_code == 422

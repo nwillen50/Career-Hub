@@ -25,10 +25,10 @@ import secrets
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from importlib import resources
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import parse_qs, urlsplit
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Path, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -49,6 +49,8 @@ from careerhub.modules.jobs.reactions import (
 from careerhub.profile.files import ProfileFileError
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
 
+#: A job id the database can hold (SQLite integers are 64-bit); anything else is a 422, not a 500.
+JobId = Annotated[int, Path(ge=1, le=2**63 - 1)]
 SESSION_COOKIE = "ch_session"
 SECTION_COOKIE = "ch_today_section"
 REACTION_LABELS = {
@@ -267,7 +269,7 @@ def create_app(
         return templates.TemplateResponse(request, name, {"csrf": csrf, **context})
 
     @app.post("/jobs/{job_id}/react")
-    async def react_to_job(request: Request, job_id: int, reason: str | None = None) -> Response:
+    async def react_to_job(request: Request, job_id: JobId, reason: str | None = None) -> Response:
         if open_session is None:
             return HTMLResponse("No data to react to.", status_code=404)
         form = parse_qs((await request.body()).decode("utf-8", "replace"))
@@ -289,7 +291,7 @@ def create_app(
         )
 
     @app.post("/jobs/{job_id}/undo")
-    async def undo_reaction(request: Request, job_id: int) -> Response:
+    async def undo_reaction(request: Request, job_id: JobId) -> Response:
         if open_session is None:
             return HTMLResponse("No data.", status_code=404)
         form = parse_qs((await request.body()).decode("utf-8", "replace"))
