@@ -218,8 +218,8 @@ def create_app(
                 "current": "/today",
                 "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
                 "title": "Today",
-                "heading": f"Today, {data.now:%a %b %d}",
-                "built": f"{data.now:%a %b %d, %H:%M}",
+                "heading": f"Today, {data.local_now or data.now:%a %b %d}",
+                "built": f"{data.local_now or data.now:%a %b %d, %H:%M}",
                 "last_run": f"{shortlist.last_success:%a %b %d, %H:%M}"
                 if shortlist.last_success
                 else None,
