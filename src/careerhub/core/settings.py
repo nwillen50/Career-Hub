@@ -75,6 +75,10 @@ class Settings(BaseModel):
     empty_listing_backstop_nights: int = Field(default=3, ge=1, le=30)
     #: Days a saved model answer is kept after it was last used (using it resets the clock).
     cache_ttl_days: int = Field(default=30, ge=1, le=3650)
+    #: A posting older than this many days is ranked slightly lower (never hidden) (CH-81).
+    stale_after_days: int = Field(default=21, ge=1, le=365)
+    #: How many fit-score points (of 100) an old posting loses in the ordering. 0 turns it off.
+    stale_penalty_points: float = Field(default=5.0, ge=0, le=50)
     #: Your timezone (an IANA name such as "America/New_York"), for working hours and calendars.
     timezone: str = "America/New_York"
     #: Calendar files (.ics) whose busy time the weekly plan avoids. Only times are read.

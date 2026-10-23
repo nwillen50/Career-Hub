@@ -39,8 +39,9 @@ that supersedes the old one.
 | [0031](0031-profile-extraction.md) | Profile extraction: redacted, validated, saved as pending facts keyed by file hash | Accepted |
 | [0032](0032-accepting-extracted-facts.md) | Extracted facts count only when accepted; profile.md wins; newest accepted set per document | Accepted |
 | [0033](0033-company-names.md) | Company key ignores legal suffixes and web endings; one create/find path; migration merges duplicates | Accepted |
-| [0035](0035-closed-vs-glitch.md) | Empty board: spot-check three jobs, else a three-night backstop; closures noted in the summary | Accepted |
 | [0034](0034-add-a-job-by-link.md) | Add a job by link: public ATS APIs only, LinkedIn/Handshake never requested, manual jobs never auto-closed | Accepted |
+| [0035](0035-closed-vs-glitch.md) | Empty board: spot-check three jobs, else a three-night backstop; closures noted in the summary | Accepted |
+| [0036](0036-posting-age.md) | Posting age: source date or first seen; footnote; slight ordering penalty after 21 days | Accepted |
 
 ## Template
 

@@ -134,6 +134,14 @@ sent. The resume goes to the model as plain text with emails, links, and phone n
 only to providers allowed to see Personal data. See
 [ADR-0024](../../../../docs/decisions/0024-tailoring-notes.md).
 
+## Posting age (CH-81)
+
+Each card on the shortlist ends with one muted line, such as "Posted 24 days ago" (past
+`stale_after_days`, default 21: "..., older than 3 weeks"). The age is the source's posting date when
+its record has one (`age.py` lists the fields), otherwise the day Career Hub first saw the job. An
+old posting is ordered slightly lower (`stale_penalty_points`, default 5 of 100) but keeps its score
+and is never hidden. See [ADR-0036](../../../../docs/decisions/0036-posting-age.md).
+
 ## Scoring v2 (CH-114)
 
 Scoring (`score_job_v2.md`) sees every extracted fact except nice-to-have skills ("unknown" stays

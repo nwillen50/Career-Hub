@@ -21,11 +21,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from careerhub.core.files import write_private
-from careerhub.core.models import Assessment, Job, RunLog, Source
+from careerhub.core.models import Assessment, Job, RunLog, Source, utcnow
 from careerhub.core.paths import data_dir
+from careerhub.modules.jobs.age import age_days
 from careerhub.modules.jobs.muse import KIND as MUSE_KIND
 from careerhub.modules.jobs.muse import VIA
-from careerhub.modules.jobs.scoring import current_internship_penalty, is_internship, ranked_jobs
+from careerhub.modules.jobs.scoring import current_rank_adjustments, is_internship, ranked_jobs
 from careerhub.modules.network import WarmPath, warm_paths
 
 #: Today shows at most this many ranked jobs (PRD).
@@ -67,9 +68,14 @@ class ShortlistData:
     last_error: str | None = None
 
 
-def gather_shortlist(session: Session, limit: int = MAX_JOBS) -> ShortlistData:
+def gather_shortlist(
+    session: Session, limit: int = MAX_JOBS, now: datetime | None = None
+) -> ShortlistData:
     """Collect the top jobs and the state of the latest nightly run."""
-    penalty = current_internship_penalty()
+    now = now or utcnow()
+    adjustments = current_rank_adjustments()
+    penalty = adjustments["internship_penalty"]
+    stale_days = adjustments["stale_after_days"]
     entries = [
         ShortlistEntry(
             title=job.title,
@@ -81,10 +87,10 @@ def gather_shortlist(session: Session, limit: int = MAX_JOBS) -> ShortlistData:
             criteria=list(assessment.criteria_scores),
             contacts=warm_paths(session, job.company_id, limit=MAX_CONTACTS),
             tailoring=_notes(assessment),
-            footnotes=(INTERNSHIP_NOTE,) if penalty > 0 and is_internship(job) else (),
+            footnotes=_footnotes(job, now, penalty, stale_days),
             via=VIA if _from_muse(session, job) else None,
         )
-        for job, assessment in ranked_jobs(session, min(limit, MAX_JOBS), penalty)
+        for job, assessment in ranked_jobs(session, min(limit, MAX_JOBS), now=now, **adjustments)
     ]
     runs = list(
         session.scalars(
@@ -101,6 +107,24 @@ def gather_shortlist(session: Session, limit: int = MAX_JOBS) -> ShortlistData:
         success.finished_at if success is not None else None,
         error or ("The last run failed." if runs and runs[0].status == "failed" else None),
     )
+
+
+def _footnotes(job: Job, now: datetime, penalty: float, stale_days: int) -> tuple[str, ...]:
+    """Return the muted lines for a card: how old the posting is, and the internship note."""
+    days = age_days(job, now)
+    age = "Posted today" if days == 0 else f"Posted {days} day{'s' if days != 1 else ''} ago"
+    if days > stale_days:
+        weeks = stale_days // 7
+        limit = (
+            f"{weeks} week{'s' if weeks != 1 else ''}"
+            if stale_days % 7 == 0
+            else f"{stale_days} days"
+        )
+        age += f", older than {limit}"
+    notes = [age]
+    if penalty > 0 and is_internship(job):
+        notes.append(INTERNSHIP_NOTE)
+    return tuple(notes)
 
 
 def _from_muse(session: Session, job: Job) -> bool:
@@ -266,7 +290,7 @@ def write_shortlist(session: Session, now: datetime, path: Path | None = None) -
     """Build the page from the database and write it, readable only by the user."""
     path = path or shortlist_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    html = render_shortlist(gather_shortlist(session), now)
+    html = render_shortlist(gather_shortlist(session, now=now), now)
     temporary = path.with_suffix(".tmp")
     write_private(temporary, html)
     temporary.replace(path)  # swap in whole, so a reader never sees a half-written page

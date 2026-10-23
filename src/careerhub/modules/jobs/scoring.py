@@ -12,14 +12,18 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Sequence
+from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from careerhub.core.models import Assessment, Job
+from careerhub.core.models import Assessment, Job, utcnow
+from careerhub.core.settings import Settings, SettingsError, load_settings
 from careerhub.llm import LLMRequest, PrivacyTier, Router
 from careerhub.llm.validated import complete_validated_detailed
+from careerhub.modules.jobs.age import age_days
 from careerhub.modules.jobs.store import only_visible_copies
 from careerhub.profile.extract import ProfileFacts
 from careerhub.profile.facts import accepted_facts, facts_text
@@ -243,13 +247,32 @@ def current_internship_penalty() -> float:
     return preferences.internship_rank_penalty if preferences else 0.0
 
 
+def current_rank_adjustments() -> dict[str, Any]:
+    """Return the keyword arguments for `ranked_jobs` from the user's preferences and settings."""
+    try:
+        settings = load_settings()
+    except SettingsError:
+        settings = Settings()
+    return {
+        "internship_penalty": current_internship_penalty(),
+        "stale_after_days": settings.stale_after_days,
+        "stale_penalty": settings.stale_penalty_points,
+    }
+
+
 def ranked_jobs(
-    session: Session, limit: int = 20, internship_penalty: float = 0.0
+    session: Session,
+    limit: int = 20,
+    internship_penalty: float = 0.0,
+    stale_after_days: int = 21,
+    stale_penalty: float = 0.0,
+    now: datetime | None = None,
 ) -> list[tuple[Job, Assessment]]:
     """Return open, original (not duplicate) jobs that passed the filters, best score first.
 
-    `internship_penalty` (0 to 10) ranks internships a little lower. It only changes the order:
-    the stored fit score is never touched.
+    `internship_penalty` (0 to 10) ranks internships a little lower, and a posting older than
+    `stale_after_days` loses `stale_penalty` points of 100. These only change the order: the stored
+    fit score is never touched, and no job is hidden for its age.
     """
     query = (
         select(Job, Assessment)
@@ -261,13 +284,16 @@ def ranked_jobs(
         )
     )
     query = only_visible_copies(query).order_by(Assessment.fit_score.desc(), Job.id)
-    if internship_penalty <= 0:
+    if internship_penalty <= 0 and stale_penalty <= 0:
         return [(job, assessment) for job, assessment in session.execute(query.limit(limit))]
+    today = now or utcnow()
     rows = [(job, assessment) for job, assessment in session.execute(query)]
 
     def adjusted(row: tuple[Job, Assessment]) -> tuple[float, int]:
         job, assessment = row
         score = assessment.fit_score or 0.0
-        return (-(score - internship_penalty * PENALTY_SCALE * is_internship(job)), job.id)
+        score -= internship_penalty * PENALTY_SCALE * is_internship(job)
+        score -= stale_penalty * (age_days(job, today) > stale_after_days)
+        return (-score, job.id)
 
     return sorted(rows, key=adjusted)[:limit]
