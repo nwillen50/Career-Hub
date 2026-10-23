@@ -232,3 +232,10 @@ def test_the_migration_recomputes_the_dedupe_keys_of_stored_jobs(tmp_path: Path)
         assert session.scalars(select(Job)).one().dedupe_key == dedupe_key(
             "Microsoft", "Engineer", "WA"
         )
+
+
+def test_short_names_keep_their_endings_so_different_companies_stay_apart() -> None:
+    """CH-134: stripping '.ai' and 'Corp' both left 'x', merging two companies."""
+    assert company_key("X.ai") != company_key("X Corp")
+    assert company_key("X.ai") == "xai" and company_key("X Corp") == "x corp"
+    assert company_key("Acme Corp") == "acme"  # longer names still lose their endings

@@ -14,6 +14,8 @@ from collections.abc import Mapping
 LEGAL_WORDS = frozenset(
     "inc incorporated corp corporation co company llc ltd limited plc gmbh ag sa lp llp".split()
 )
+#: A key shorter than this after dropping endings keeps the endings (so "X.ai" and "X Corp" differ).
+MIN_KEY_LENGTH = 3
 _WEB_SUFFIX = re.compile(r"\.(?:com|io|ai|co|net|org)$")
 #: Names that differ completely but are one employer. Keys and values are already normalized.
 BUILT_IN_ALIASES = {
@@ -39,6 +41,7 @@ def company_key(name: str, aliases: Mapping[str, str] | None = None) -> str:
         words[0] = words[0][4:]
     if len(words) > 1 and words[0] == "the":
         words = words[1:]
+    unstripped = list(words)
     while words:
         last = words[-1].rstrip(".")
         if len(words) > 1 and last in LEGAL_WORDS:
@@ -47,10 +50,17 @@ def company_key(name: str, aliases: Mapping[str, str] | None = None) -> str:
             words[-1] = _WEB_SUFFIX.sub("", last)
         else:
             break
-    text = re.sub(r"['’.]", "", " ".join(words))
-    key = re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", text)).strip()
+    key = _tidy(words)
+    if len(key) < MIN_KEY_LENGTH and words != unstripped:
+        key = _tidy(unstripped)  # "X.ai" and "X Corp" would both shrink to "x": keep their endings
     key = BUILT_IN_ALIASES.get(key, key)
     return aliases.get(key, key) if aliases else key
+
+
+def _tidy(words: list[str]) -> str:
+    """Join `words`, drop apostrophes and dots, and turn other punctuation into single spaces."""
+    text = re.sub(r"['’.]", "", " ".join(words))
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", text)).strip()
 
 
 def resolve_aliases(raw: Mapping[str, str]) -> dict[str, str]:
