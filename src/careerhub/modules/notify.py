@@ -74,7 +74,9 @@ class MacNotifier:
         """Show the banner (raises `RuntimeError` off a Mac)."""
         if sys.platform != "darwin":
             raise RuntimeError("Notifications can only be shown on a Mac.")
-        subprocess.run(self.command(notification), check=False, timeout=30)
+        done = subprocess.run(self.command(notification), check=False, timeout=30)
+        if done.returncode != 0:  # not shown: the day must not be used up (see notify_once_a_day)
+            raise RuntimeError(f"macOS did not show the notification (exit {done.returncode}).")
 
 
 def message_for(state: AttentionState) -> Notification | None:

@@ -86,3 +86,34 @@ def test_off_a_mac_the_banner_cannot_be_shown_and_the_command_says_so(
     store = InMemoryKeyStore()
     assert main(["attention", "--notify"], store) == 0  # nothing pending: nothing to show
     assert "Nothing to show" in capsys.readouterr().out
+
+
+def test_a_notification_macos_refuses_is_an_error_and_does_not_use_up_the_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review: osascript's exit code was ignored, so a banner that never showed used up the day."""
+    import subprocess
+
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 1))
+    with pytest.raises(RuntimeError, match="did not show"):
+        notify_once_a_day(AttentionState(1, 0, False), TODAY, MacNotifier())
+    assert last_notified() is None
+
+
+def test_a_missing_osascript_is_a_message_not_a_traceback(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import subprocess
+
+    monkeypatch.setattr("sys.platform", "darwin")
+
+    def missing(*args: object, **kwargs: object) -> None:
+        raise FileNotFoundError("osascript")
+
+    monkeypatch.setattr(subprocess, "run", missing)
+    monkeypatch.setattr(
+        "careerhub.cli.attention_state", lambda session: AttentionState(1, 0, False)
+    )
+    assert main(["attention", "--notify"], InMemoryKeyStore()) == 1
+    assert "Could not show the notification" in capsys.readouterr().out

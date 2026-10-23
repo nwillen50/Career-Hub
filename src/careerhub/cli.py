@@ -382,9 +382,10 @@ def _attention(session: Session, options: list[str]) -> int:
     state = attention_state(session)
     if options == ["--notify"]:
         try:
-            shown = notify_once_a_day(state, utcnow().date(), MacNotifier())
-        except RuntimeError as error:
-            print(error)
+            today = utcnow().astimezone(ZoneInfo(load_settings().timezone)).date()  # the user's day
+            shown = notify_once_a_day(state, today, MacNotifier())
+        except (RuntimeError, OSError) as error:
+            print(f"Could not show the notification: {error}")
             return 1
         print(f"Showed: {shown.body}" if shown else "Nothing to show (or already shown today).")
         return 0
