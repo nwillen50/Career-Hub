@@ -14,12 +14,19 @@ from zoneinfo import ZoneInfo
 import httpx
 from sqlalchemy.orm import Session
 
+from careerhub.core.backup import RestoreError, list_backups, restore_backup
 from careerhub.core.companies import decide_merge, find_companies, pending_merges, suggest_merges
 from careerhub.core.migrate import migrate
 from careerhub.core.models import utcnow
-from careerhub.core.secrets import KeychainKeyStore, KeyStore, SecretsError
+from careerhub.core.paths import database_path
+from careerhub.core.secrets import (
+    KeychainKeyStore,
+    KeyStore,
+    SecretsError,
+    get_or_create_database_key,
+)
 from careerhub.core.settings import SettingsError, load_settings
-from careerhub.core.storage import StorageError, open_database, session_factory
+from careerhub.core.storage import StorageError, WrongKeyError, open_database, session_factory
 from careerhub.llm.cache import ResponseCache
 from careerhub.llm.commands import (
     models_add,
@@ -82,6 +89,8 @@ USAGE = """Usage:
                                              (CSV, TSV or Excel; also `hub alumni import`)
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
+  hub backup list | restore <file> --to <new folder>
+                          (restores into a NEW folder and checks it; never touches your live data)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
                                              are never requested; text can also come from stdin)
   hub companies suggestions | merge <id> | skip <id>   (near-duplicate company names)
@@ -144,6 +153,10 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _schedule_install()
         if args == ["nightly"]:
             return _nightly(store)
+        if args == ["backup", "list"]:
+            return _backup_list()
+        if len(args) == 5 and args[:2] == ["backup", "restore"] and args[3] == "--to":
+            return _backup_restore(store, Path(args[2]), Path(args[4]))
         if args[:1] == ["add-job"] and len(args) >= 2 and len(args) % 2 == 0:
             return _with_session(store, lambda s: _add_job(s, args[1], args[2:]))
         if args[:1] == ["companies"]:
@@ -361,6 +374,31 @@ def _schedule_install() -> int:
     print(
         f"Wrote {path}. It is not running yet. To start it:\n  {start}\nTo stop it later:\n  {stop}"
     )
+    return 0
+
+
+def _backup_list() -> int:
+    """Print the backups, newest first, with their sizes."""
+    found = list_backups()
+    if not found:
+        print("No backups yet. The nightly run writes one.")
+    for path in reversed(found):
+        print(f"{path}  ({path.stat().st_size // 1024} KB)")
+    return 0
+
+
+def _backup_restore(store: KeyStore, backup: Path, folder: Path) -> int:
+    """Restore `backup` into the new `folder`, check it, and say how to switch over."""
+    try:
+        report = restore_backup(backup, folder, get_or_create_database_key(store))
+    except (RestoreError, WrongKeyError) as error:
+        print(f"Restore failed: {error}")
+        return 1
+    total = sum(report.counts.values())
+    print(f"Restored {backup.name} to {report.path}: {len(report.counts)} tables, {total} rows,")
+    print("integrity check passed and row counts match the backup.")
+    print("Nothing was changed in your live data. To switch over, quit Career Hub, move")
+    print(f"{database_path()} aside, then copy {report.path} to that place.")
     return 0
 
 
