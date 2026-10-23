@@ -60,6 +60,7 @@ from careerhub.modules.network import (
     tag_person,
     warm_paths,
 )
+from careerhub.modules.notify import MacNotifier, notify_once_a_day
 from careerhub.modules.plan import suggest_week
 from careerhub.modules.plan.ics import IcsError
 from careerhub.pipeline import run_nightly
@@ -83,7 +84,7 @@ USAGE = """Usage:
                                              (CSV, TSV or Excel; also `hub alumni import`)
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
-  hub attention [--json]                     (menu-bar count: follow-ups due + new top jobs)
+  hub attention [--json | --notify]          (menu-bar count; --notify: morning banner, once a day)
   hub web [--port N]                         (the local web app on 127.0.0.1; prints a link to open)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
                                              are never requested; text can also come from stdin)
@@ -145,8 +146,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _with_session(store, lambda s: _people_import(s, Path(args[2]), args[3:]))
         if args == ["schedule", "install"]:
             return _schedule_install()
-        if args[:1] == ["attention"] and args[1:] in ([], ["--json"]):
-            return _with_session(store, lambda s: _attention(s, as_json=bool(args[1:])))
+        if args[:1] == ["attention"] and args[1:] in ([], ["--json"], ["--notify"]):
+            return _with_session(store, lambda s: _attention(s, args[1:]))
         if args[:1] == ["web"]:
             return _web(args[1:])
         if args == ["nightly"]:
@@ -371,12 +372,23 @@ def _schedule_install() -> int:
     return 0
 
 
-def _attention(session: Session, as_json: bool) -> int:
-    """`hub attention [--json]`: print what the menu-bar icon shows (counts only)."""
+def _attention(session: Session, options: list[str]) -> int:
+    """`hub attention [--json | --notify]`: print what the menu-bar icon shows (counts only).
+
+    With `--notify`, show the morning notification (at most once a day) on this Mac.
+    """
     import json
 
     state = attention_state(session)
-    print(json.dumps(state.as_json(), sort_keys=True) if as_json else state.description)
+    if options == ["--notify"]:
+        try:
+            shown = notify_once_a_day(state, utcnow().date(), MacNotifier())
+        except RuntimeError as error:
+            print(error)
+            return 1
+        print(f"Showed: {shown.body}" if shown else "Nothing to show (or already shown today).")
+        return 0
+    print(json.dumps(state.as_json(), sort_keys=True) if options else state.description)
     return 0
 
 
