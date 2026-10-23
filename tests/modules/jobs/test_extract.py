@@ -157,6 +157,6 @@ def test_a_posting_extracted_with_the_old_prompt_is_extracted_again(
 ) -> None:
     job.structured_fields = {"fields": GOOD, "prompt_version": 1, "text_sha256": "x"}
     router = Router([FakeProvider("m", replies=[json.dumps(GOOD)])])
-    assert PROMPT_VERSION == 2
+    assert PROMPT_VERSION == 3
     assert extract_and_save(session, router, job, ["m"]) is not None
-    assert job.structured_fields["prompt_version"] == 2
+    assert job.structured_fields["prompt_version"] == PROMPT_VERSION
