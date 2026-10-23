@@ -7,6 +7,10 @@
 - when the monthly budget is reached, model work stops but the page is still written;
 - missing profile files or model routes skip the stages that need them and say so.
 
+`run_refresh` is the light midday version (CH-165): ingest, understand with free or local models
+only, and filter, then rewrite the shortlist page. It never scores, tailors, reads profile files
+for facts, or backs up, and it is recorded as step `refresh`.
+
 The run is recorded in `run_log` (step `nightly`). It is marked **failed**, which the shortlist page
 shows, only when nothing useful could be done: every approved source failed, or the page could
 not be written. Smaller problems are returned in `NightlyReport.problems` (type names and counts,
@@ -114,14 +118,42 @@ def run_nightly(
 
     Returns the report; a problem in one source or job never raises.
     """
+    return _execute("nightly", engine, store, settings, client, now, light=False)
+
+
+def run_refresh(
+    engine: Engine,
+    store: KeyStore,
+    settings: Settings | None = None,
+    client: httpx.Client | None = None,
+    now: datetime | None = None,
+) -> NightlyReport:
+    """Run the light midday refresh once and record it (step `refresh`).
+
+    Fetches sources, understands new postings with free or local models only, filters, and
+    rewrites the shortlist page. No scoring, tailoring or backup, and no paid model calls.
+    """
+    return _execute("refresh", engine, store, settings, client, now, light=True)
+
+
+def _execute(
+    step: str,
+    engine: Engine,
+    store: KeyStore,
+    settings: Settings | None,
+    client: httpx.Client | None,
+    now: datetime | None,
+    light: bool,
+) -> NightlyReport:
+    """Shared body of `run_nightly` and `run_refresh`."""
     settings = settings or load_settings()
     sessions = session_factory(engine)
     report = NightlyReport()
     with sessions() as session:
-        run = start_run(session, "nightly")
+        run = start_run(session, step)
         error: BaseException | None = None
         try:
-            _run(session, engine, store, settings, client, report, run.id)
+            _run(session, engine, store, settings, client, report, run.id, light)
             if report.sources_failed and not report.sources_ok:
                 raise FetchError("every approved source failed")
         except Exception as caught:
@@ -136,7 +168,8 @@ def run_nightly(
             report.problems.append(
                 f"run failed: the shortlist page could not be written ({caught.errno})"
             )
-        _backup(engine, settings, report)
+        if not light:
+            _backup(engine, settings, report)
     return report
 
 
@@ -148,10 +181,12 @@ def _run(
     client: httpx.Client | None,
     report: NightlyReport,
     run_id: int,
+    light: bool = False,
 ) -> None:
     sessions = session_factory(engine)
     settings = with_catalog(settings, store, lambda: ollama_is_running(client)).settings
-    report.cache_pruned = ResponseCache(sessions, settings.cache_ttl_days).prune()
+    if not light:
+        report.cache_pruned = ResponseCache(sessions, settings.cache_ttl_days).prune()
     setup = build_router(settings, store, sessions, client, run_id)
     report.problems += [f"provider: {p}" for p in setup.problems]
     preferences = load_preferences()
@@ -173,9 +208,19 @@ def _run(
             only_visible_copies(select(Job).where(Job.status != "closed")).order_by(Job.id)
         )
     )
-    _understand_and_rank(session, setup, settings, jobs, report)
+    _understand_and_rank(session, setup, settings, jobs, report, light)
     for note, count in Counter(setup.router.skipped).items():
         report.problems.append(f"fell back past a model ({note}, {count}x)")
+
+
+def _costs_nothing(settings: Settings, name: str) -> bool:
+    """Say whether provider `name` is local or has zero prices (so the refresh may use it)."""
+    for provider in settings.providers:
+        if provider.name == name:
+            return provider.kind == "local" or (
+                provider.input_per_mtok == 0 and provider.output_per_mtok == 0
+            )
+    return False
 
 
 def _backup(engine: Engine, settings: Settings, report: NightlyReport) -> None:
@@ -191,6 +236,7 @@ def _understand_and_rank(
     settings: Settings,
     jobs: list[Job],
     report: NightlyReport,
+    light: bool = False,
 ) -> None:
     doc, rubric = load_profile_doc(), load_rubric()
     preferences = load_preferences()
@@ -201,20 +247,24 @@ def _understand_and_rank(
         if doc
         else Eligibility()
     )
-    if (doc is None or rubric is None) and current_readiness(session).on:
+    if not light and (doc is None or rubric is None) and current_readiness(session).on:
         report.problems.append("scoring skipped: profile.md or rubric.yaml is missing")
     try:
         extract_routes = routes_for(settings, "extract", setup.built)
+        if light:
+            extract_routes = [r for r in extract_routes if _costs_nothing(settings, r)]
+            if not extract_routes:
+                report.notes.append("no free or local model for 'extract', so nothing new was read")
     except NoRoute:
         extract_routes = []
         report.problems.append("understanding skipped: no usable model for 'extract'")
     try:
-        score_routes = routes_for(settings, "score", setup.built)
+        score_routes = [] if light else routes_for(settings, "score", setup.built)
     except NoRoute:
         score_routes = []
         report.problems.append("scoring skipped: no usable model for 'score'")
     readiness = current_readiness(session, settings.profile_min_skills)
-    if not readiness.on:
+    if not readiness.on and not light:
         # Ingesting, understanding and filtering are cheap, so they run; scoring and tailoring wait.
         score_routes = []
         report.notes.append(
@@ -252,6 +302,8 @@ def _understand_and_rank(
             failures += 1
     if failures:
         report.problems.append(f"{failures} jobs could not be understood or scored")
+    if light:
+        return
     if doc is not None:
         _extract_profile_facts(session, setup, settings, doc, report)
     if doc is not None and not budget_hit and readiness.on:

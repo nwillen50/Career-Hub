@@ -15,3 +15,8 @@ be written). See [ADR-0020](../../docs/decisions/0020-nightly-run.md).
 `hub schedule install` writes `~/Library/LaunchAgents/com.careerhub.nightly.plist` for the
 `nightly_run_time` setting and prints the `launchctl` command; it does not start the job. See
 [ADR-0021](../../docs/decisions/0021-launchd-schedule.md).
+
+A light midday job is available too: `hub refresh` fetches sources, reads new postings with free or
+local models only, filters, and rewrites the shortlist page (no scoring, tailoring or backup). Set
+`midday_refresh_on` to `true` (time: `midday_refresh_time`, default 12:30) and run
+`hub schedule install` to write `com.careerhub.refresh.plist`; starting it is still your call.

@@ -61,14 +61,14 @@ from careerhub.modules.network import (
 )
 from careerhub.modules.plan import suggest_week
 from careerhub.modules.plan.ics import IcsError
-from careerhub.pipeline import run_nightly
+from careerhub.pipeline import run_nightly, run_refresh
 from careerhub.profile.extract import ProfileFacts
 from careerhub.profile.facts import UnknownExtraction, decide, facts_text, pending
 from careerhub.profile.files import ProfileFileError, load_preferences, load_profile_doc
 from careerhub.profile.models import PlanSettings, Preferences, ProfileDoc
 from careerhub.profile.profile import Profile, format_profile, load_profile
 from careerhub.profile.readiness import current_readiness, missing_items, set_scoring
-from careerhub.schedule import install_plist, launchctl_commands
+from careerhub.schedule import LABEL, REFRESH_LABEL, install_plist, launchctl_commands
 from careerhub.web.shortlist import write_shortlist
 
 USAGE = """Usage:
@@ -82,6 +82,8 @@ USAGE = """Usage:
                                              (CSV, TSV or Excel; also `hub alumni import`)
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
+  hub refresh                                (light midday run: new jobs and filters only, no paid
+                                             models; turn the schedule on with midday_refresh_on)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
                                              are never requested; text can also come from stdin)
   hub companies suggestions | merge <id> | skip <id>   (near-duplicate company names)
@@ -144,6 +146,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _schedule_install()
         if args == ["nightly"]:
             return _nightly(store)
+        if args == ["refresh"]:
+            return _nightly(store, light=True)
         if args[:1] == ["add-job"] and len(args) >= 2 and len(args) % 2 == 0:
             return _with_session(store, lambda s: _add_job(s, args[1], args[2:]))
         if args[:1] == ["companies"]:
@@ -355,20 +359,26 @@ def _people_import(session: Session, path: Path, options: list[str] | None = Non
 
 
 def _schedule_install() -> int:
-    """Write the launchd job at the `nightly_run_time` setting; print how to start and stop it."""
-    path = install_plist(load_settings().nightly_run_time)
-    start, stop = launchctl_commands(path)
-    print(
-        f"Wrote {path}. It is not running yet. To start it:\n  {start}\nTo stop it later:\n  {stop}"
-    )
+    """Write the launchd job(s); print how to start and stop each. Nothing is started here."""
+    settings = load_settings()
+    jobs = [("nightly", settings.nightly_run_time, LABEL)]
+    if settings.midday_refresh_on:
+        jobs.append(("refresh", settings.midday_refresh_time, REFRESH_LABEL))
+    for command, run_time, label in jobs:
+        path = install_plist(run_time, command=command)
+        start, stop = launchctl_commands(path, label)
+        print(
+            f"Wrote {path}. It is not running yet. To start it:\n  {start}\n"
+            f"To stop it later:\n  {stop}"
+        )
     return 0
 
 
-def _nightly(store: KeyStore) -> int:
-    """Run the pipeline once; exit code 1 if the run failed outright."""
+def _nightly(store: KeyStore, light: bool = False) -> int:
+    """Run the pipeline (the light midday version if `light`) once; exit 1 if it failed outright."""
     engine = open_database(store)
     migrate(engine)
-    report = run_nightly(engine, store)
+    report = (run_refresh if light else run_nightly)(engine, store)
     print(report.summary())
     return 1 if any(p.startswith("run failed") for p in report.problems) else 0
 

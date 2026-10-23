@@ -21,6 +21,8 @@ from pathlib import Path
 from careerhub.core.paths import data_dir
 
 LABEL = "com.careerhub.nightly"
+REFRESH_LABEL = "com.careerhub.refresh"
+_JOBS = {"nightly": LABEL, "refresh": REFRESH_LABEL}
 _CLOCK = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 
@@ -39,18 +41,28 @@ def logs_dir() -> Path:
     return folder
 
 
-def render_plist(run_time: str, python: str | None = None, logs: Path | None = None) -> bytes:
-    """Build the launchd property list that runs `hub nightly` every day at `run_time`."""
+def render_plist(
+    run_time: str,
+    python: str | None = None,
+    logs: Path | None = None,
+    command: str = "nightly",
+) -> bytes:
+    """Build the launchd property list that runs `hub <command>` every day at `run_time`.
+
+    `command` is `nightly` (label `com.careerhub.nightly`) or `refresh` (the midday job).
+    """
+    if command not in _JOBS:
+        raise ValueError("command must be 'nightly' or 'refresh'")
     hour, minute = parse_clock(run_time)
     logs = logs or logs_dir()
     job = {
-        "Label": LABEL,
+        "Label": _JOBS[command],
         # The venv's own Python, so the job doesn't depend on the shell's PATH.
-        "ProgramArguments": [python or sys.executable, "-m", "careerhub.cli", "nightly"],
+        "ProgramArguments": [python or sys.executable, "-m", "careerhub.cli", command],
         "StartCalendarInterval": {"Hour": hour, "Minute": minute},
         "RunAtLoad": False,
-        "StandardOutPath": str(logs / "nightly.out.log"),
-        "StandardErrorPath": str(logs / "nightly.err.log"),
+        "StandardOutPath": str(logs / f"{command}.out.log"),
+        "StandardErrorPath": str(logs / f"{command}.err.log"),
         # Be a polite background job.
         "ProcessType": "Background",
         "LowPriorityIO": True,
@@ -64,23 +76,23 @@ def agents_dir() -> Path:
     return Path.home() / "Library" / "LaunchAgents"
 
 
-def install_plist(run_time: str, folder: Path | None = None) -> Path:
-    """Write the plist (replacing an older one for this job) and return its path.
+def install_plist(run_time: str, folder: Path | None = None, command: str = "nightly") -> Path:
+    """Write the plist for `command` (replacing an older one for this job) and return its path.
 
     It is *not* loaded; the caller shows the user the `launchctl` command.
     """
     folder = folder or agents_dir()
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"{LABEL}.plist"
-    path.write_bytes(render_plist(run_time))
+    path = folder / f"{_JOBS[command]}.plist"
+    path.write_bytes(render_plist(run_time, command=command))
     os.chmod(path, 0o644)  # launchd requires agents not to be writable by others
     return path
 
 
-def launchctl_commands(path: Path) -> tuple[str, str]:
+def launchctl_commands(path: Path, label: str = LABEL) -> tuple[str, str]:
     """Return the commands to start and to stop the job, for the user to run."""
     domain = f"gui/{os.getuid()}"
     return (
         f"launchctl bootstrap {domain} {path}",
-        f"launchctl bootout {domain}/{LABEL}",
+        f"launchctl bootout {domain}/{label}",
     )
