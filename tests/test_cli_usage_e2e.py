@@ -29,6 +29,7 @@ INVOCATIONS: dict[str, list[str]] = {
     "alumni import": ["alumni", "import", "MISSING.csv", "--preview"],
     "schedule install": ["schedule", "install"],
     "nightly": ["nightly"],
+    "attention": ["attention", "--json"],
     "web": ["web"],
     "add-job": [
         "add-job",
@@ -66,6 +67,7 @@ COVERS = {
     "hub people import-alumni": "people import-alumni",
     "hub schedule install": "schedule install",
     "hub nightly": "nightly",
+    "hub attention": "attention",
     "hub web": "web",
     "hub add-job": "add-job",
     "hub companies": "companies",
