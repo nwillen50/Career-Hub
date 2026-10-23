@@ -29,7 +29,7 @@ from careerhub.core.settings import ProviderSetting, Settings
 from careerhub.llm.providers import api_key_name
 
 #: The privacy tier of each task, which decides the providers it may use by default.
-PERSONAL_TASKS = ("score", "tailor", "profile_extract")
+PERSONAL_TASKS = ("score", "tailor", "profile_extract", "chat")
 PUBLIC_TASKS = ("extract",)
 STALE_AFTER_DAYS = 90
 OLLAMA_TAGS_URL = "http://localhost:11434/api/tags"
