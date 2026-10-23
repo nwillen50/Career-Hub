@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from careerhub.core.settings import Settings
+from careerhub.modules.plan.apple import AppleCalendar, CalendarUnavailable, open_event_kit_store
 from careerhub.modules.plan.freebusy import Interval, daily_windows, free_windows
 from careerhub.modules.plan.ics import IcsCalendar
 from careerhub.modules.plan.weekly import WeekPlan, build_tasks, plan_week
@@ -51,6 +52,15 @@ def suggest_week(
     for name in settings.calendar_files:
         calendar = IcsCalendar.from_file(Path(name).expanduser(), zone)
         busy += calendar.busy(horizon_start, horizon_end)
+    problems: list[str] = []
+    if settings.use_apple_calendar:
+        try:
+            apple = AppleCalendar(open_event_kit_store(), settings.apple_calendars)
+            busy += apple.busy(horizon_start, horizon_end)
+        except CalendarUnavailable as error:
+            problems.append(str(error))  # fall back to the other sources, and say so
     free = free_windows(busy, windows, plan.min_gap_minutes)
     tasks = build_tasks(session, zone, plan)
-    return plan_week(tasks, free, int(budget_hours * 60), zone, plan.daily_share)
+    result = plan_week(tasks, free, int(budget_hours * 60), zone, plan.daily_share)
+    result.problems.extend(problems)
+    return result

@@ -64,6 +64,8 @@ class WeekPlan:
     budget_minutes: int
     blocks: list[PlannedBlock] = field(default_factory=list)
     unplaced: list[Unplaced] = field(default_factory=list)
+    #: Things that went wrong while planning (for example the calendar could not be read).
+    problems: list[str] = field(default_factory=list)
 
     @property
     def planned_minutes(self) -> int:
