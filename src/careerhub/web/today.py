@@ -14,8 +14,9 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from careerhub.core.models import Interaction, Person, utcnow
+from careerhub.core.models import Application, Interaction, Job, Person, utcnow
 from careerhub.core.settings import load_settings
+from careerhub.modules.jobs.applications import CLOSED_STATUSES
 from careerhub.modules.jobs.reactions import reacted_job_ids
 from careerhub.modules.jobs.scoring import ranked_jobs
 from careerhub.web.shortlist import (
@@ -61,6 +62,8 @@ class FollowUp:
     summary: str | None
     due: datetime
     overdue_days: int
+    #: "person" (a logged interaction) or "application" (a follow-up date set in the Tracker).
+    kind: str = "person"
 
 
 @dataclass(frozen=True)
@@ -121,16 +124,41 @@ def _follow_ups(session: Session, now: datetime, zone: ZoneInfo) -> tuple[list[F
         .where(Interaction.follow_up_due.is_not(None), Interaction.follow_up_due <= end_of_today)
         .order_by(Interaction.follow_up_due, Interaction.id)
     ).all()
-    shown = []
-    for interaction, person in rows[:MAX_FOLLOW_UPS]:
+    items: list[FollowUp] = []
+    for interaction, person in rows:
         due = interaction.follow_up_due
         if due is None:  # the query keeps only follow-ups that are set
             continue
         company = person.company.name if person.company else None
-        shown.append(
+        items.append(
             FollowUp(person.full_name, company, interaction.summary, due, max(0, (now - due).days))
         )
-    return shown, max(0, len(rows) - MAX_FOLLOW_UPS)
+    # follow-up dates set on tracked applications count too (one place for "what is due")
+    applications = session.execute(
+        select(Application, Job)
+        .join(Job, Job.id == Application.job_id)
+        .where(
+            Application.follow_up_due.is_not(None),
+            Application.follow_up_due <= end_of_today,
+            Application.status.not_in(tuple(CLOSED_STATUSES)),
+        )
+    ).all()
+    for application, job in applications:
+        due = application.follow_up_due
+        if due is not None:
+            items.append(
+                FollowUp(
+                    job.title,
+                    job.company.name,
+                    application.next_step,
+                    due,
+                    max(0, (now - due).days),
+                    kind="application",
+                )
+            )
+    items.sort(key=lambda item: item.due)
+    shown = items[:MAX_FOLLOW_UPS]
+    return shown, max(0, len(items) - MAX_FOLLOW_UPS)
 
 
 def _deadlines(session: Session, today: date) -> list[Deadline]:

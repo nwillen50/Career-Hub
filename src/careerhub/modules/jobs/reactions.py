@@ -15,7 +15,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from careerhub.core.models import REACTIONS, REASONS, Feedback, Job, utcnow
-from careerhub.modules.jobs.applications import track
+from careerhub.modules.jobs.applications import sync_with_reaction
 
 #: How long after reacting the user may undo it.
 UNDO_SECONDS = 10
@@ -43,9 +43,10 @@ def react(
         raise ReactionError("That job no longer exists.")
     row = Feedback(job_id=job_id, reaction=reaction, reason=reason or None)
     session.add(row)
+    session.flush()
+    # one commit for the reaction and the tracker change, so they never disagree (CH-142)
+    sync_with_reaction(session, job_id, reaction, commit=False)
     session.commit()
-    if reaction in ("interested", "applied"):  # these start tracking the job (CH-142)
-        track(session, job_id, reaction)
     return row
 
 
@@ -65,6 +66,9 @@ def undo(
     if target is None or now - target.created_at > timedelta(seconds=UNDO_SECONDS):
         return False
     session.execute(delete(Feedback).where(Feedback.id == target.id))
+    session.flush()
+    session.expire_all()
+    sync_with_reaction(session, job_id, current_reaction(session, job_id), commit=False)
     session.commit()
     return True
 

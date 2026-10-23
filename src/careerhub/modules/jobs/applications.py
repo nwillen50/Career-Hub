@@ -10,7 +10,7 @@ import csv
 import io
 from collections.abc import Collection
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -50,6 +50,15 @@ STATUS_LABELS = {
 }
 
 
+#: How far along a status is; a reaction may move an application forward, never back.
+_RANK = {
+    "interested": 0, "reached_out": 1, "applied": 2, "interviewing": 3, "offer": 4,
+    "rejected": 5, "withdrawn": 5, "ghosted": 5,
+}  # fmt: skip
+#: Statuses where nothing more is due (no follow-up or deadline to chase).
+CLOSED_STATUSES = frozenset({"rejected", "withdrawn", "ghosted"})
+
+
 class TrackerError(ValueError):
     """The change can't be made; the message says why in plain words."""
 
@@ -69,8 +78,19 @@ class TrackerRow:
     deadline: str | None
 
 
-def track(session: Session, job_id: int, status: str, now: datetime | None = None) -> Application:
-    """Start tracking a job, or change its status. "Applied" stamps the date the first time."""
+def track(
+    session: Session,
+    job_id: int,
+    status: str,
+    now: datetime | None = None,
+    forward_only: bool = False,
+    commit: bool = True,
+) -> Application:
+    """Start tracking a job, or change its status. "Applied" stamps the date the first time.
+
+    With `forward_only` (a reaction on a card) the status never moves back: clicking Interested on
+    a job you are interviewing for leaves it Interviewing.
+    """
     if status not in APPLICATION_STATUSES:
         raise TrackerError(f"Unknown status {status!r}.")
     if session.get(Job, job_id) is None:
@@ -80,11 +100,42 @@ def track(session: Session, job_id: int, status: str, now: datetime | None = Non
     if application is None:
         application = Application(job_id=job_id, status=status)
         session.add(application)
-    application.status = status
-    if status == "applied" and application.applied_at is None:
+    if not (forward_only and _RANK[application.status] >= _RANK[status]):
+        application.status = status
+    if application.status == "applied" and application.applied_at is None:
         application.applied_at = now
-    session.commit()
+    if commit:
+        session.commit()
     return application
+
+
+def sync_with_reaction(
+    session: Session, job_id: int, newest: str | None, commit: bool = True
+) -> None:
+    """Keep the tracker in line with the newest reaction to a job.
+
+    Interested or Applied start tracking (never moving a status back). If the newest reaction is
+    now "not interested", or none is left (an undo), an application that only the reaction created
+    (still interested or applied, nothing of yours added to it) is removed.
+    """
+    if newest in ("interested", "applied"):
+        track(session, job_id, newest, forward_only=True, commit=False)
+    else:
+        application = session.scalars(
+            select(Application).where(Application.job_id == job_id)
+        ).first()
+        untouched = application is not None and not any(
+            (application.next_step, application.follow_up_due, application.referrer,
+             application.resume_variant)
+        )  # fmt: skip
+        if (
+            application is not None
+            and untouched
+            and application.status in ("interested", "applied")
+        ):
+            session.delete(application)
+    if commit:
+        session.commit()
 
 
 def set_follow_up(session: Session, application_id: int, due: datetime | None) -> Application:
@@ -171,7 +222,11 @@ def _in_view(session: Session, view: str, a: Application, job: Job, now: datetim
     if view == "all":
         return True
     if view == "followups_due":
-        return a.follow_up_due is not None and a.follow_up_due <= now
+        return (
+            a.follow_up_due is not None
+            and a.follow_up_due <= now
+            and a.status not in CLOSED_STATUSES
+        )
     if view == "applied_no_reply":
         return (
             a.status == "applied"
@@ -182,11 +237,13 @@ def _in_view(session: Session, view: str, a: Application, job: Job, now: datetim
     if view == "interviewing":
         return a.status == "interviewing"
     if view == "deadlines_week":
-        due = _deadline(job)
-        return (
-            due is not None
-            and now.date().isoformat() <= due <= (now + timedelta(days=7)).date().isoformat()
-        )
+        if a.status in CLOSED_STATUSES:
+            return False
+        try:
+            due = date.fromisoformat((_deadline(job) or "")[:10])  # "...T17:00" is that day
+        except ValueError:
+            return False
+        return now.date() <= due <= (now + timedelta(days=7)).date()
     if view == "interested_stale":
         return a.status == "interested" and a.created_at <= now - timedelta(
             days=STALE_INTEREST_DAYS

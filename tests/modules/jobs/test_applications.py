@@ -185,3 +185,51 @@ def test_csv_export_is_plain_and_safe_to_open_in_a_spreadsheet(session: Session)
     assert rows[1][0].startswith("'=") and rows[1][5].startswith("'+")
     assert rows[1][2] == "Applied" and rows[1][3] == NOW.date().isoformat()
     assert export_csv([]).count("\n") == 1  # just the header
+
+
+def test_a_reaction_never_moves_a_tracked_job_backwards(session: Session) -> None:
+    """Review: Interested on a job you are interviewing for reset it to Interested."""
+    a = job(session, 1)
+    track(session, a.id, "interviewing", NOW)
+    react(session, a.id, "interested")
+    assert tracker_rows(session)[0].status == "interviewing"
+    react(session, a.id, "applied")
+    assert tracker_rows(session)[0].status == "interviewing"
+
+
+def test_not_interested_and_undo_take_a_reaction_made_application_back_out(
+    session: Session,
+) -> None:
+    from careerhub.modules.jobs.reactions import undo
+
+    a, b, c = job(session, 1), job(session, 2), job(session, 3)
+    react(session, a.id, "interested")
+    react(session, a.id, "not_interested", "pay")
+    assert tracker_rows(session) == []  # changed your mind: no longer tracked
+    row = react(session, b.id, "applied")
+    assert [r.status for r in tracker_rows(session)] == ["applied"]
+    assert undo(session, b.id, row.id)
+    assert tracker_rows(session) == []  # the undo took the application back too
+    kept = track(session, c.id, "applied", NOW)
+    set_next_step(session, kept.id, "email the recruiter")
+    react(session, c.id, "not_interested")
+    assert [r.title for r in tracker_rows(session)] == ["Role 3"]  # your own notes keep it
+
+
+def test_closed_applications_do_not_show_in_the_follow_up_or_deadline_views(
+    session: Session,
+) -> None:
+    soon = (NOW + timedelta(days=2)).date().isoformat()
+    open_one = track(session, job(session, 1, deadline=soon).id, "applied", NOW)
+    closed = track(session, job(session, 2, deadline=soon).id, "rejected", NOW)
+    for application in (open_one, closed):
+        set_follow_up(session, application.id, NOW - timedelta(days=1))
+    assert keys(tracker_rows(session, "followups_due", now=NOW)) == ["Role 1"]
+    assert keys(tracker_rows(session, "deadlines_week", now=NOW)) == ["Role 1"]
+
+
+def test_a_deadline_with_a_time_counts_on_its_day(session: Session) -> None:
+    """Review: '2026-10-30T17:00:00' was compared as text and dropped on its last day."""
+    last_day = (NOW + timedelta(days=7)).date().isoformat() + "T17:00:00"
+    track(session, job(session, 1, deadline=last_day).id, "interested", NOW)
+    assert keys(tracker_rows(session, "deadlines_week", now=NOW)) == ["Role 1"]
