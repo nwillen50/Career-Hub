@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, CheckConstraint, Float, ForeignKey, Index, String, Text
+from sqlalchemy import JSON, Boolean, CheckConstraint, Float, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from careerhub.core.models.base import Base, TimestampMixin, UTCDateTime
@@ -94,6 +94,8 @@ class Interaction(TimestampMixin, Base):
     channel: Mapped[str] = mapped_column(String(50))
     summary: Mapped[str | None] = mapped_column(Text)
     follow_up_due: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    #: True once the user has dealt with the follow-up; Today and the menu-bar count then skip it.
+    follow_up_done: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     person: Mapped[Person] = relationship(back_populates="interactions")
 

@@ -20,7 +20,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from careerhub.core.models import Job, Source
-from careerhub.modules.jobs.ingest import FetchError, ingest_source
+from careerhub.modules.jobs.ingest import FetchError, ingest_source, retryable_status
 from careerhub.modules.jobs.sources import require_approved
 from careerhub.modules.jobs.store import IngestReport, NormalizedJob
 
@@ -87,9 +87,14 @@ def fetch_greenhouse(source: Source, client: httpx.Client | None = None) -> list
     try:
         reply = http.get(f"{API_BASE}/{token}/jobs", params={"content": "true"})
     except httpx.HTTPError as error:
-        raise FetchError(f"Greenhouse request failed ({type(error).__name__}).") from None
+        raise FetchError(
+            f"Greenhouse request failed ({type(error).__name__}).", retryable=True
+        ) from None
     if reply.status_code != 200:
-        raise FetchError(f"Greenhouse answered HTTP {reply.status_code} for board {token!r}.")
+        raise FetchError(
+            f"Greenhouse answered HTTP {reply.status_code} for board {token!r}.",
+            retryable=retryable_status(reply.status_code),
+        )
     try:
         records = reply.json()["jobs"]
         return [normalize(record, source.name) for record in records]

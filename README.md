@@ -23,7 +23,7 @@ piece of work is a ticket (`CH-1`, `CH-2`, ...) on the project board.
 | 1 | Repo and core: data models, encrypted storage, secrets, settings, logging | A | Built |
 | 2 | Model router: providers, privacy tiers, validation, caching, cost | A | Built |
 | 3 | Profile: resume, transcript, preferences, LinkedIn connections, scoring rubric | A | Built |
-| 4 | Job sources (Greenhouse now; Lever, Ashby, The Muse, pasted links next), deduplication | A | Built, more to come |
+| 4 | Job sources (Greenhouse, Lever, Ashby, The Muse, pasted links), company boards, deduplication | A | Built |
 | 5 | Understand: postings into structured fields | A | Built |
 | 6 | Prioritize: filters, scoring, explanations, nightly shortlist | **A: ranked shortlist** | Built |
 | 7 | Network: who you know at each company | B | Built |
@@ -38,14 +38,23 @@ From the terminal (the web app comes in step 9), `hub` can:
 | Command | What it does |
 | --- | --- |
 | `hub profile show` | Print your parsed profile, preferences, and what's missing (never resume or transcript text) |
+| `hub profile ready`, `hub profile facts` | Check the profile and switch scoring on; review facts read from your resume and transcript (`accept`, `reject`) |
 | `hub sources add`, `list`, `approve`, `reject`, `disable` | Propose a job source and decide on it; nothing is fetched until you approve |
-| `hub ingest greenhouse --company <board>` | Fetch one approved company's postings |
+| `hub ingest greenhouse`, `lever`, `ashby --company <board>` | Fetch one approved company's postings |
+| `hub targets find-boards`, `note`, `import`, `list`, `enable`, `disable`, `enable-matching` | Companies you follow, and finding each one's job board |
+| `hub add-job <url>` | Add a job from any link (LinkedIn and Handshake pages are never fetched; you give the company and title, or paste the text) |
+| `hub companies suggestions`, `merge`, `skip` | Answer suggestions about near-duplicate company names |
+| `hub models list`, `add`, `remove`, `add-custom`, `routes` | See and switch on models (keys go to the Keychain), and which model each task uses |
+| `hub cache clear [--expired]` | Delete saved model answers |
 | `hub nightly` | Run the whole pipeline once: ingest, extract, filter, score, tailor, write the shortlist page (with warm paths), back up |
 | `hub shortlist build` | Write the shortlist page to your data folder |
 | `hub paths <company>` | Who you know at a company, strongest first, with reasons |
-| `hub people find`, `tag`, `import-alumni` | Find people, record how you know them, import an alumni list |
+| `hub people find`, `tag`, `import-alumni` (also `hub alumni import`) | Find people, record how you know them, import an alumni list in any common layout |
 | `hub plan` | Suggested blocks for the next 7 days from your free time and time budget |
 | `hub schedule install` | Write the nightly launchd job and print the command that starts it |
+
+Checks that need your real Mac (Keychain, launchd, calendar) are listed in
+[`docs/mac-session.md`](docs/mac-session.md).
 
 ## Models and cost
 

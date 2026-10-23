@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from careerhub.cli import _add_job
 from careerhub.core.migrate import migrate
-from careerhub.core.models import Job, Source
+from careerhub.core.models import Company, Job, Source
 from careerhub.core.secrets import new_database_key
 from careerhub.core.storage import open_engine, session_factory
 from careerhub.modules.jobs import NormalizedJob, approve_source, propose_source, store_jobs
@@ -290,3 +290,87 @@ def test_a_closed_ats_posting_can_still_be_added_from_pasted_text(session: Sessi
         add_job(session, GH_URL, client=http)
     result = add_job(session, GH_URL, "Acme", "Engineer", "Pasted text.", http)
     assert result.how == "stored from the text you pasted" and result.job.url == GH_URL
+
+
+def test_a_link_pasted_under_an_old_company_name_finds_the_job_under_the_new_name(
+    session: Session,
+) -> None:
+    """CH-130: aliases apply to pasted links too."""
+    aliases = {"old name": "name now"}
+    board = approve_source(
+        session, propose_source(session, "greenhouse", "Name Now", "u", {"board": "namenow"}).id
+    )
+    store_jobs(
+        session,
+        board,
+        [NormalizedJob("Name Now", "g1", "ML Engineer", "https://g/1", "Boston")],
+        aliases=aliases,
+    )
+    seen: list[httpx.Request] = []
+    result = add_job(
+        session, LINKEDIN, "Old Name", "ML Engineer", None, client({}, seen), aliases=aliases
+    )
+    assert "already in your list" in result.how and seen == []
+    assert len(session.scalars(select(Job)).all()) == 1
+
+
+def test_a_pasted_job_is_stored_under_the_aliased_company(session: Session) -> None:
+    aliases = {"old name": "name now"}
+    first = add_job(session, LINKEDIN, "Name Now", "Dev", "text", client({}, []), aliases=aliases)
+    second = add_job(
+        session, HANDSHAKE, "Old Name", "Tester", "text", client({}, []), aliases=aliases
+    )
+    assert first.job.company_id == second.job.company_id
+
+
+def test_the_company_board_refresh_keeps_the_aliases(session: Session) -> None:
+    aliases = {"old name": "name now"}
+    approve_source(
+        session,
+        propose_source(
+            session, "greenhouse", "Name Now", "https://boards.greenhouse.io/nn", {"board": "nn"}
+        ).id,
+    )
+    listing = {
+        "jobs": [{"id": 5, "title": "ML Engineer", "absolute_url": "https://g/5", "content": ""}]
+    }
+    http = client({"boards-api.greenhouse.io/v1/boards/nn/jobs": listing}, [])
+    add_job(session, LINKEDIN, "Old Name", "ML Engineer", None, http, aliases=aliases)
+    # the board's company is "Name Now"; the job must sit on that one company
+    names = {c.name_key for c in session.scalars(select(Company))}
+    assert names == {"name now"}
+
+
+def test_a_manual_job_can_be_closed_and_reopened_but_never_a_feed_job(session: Session) -> None:
+    """CH-135: only jobs added by link are closed by hand; nothing is deleted."""
+    from careerhub.modules.jobs.manual import set_manual_job_closed
+
+    manual = add_job(session, LINKEDIN, "Acme", "Dev", "text", client({}, [])).job
+    board = approve_source(
+        session, propose_source(session, "greenhouse", "Acme", "u", {"board": "acme"}).id
+    )
+    store_jobs(session, board, [NormalizedJob("Acme", "g1", "Other", "https://g/1", "Boston")])
+    feed_job = session.scalars(select(Job).where(Job.external_id == "g1")).one()
+
+    set_manual_job_closed(session, manual.id, True)
+    assert session.get(Job, manual.id).status == "closed"  # type: ignore[union-attr]
+    set_manual_job_closed(session, manual.id, False)
+    assert session.get(Job, manual.id).status == "new"  # type: ignore[union-attr]
+    with pytest.raises(ManualJobError, match="added by link"):
+        set_manual_job_closed(session, feed_job.id, True)
+    with pytest.raises(ManualJobError, match="No job"):
+        set_manual_job_closed(session, 999, True)
+    assert len(session.scalars(select(Job)).all()) == 2  # nothing deleted
+
+
+def test_hub_jobs_close_asks_first(session: Session, capsys: pytest.CaptureFixture[str]) -> None:
+    from careerhub.cli import _jobs_close
+
+    job = add_job(session, LINKEDIN, "Acme", "Dev", "text", client({}, [])).job
+    assert _jobs_close(session, True, job.id, ask=lambda prompt: "n") == 1
+    assert session.get(Job, job.id).status == "new"  # type: ignore[union-attr]
+    assert _jobs_close(session, True, job.id, ask=lambda prompt: "y") == 0
+    assert session.get(Job, job.id).status == "closed"  # type: ignore[union-attr]
+    assert _jobs_close(session, False, job.id, ask=lambda prompt: "yes") == 0
+    assert _jobs_close(session, True, 999, ask=lambda prompt: "y") == 1
+    assert "No job numbered 999" in capsys.readouterr().out
