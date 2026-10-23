@@ -22,6 +22,7 @@ from careerhub.core.models import Assessment, Job
 from careerhub.core.names import company_key
 from careerhub.modules.jobs.extract import JobFields
 from careerhub.modules.jobs.places import country_matches, parse_places
+from careerhub.modules.jobs.visa import visa_flag
 from careerhub.profile.eligibility import Eligibility, rank
 from careerhub.profile.models import HardConstraints
 
@@ -216,7 +217,12 @@ def apply_filters(
             uncertain.append("no salary was listed")
         elif top < constraints.min_salary_usd:
             reasons.append(f"pay tops out at ${top:,}, below your ${constraints.min_salary_usd:,}")
-    _eligibility(fields, eligibility or Eligibility(), reasons, uncertain)
+    me = eligibility or Eligibility()
+    _eligibility(fields, me, reasons, uncertain)
+    if constraints.hide_no_visa_abroad and fields is not None:
+        flag = visa_flag(fields, job.location, me.work_rights)
+        if flag is not None and flag.posting_refuses:  # known facts only; "not stated" passes
+            reasons.append(f"{flag.text[0].lower()}{flag.text[1:]}")
     return FilterResult(not reasons, reasons, uncertain)
 
 
