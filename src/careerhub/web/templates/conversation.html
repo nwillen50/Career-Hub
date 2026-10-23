@@ -10,8 +10,8 @@
   <article class="card">
     <h3>{{ item.title }}</h3>
     <pre class="posting">{{ item.diff }}</pre>
-    <form method="post" action="/proposals/{{ item.id }}/accept" class="inline-form"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Accept</button></form>
-    <form method="post" action="/proposals/{{ item.id }}/reject" class="inline-form"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Reject</button></form>
+    <form method="post" action="/proposals/{{ item.id }}/accept" class="inline-form"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" aria-label="Accept: {{ item.title }}">Accept</button></form>
+    <form method="post" action="/proposals/{{ item.id }}/reject" class="inline-form"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" aria-label="Reject: {{ item.title }}">Reject</button></form>
   </article>
   {% endfor %}
 </section>

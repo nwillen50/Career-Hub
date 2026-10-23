@@ -213,3 +213,61 @@ def test_deciding_needs_the_csrf_token_and_unknown_suggestions_are_friendly(
     assert page.status_code == 200 and "no longer waiting" in page.text
     assert post(c, "/proposals/1/launch").status_code == 404
     assert json.loads(PreferenceChange(key="remote_ok", action="set", value=True).model_dump_json())
+
+
+def test_a_failed_write_leaves_the_old_file_whole_and_the_suggestion_pending(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review: a write that failed halfway left preferences.yaml empty."""
+    import os
+
+    proposal = propose(session, SALES)
+
+    def failing_replace(source: Any, target: Any) -> None:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(os, "replace", failing_replace)
+    with pytest.raises(ProposalError, match="nothing was changed"):
+        accept(session, proposal.id)
+    assert preferences_path().read_text(encoding="utf-8") == PREFS
+    session.expire_all()
+    assert session.get(Proposal, proposal.id).status == "pending"  # type: ignore[union-attr]
+
+
+def test_backups_are_private_and_two_accepts_in_one_second_keep_both(session: Session) -> None:
+    now = utcnow()
+    other = PreferenceChange(key="excluded_companies", action="add", value="Acme")
+    first, second = propose(session, SALES), propose(session, other)
+    accept(session, first.id, now)
+    after_first = preferences_path().read_text(encoding="utf-8")
+    accept(session, second.id, now)
+    backups = sorted(preferences_path().parent.glob("preferences.yaml.before-*"))
+    assert len(backups) == 2
+    texts = {b.read_text(encoding="utf-8") for b in backups}
+    assert PREFS in texts and after_first in texts  # the original is never overwritten
+    assert all(oct(b.stat().st_mode & 0o777) == "0o600" for b in backups)
+
+
+def test_accept_refuses_when_the_file_changed_since_the_diff_was_shown(session: Session) -> None:
+    """Review: the file got a different result than the diff the user approved."""
+    proposal = propose(session, SALES)
+    preferences_path().write_text(PREFS.replace("[intern]", "[intern, zzz]"), encoding="utf-8")
+    with pytest.raises(ProposalError, match="changed since this was suggested"):
+        accept(session, proposal.id)
+    assert "sales" not in preferences_path().read_text(encoding="utf-8")
+
+
+def test_a_broken_preferences_file_does_not_waste_a_model_call_or_crash_the_chat(
+    session: Session,
+) -> None:
+    preferences_path().write_text("a: [unclosed", encoding="utf-8")
+    change = {"key": "excluded_title_words", "action": "add", "value": "sales"}
+    c = web(session, reply("ok", change))
+    page = post(c, "/conversation", "question=add+sales")
+    assert page.status_code in (200, 303) and "Traceback" not in page.text
+
+
+def test_accept_and_reject_buttons_name_their_suggestion(session: Session) -> None:
+    propose(session, SALES)
+    page = web(session, reply("ok")).get("/conversation").text
+    assert 'aria-label="Accept: Add &#39;sales&#39; to excluded title words"' in page

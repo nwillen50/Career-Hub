@@ -21,6 +21,7 @@ from careerhub.llm.providers import ProviderError
 from careerhub.llm.validated import ValidationFailed, complete_validated
 from careerhub.modules.jobs.scoring import current_rank_adjustments, ranked_jobs, rubric_text
 from careerhub.modules.proposals import ConversationProposal, ProposalError, propose
+from careerhub.profile.files import ProfileFileError
 from careerhub.profile.redact import personal_text
 from careerhub.profile.rubric import Rubric
 from careerhub.prompts import load_prompt, render
@@ -139,7 +140,7 @@ def ask(
     if parsed.change is not None:
         try:
             proposal_id = propose(session, parsed.change).id
-        except ProposalError as problem:
+        except (ProposalError, ProfileFileError) as problem:
             reply = f"{reply}\n\n(Not suggested: {problem})"
     session.add_all(
         [

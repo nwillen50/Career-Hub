@@ -10,8 +10,9 @@ declined is not proposed again for `proposal_repeat_days`.
 from __future__ import annotations
 
 import json
-import shutil
+import os
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Literal
 
 import yaml
@@ -185,26 +186,63 @@ def _pending(session: Session, proposal_id: int) -> Proposal:
     return proposal
 
 
+def _write_whole(path: Path, text: str) -> None:
+    """Write `text` to `path` whole or not at all: a temporary file beside it, then a rename."""
+    temporary = path.with_name(path.name + ".tmp")
+    write_private(temporary, text)
+    os.replace(temporary, path)
+
+
+def _free_backup_name(path: Path, when: datetime) -> Path:
+    """Return an unused `.before-<time>` name beside `path` (a counter breaks ties)."""
+    base = f"{path.name}.before-{when:%Y%m%d-%H%M%S-%f}"
+    candidate = path.with_name(base)
+    counter = 1
+    while candidate.exists():
+        counter += 1
+        candidate = path.with_name(f"{base}-{counter}")
+    return candidate
+
+
 def accept(session: Session, proposal_id: int, now: datetime | None = None) -> Proposal:
-    """Apply a pending proposal to preferences.yaml (keeping a backup copy), mark it accepted."""
+    """Apply a pending proposal to preferences.yaml (keeping a backup copy), mark it accepted.
+
+    The change is applied only if the file still shows the same before/after the user saw.
+    """
     proposal = _pending(session, proposal_id)
     change = PreferenceChange.model_validate_json(proposal.body or "{}")
+    when = now or utcnow()
     try:
-        new = apply_change(_current(), change)
+        current = _current()
+        new = apply_change(current, change)
         Preferences.model_validate(new)
     except (ProfileFileError, ValidationError, ProposalError):
         raise ProposalError(
             "preferences.yaml has changed or has a problem, so the change was not applied."
         ) from None
+    if render_diff(current, new, change.key) != proposal.diff:
+        raise ProposalError(
+            "Your preferences changed since this was suggested, so it was not applied. "
+            "Ask again to get a fresh suggestion."
+        )
     path = preferences_path()
-    if path.exists():
-        backup = path.with_name(f"{path.name}.before-{(now or utcnow()):%Y%m%d-%H%M%S}")
-        shutil.copyfile(path, backup)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    write_private(path, yaml.safe_dump(new, sort_keys=False, allow_unicode=True))
-    proposal.status = "accepted"
-    proposal.decided_at = now or utcnow()
-    session.commit()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            backup = _free_backup_name(path, when)
+            with open(backup, "x", encoding="utf-8") as handle:
+                os.chmod(backup, 0o600)
+                handle.write(path.read_text(encoding="utf-8"))
+        proposal.status = "accepted"
+        proposal.decided_at = when
+        session.flush()
+        _write_whole(path, yaml.safe_dump(new, sort_keys=False, allow_unicode=True))
+        session.commit()
+    except OSError:
+        session.rollback()
+        raise ProposalError(
+            "preferences.yaml could not be written, so nothing was changed."
+        ) from None
     return proposal
 
 
