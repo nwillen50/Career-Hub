@@ -25,6 +25,7 @@ from careerhub.llm import LLMRequest, PrivacyTier, Router
 from careerhub.llm.validated import complete_validated_detailed
 from careerhub.modules.jobs.age import age_days
 from careerhub.modules.jobs.store import only_visible_copies
+from careerhub.profile.changes import build_snapshot
 from careerhub.profile.extract import ProfileFacts
 from careerhub.profile.facts import accepted_facts, facts_text
 from careerhub.profile.files import ProfileFileError, load_preferences
@@ -80,9 +81,31 @@ def profile_text(doc: ProfileDoc, facts: ProfileFacts | None = None) -> str:
     return personal_text("\n".join(lines), doc.name, doc.aliases)
 
 
-def rubric_text(rubric: Rubric) -> str:
-    """List the criteria with their weights and descriptions."""
-    return "\n".join(f"- {c.name} (weight {c.weight:g}): {c.description}" for c in rubric.criteria)
+def safe_rubric(rubric: Rubric, name: str = "", aliases: Sequence[str] = ()) -> Rubric:
+    """Return `rubric` with each criterion's name and description made safe for a cloud model.
+
+    The user writes rubric.yaml by hand, so it goes through `personal_text` like the profile: a
+    name, email, phone number, or link typed into a criterion can't reach a model. The same safe
+    copy is used to check the model's answer, so a redacted name still matches (CH-133).
+    """
+    criteria = [
+        c.model_copy(
+            update={
+                "name": personal_text(c.name, name, aliases) or c.name,
+                "description": personal_text(c.description, name, aliases),
+            }
+        )
+        for c in rubric.criteria
+    ]
+    return rubric.model_copy(update={"criteria": criteria})
+
+
+def rubric_text(rubric: Rubric, name: str = "", aliases: Sequence[str] = ()) -> str:
+    """List the criteria with their weights and descriptions, as safe for a cloud model."""
+    return "\n".join(
+        f"- {c.name} (weight {c.weight:g}): {c.description}"
+        for c in safe_rubric(rubric, name, aliases).criteria
+    )
 
 
 def combine(rubric: Rubric, answer: ScoreAnswer) -> float:
@@ -160,20 +183,47 @@ def input_hash(
     doc: ProfileDoc,
     facts: ProfileFacts | None = None,
     preferences: Preferences | None = None,
+    profile_epoch: int | None = None,
 ) -> str:
-    """Hash what a score depends on besides the prompt and rubric: profile, posting, and facts."""
+    """Hash what a score depends on besides the prompt and rubric: profile, posting, and facts.
+
+    With a `profile_epoch` (the nightly run, CH-115) the profile enters the hash only as that
+    number, which rises when the profile has changed meaningfully; without one, every change counts.
+    """
+    profile = (
+        [f"profile-epoch:{profile_epoch}"]
+        if profile_epoch is not None
+        else [profile_text(doc, facts), preferences_text(doc, preferences)]
+    )
     material = json.dumps(
-        [
-            profile_text(doc, facts),
-            job.title,
-            job.raw_text or "",
-            posting_facts(job),
-            preferences_text(doc, preferences),
-        ],
+        [*profile, job.title, job.raw_text or "", posting_facts(job)],
         sort_keys=True,
         default=str,
     )
     return hashlib.sha256(material.encode()).hexdigest()
+
+
+def profile_snapshot(
+    doc: ProfileDoc, facts: ProfileFacts | None, preferences: Preferences | None
+) -> dict[str, list[str]]:
+    """Describe the profile for change detection (see `profile/changes.py`).
+
+    Everything goes through `personal_text` first, so the stored snapshot holds only what a model
+    would be sent: no name, email, phone number, or link.
+    """
+
+    def safe(text: str) -> str:
+        return personal_text(text, doc.name, doc.aliases)
+
+    skills = [*doc.skills, *(facts.skills if facts else [])]
+    return build_snapshot(
+        education=[safe(f"{e.degree} {e.school}") for e in doc.education],
+        skills=[safe(skill) for skill in skills],
+        interests=[safe(item) for item in doc.interests],
+        preferences=[safe(line) for line in preferences_text(doc, preferences).splitlines()],
+        about=safe(doc.about),
+        facts=safe(facts_text(facts, doc)),
+    )
 
 
 def build_request(
@@ -187,7 +237,7 @@ def build_request(
     prompt = render(
         load_prompt(PROMPT_NAME, PROMPT_VERSION),
         profile=profile_text(doc, facts),
-        rubric=rubric_text(rubric),
+        rubric=rubric_text(rubric, doc.name, doc.aliases),
         company=job.company.name,
         title=job.title,
         preferences=preferences_text(doc, preferences),
@@ -205,13 +255,14 @@ def score_job(
     rubric: Rubric,
     routes: Sequence[str],
     preferences: Preferences | None = None,
+    profile_epoch: int | None = None,
 ) -> Assessment | None:
     """Score `job` and save it. Returns None if it failed a filter or is already scored."""
     assessment = session.scalars(select(Assessment).where(Assessment.job_id == job.id)).first()
     if assessment is None or not assessment.filter_passed:
         return None  # run the filters first; filtered jobs are not scored
     facts = accepted_facts(session)
-    digest = input_hash(job, doc, facts, preferences)
+    digest = input_hash(job, doc, facts, preferences, profile_epoch)
     if (
         assessment.fit_score is not None
         and assessment.prompt_version == PROMPT_VERSION
@@ -219,14 +270,15 @@ def score_job(
         and assessment.input_hash == digest
     ):
         return None
+    safe = safe_rubric(rubric, doc.name, doc.aliases)  # what the model sees, and answers by name
     answer, response = complete_validated_detailed(
         router,
-        build_request(job, doc, rubric, facts, preferences),
+        build_request(job, doc, safe, facts, preferences),
         ScoreAnswer,
         routes,
-        check=lambda parsed: combine(rubric, parsed),
+        check=lambda parsed: combine(safe, parsed),
     )
-    assessment.fit_score = combine(rubric, answer)
+    assessment.fit_score = combine(safe, answer)
     assessment.criteria_scores = [item.model_dump() for item in answer.criteria]
     assessment.explanation = answer.explanation
     assessment.model_used = f"{response.provider}:{response.model}"
