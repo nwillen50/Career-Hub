@@ -13,6 +13,7 @@ from careerhub.core.models.base import (
     UTCDateTime,
     utcnow,
 )
+from careerhub.core.models.conversation import ROLES, ConversationMessage
 from careerhub.core.models.core_tables import (
     Company,
     Interaction,
@@ -34,6 +35,7 @@ __all__ = [
     "NAMING_CONVENTION",
     "Base",
     "Company",
+    "ConversationMessage",
     "Feedback",
     "JOB_STATUSES",
     "Interaction",
@@ -42,6 +44,7 @@ __all__ = [
     "LLMUsage",
     "Person",
     "REACTIONS",
+    "ROLES",
     "REASONS",
     "ProfileExtraction",
     "Proposal",

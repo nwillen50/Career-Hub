@@ -4,6 +4,7 @@
     "extract": ["gemini-free", "local-8b"],
     "score": ["claude-haiku", "claude-sonnet"],
     "tailor": ["claude-haiku", "local-8b"],
-    "profile_extract": ["claude-haiku", "local-8b"]
+    "profile_extract": ["claude-haiku", "local-8b"],
+    "chat": ["claude-haiku", "local-8b"]
   }
 }

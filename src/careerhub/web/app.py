@@ -36,11 +36,14 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from careerhub.core.migrate import migrate
-from careerhub.core.models import Application, utcnow
+from careerhub.core.models import Application, Job, utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
-from careerhub.core.settings import SettingsError
+from careerhub.core.settings import SettingsError, load_settings
 from careerhub.core.storage import StorageError, open_database, session_factory
-from careerhub.llm.catalog import ollama_is_running
+from careerhub.llm import Router
+from careerhub.llm.catalog import ollama_is_running, with_catalog
+from careerhub.llm.setup import NoRoute, build_router, routes_for
+from careerhub.modules.conversation import ask, build_context, recent_messages
 from careerhub.modules.jobs.applications import (
     TrackerError,
     set_follow_up,
@@ -54,7 +57,11 @@ from careerhub.modules.jobs.reactions import (
     reacted_job_ids,
     undo,
 )
-from careerhub.profile.files import ProfileFileError
+from careerhub.modules.proposals import ProposalError, pending_proposals
+from careerhub.modules.proposals import accept as accept_proposal
+from careerhub.modules.proposals import reject as reject_proposal
+from careerhub.profile.files import ProfileFileError, load_profile_doc
+from careerhub.profile.rubric import load_rubric
 from careerhub.web.job_detail import gather_job
 from careerhub.web.plan_view import gather_plan
 from careerhub.web.status_view import gather_status
@@ -140,6 +147,24 @@ def make_session_opener(store: KeyStore | None = None) -> Callable[[], Session]:
     return open_session
 
 
+def make_router_opener(
+    store: KeyStore | None = None,
+) -> Callable[[], tuple[Router, list[str]]]:
+    """Return a function that builds the model router and the providers to try for "chat".
+
+    Raises `NoRoute` (from `routes_for`) when no usable model is set up for chat.
+    """
+
+    def open_router() -> tuple[Router, list[str]]:
+        keys = store or KeychainKeyStore()
+        sessions = session_factory(open_database(keys, one_connection_per_use=True))
+        settings = with_catalog(load_settings(), keys, ollama_is_running).settings
+        setup = build_router(settings, keys, sessions)
+        return setup.router, routes_for(settings, "chat", setup.built)
+
+    return open_router
+
+
 def create_app(
     token: str,
     port: int,
@@ -147,6 +172,7 @@ def create_app(
     open_session: Callable[[], Session] | None = None,
     key_store: KeyStore | None = None,
     local_running: Callable[[], bool] = ollama_is_running,
+    open_router: Callable[[], tuple[Router, list[str]]] | None = None,
 ) -> FastAPI:
     """Build the app. `token` is this start's secret; `check_database` says if data is usable.
 
@@ -503,6 +529,82 @@ def create_app(
         return templates.TemplateResponse(
             request, "tracker_row.html", tracker_context(request, row=row, error=error)
         )
+
+    def conversation_page(
+        request: Request, session: Session, job_id: int | None, note: str | None = None
+    ) -> Response:
+        job = session.get(Job, job_id) if job_id is not None else None
+        return templates.TemplateResponse(
+            request,
+            "conversation.html",
+            {
+                "tabs": TABS,
+                "current": "/today",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": "Ask a question",
+                "heading": "Ask a question",
+                "messages": recent_messages(session, job_id),
+                "job": job,
+                "job_id": job.id if job is not None else None,
+                "note": note,
+                "ready": open_router is not None,
+                "proposals": pending_proposals(session),
+            },
+        )
+
+    @app.get("/conversation", response_class=HTMLResponse)
+    def conversation(request: Request, job: int | None = None) -> Response:
+        if open_session is None:
+            return tab("/today")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/today")(request)
+        with open_session() as session:
+            return conversation_page(request, session, job)
+
+    @app.post("/conversation")
+    async def ask_question(request: Request) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data.", status_code=404)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"))
+        question = form.get("question", [""])[0]
+        raw_job = form.get("job", [""])[0]
+        job_id = int(raw_job) if raw_job.isdigit() and int(raw_job) < 2**63 else None
+        with open_session() as session:
+            if open_router is None:
+                return conversation_page(request, session, job_id, "No model is set up yet.")
+            try:
+                router, routes = open_router()
+            except NoRoute:
+                return conversation_page(
+                    request,
+                    session,
+                    job_id,
+                    "No model is set up for questions yet. Run `hub models add` in the terminal.",
+                )
+            doc = load_profile_doc()
+            name, aliases = (doc.name, doc.aliases) if doc else ("", [])
+            context = build_context(session, load_rubric(), name, aliases, job_id)
+            answer = ask(session, router, routes, question, context, name, aliases, job_id)
+            if answer.ok:
+                return RedirectResponse(
+                    "/conversation" + (f"?job={job_id}" if job_id else ""), status_code=303
+                )
+            return conversation_page(request, session, job_id, answer.text)
+
+    @app.post("/proposals/{proposal_id}/{decision}")
+    async def decide_proposal(request: Request, proposal_id: JobId, decision: str) -> Response:
+        if open_session is None or decision not in ("accept", "reject"):
+            return HTMLResponse("Not found.", status_code=404)
+        with open_session() as session:
+            try:
+                if decision == "accept":
+                    accept_proposal(session, proposal_id)
+                else:
+                    reject_proposal(session, proposal_id)
+            except ProposalError as problem:
+                return conversation_page(request, session, None, str(problem))
+        return RedirectResponse("/conversation", status_code=303)
 
     @app.post("/session/end")
     def end_session(request: Request) -> Response:

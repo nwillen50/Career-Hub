@@ -62,6 +62,9 @@ The columns match the PRD's "Core data model" table (ADR-0004): list-like fields
 - `backup_database(engine, keep)` writes `backups/careerhub-<UTC time>.db`, still encrypted with
   the same key, then removes older backups beyond `keep`. It only removes files matching its own
   naming pattern. Scheduling it nightly belongs to the schedule steps (CH-27, CH-34).
+- `restore_backup(file, new_folder, key)` copies a backup into a folder that must not exist yet,
+  opens it with the key, runs SQLite's integrity check and compares row counts with the backup.
+  It never writes over the live database. `hub backup list` and `hub backup restore` use it.
 
 ## `models` and `migrate` in brief
 

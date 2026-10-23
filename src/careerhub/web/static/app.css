@@ -47,3 +47,8 @@ tr.overdue td { border-bottom-color: var(--overdue); }
 .overdue-note { color: var(--overdue); }
 input, select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); }
+.ask { display: grid; gap: var(--space-2); max-width: 40rem; margin-top: var(--space-4); }
+textarea { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: var(--space-2); }
+.answer { border-left: 4px solid var(--brass-rule); }
+.inline-form { display: inline-block; margin-right: var(--space-2); }
