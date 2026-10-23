@@ -20,6 +20,25 @@ def start_run(session: Session, step: str) -> RunLog:
     return run
 
 
+def close_interrupted_runs(session: Session, step: str) -> int:
+    """Mark runs of `step` that never finished (still `running`) as failed "interrupted".
+
+    A run that was cut off (power loss, a closed lid, a killed process) leaves its row `running`
+    forever. Call this before starting the next run so the history says what really happened.
+    Returns how many rows were closed.
+    """
+    stuck = list(
+        session.scalars(select(RunLog).where(RunLog.step == step, RunLog.status == "running"))
+    )
+    for run in stuck:
+        run.status = "failed"
+        run.finished_at = utcnow()
+        run.error_summary = "interrupted"
+    if stuck:
+        session.commit()
+    return len(stuck)
+
+
 def finish_run(
     session: Session,
     run: RunLog,

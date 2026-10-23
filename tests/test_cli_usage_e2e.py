@@ -27,8 +27,11 @@ INVOCATIONS: dict[str, list[str]] = {
     "people tag": ["people", "tag", "1", "met", "at", "a", "talk"],
     "people import-alumni": ["people", "import-alumni", "MISSING.csv", "--preview"],
     "alumni import": ["alumni", "import", "MISSING.csv", "--preview"],
+    "alumni mappings": ["alumni", "mappings"],
     "schedule install": ["schedule", "install"],
     "nightly": ["nightly"],
+    "refresh": ["refresh"],
+    "backup list": ["backup", "list"],
     "attention": ["attention", "--json"],
     "web": ["web"],
     "add-job": [
@@ -39,6 +42,7 @@ INVOCATIONS: dict[str, list[str]] = {
         "--title",
         "Engineer",
     ],
+    "jobs close": ["jobs", "close", "1"],
     "companies": ["companies", "suggestions"],
     "targets find-boards": ["targets", "find-boards"],
     "targets list": ["targets", "list"],
@@ -50,6 +54,7 @@ INVOCATIONS: dict[str, list[str]] = {
     "cache clear": ["cache", "clear"],
     "profile ready": ["profile", "ready"],
     "profile facts": ["profile", "facts"],
+    "score --all": ["score", "--all"],
     "shortlist build": ["shortlist", "build"],
     "sources list": ["sources", "list"],
     "sources add": ["sources", "add", "greenhouse", "Acme", "https://boards.example.com/acme"],
@@ -65,11 +70,15 @@ COVERS = {
     "hub people find": "people find",
     "hub people tag": "people tag",
     "hub people import-alumni": "people import-alumni",
+    "hub alumni mappings": "alumni mappings",
     "hub schedule install": "schedule install",
     "hub nightly": "nightly",
+    "hub refresh": "refresh",
+    "hub backup list": "backup list",
     "hub attention": "attention",
     "hub web": "web",
     "hub add-job": "add-job",
+    "hub jobs close": "jobs close",
     "hub companies": "companies",
     "hub targets find-boards": "targets find-boards",
     "hub targets enable": "targets enable",
@@ -80,6 +89,7 @@ COVERS = {
     "hub cache clear": "cache clear",
     "hub profile ready": "profile ready",
     "hub profile facts": "profile facts",
+    "hub score --all": "score --all",
     "hub shortlist build": "shortlist build",
     "hub sources list": "sources list",
     "hub sources add": "sources add",
@@ -97,6 +107,7 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         raise OSError("network is off in tests")
 
     monkeypatch.setattr("uvicorn.run", lambda *args, **kwargs: None)  # `hub web` must not serve
+    monkeypatch.setattr("builtins.input", lambda *args: "n")  # any yes/no question gets "no"
     monkeypatch.setattr(socket, "create_connection", no_network)
     monkeypatch.setattr(socket.socket, "connect", no_network)
 

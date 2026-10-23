@@ -18,6 +18,7 @@ import sys
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 #: Files bigger than this are refused, so a huge file can't use all memory.
 MAX_FILE_BYTES = 20 * 1024 * 1024
@@ -113,8 +114,25 @@ def read_document(path: Path) -> DocumentText:
         return fail(f"The file could not be read ({type(error).__name__}).")
 
 
+def _page_list(numbers: list[int]) -> str:
+    """Write page numbers for a message: "page 2", "pages 2 and 3", "pages 1, 2 and 4"."""
+    if len(numbers) == 1:
+        return f"page {numbers[0]}"
+    return f"pages {', '.join(map(str, numbers[:-1]))} and {numbers[-1]}"
+
+
+def _scanned_message(numbers: list[int]) -> str:
+    """Say which pages were skipped as scanned."""
+    verb = "looks scanned and was" if len(numbers) == 1 else "look scanned and were"
+    return f"{_page_list(numbers).capitalize()} {verb} skipped (no text layer)."
+
+
 def _read_pdf(path: Path) -> DocumentText:
-    """Extract the text layer of a PDF, page by page."""
+    """Extract the text layer of a PDF, page by page.
+
+    A page with almost no text is scanned (an image). If every page is, nothing is returned; if only
+    some are, the text pages are returned and the problem names the skipped ones (CH-118).
+    """
     import pypdfium2 as pdfium
 
     pdf = pdfium.PdfDocument(str(path))
@@ -129,26 +147,67 @@ def _read_pdf(path: Path) -> DocumentText:
             page.close()
     finally:
         pdf.close()
-    text = "\n".join(" ".join(line.split()) for part in parts for line in part.splitlines()).strip()
-    if pages and len(text.replace("\n", "")) < SCANNED_CHARS_PER_PAGE * pages:
+    cleaned = ["\n".join(" ".join(line.split()) for line in part.splitlines()) for part in parts]
+    scanned = [
+        number
+        for number, text in enumerate(cleaned, start=1)
+        if len(text.replace("\n", "")) < SCANNED_CHARS_PER_PAGE
+    ]
+    if pages and len(scanned) == pages:
         return DocumentText(
             "",
             "pdf",
             pages,
             ("This PDF looks scanned (no text layer): it needs text recognition.",),
         )
-    return DocumentText(text, "pdf", pages)
+    text = "\n".join(
+        t for number, t in enumerate(cleaned, start=1) if number not in scanned
+    ).strip()
+    problems = (_scanned_message(scanned),) if scanned else ()
+    return DocumentText(text, "pdf", pages, problems)
+
+
+_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+
+
+def _table_lines(table: Any) -> list[str]:
+    """Return a table's rows as "cell | cell" lines, then the rows of tables nested in its cells."""
+    lines: list[str] = []
+    nested: list[Any] = []
+    for row in table.rows:
+        lines.append(" | ".join(cell.text for cell in row.cells))
+        for cell in row.cells:
+            nested.extend(cell.tables)
+    for inner in nested:
+        lines.extend(_table_lines(inner))
+    return lines
+
+
+def _text_box_lines(document: Any) -> list[str]:
+    """Return the paragraphs inside text boxes (some resume templates keep skills there).
+
+    Word stores each text box twice (a modern copy and a `Fallback` copy); the fallback is skipped.
+    Headers and footers are not read: they are usually contact details.
+    """
+    lines = []
+    for box in document.element.body.iter(f"{{{_W}}}txbxContent"):
+        if any(a.tag == f"{{{_MC}}}Fallback" for a in box.iterancestors()):
+            continue
+        for paragraph in box.iter(f"{{{_W}}}p"):
+            lines.append("".join(t.text or "" for t in paragraph.iter(f"{{{_W}}}t")))
+    return lines
 
 
 def _read_docx(path: Path) -> DocumentText:
-    """Extract paragraphs and table cells from a Word file."""
+    """Extract paragraphs, table cells (nested tables too), and text boxes from a Word file."""
     import docx
 
     document = docx.Document(str(path))
     lines = [p.text for p in document.paragraphs]
     for table in document.tables:
-        for row in table.rows:
-            lines.append(" | ".join(cell.text for cell in row.cells))
+        lines.extend(_table_lines(table))
+    lines.extend(_text_box_lines(document))
     text = "\n".join(" ".join(line.split()) for line in lines if line.strip())
     return DocumentText(text, "docx", None)
 

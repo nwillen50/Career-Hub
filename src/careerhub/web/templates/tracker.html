@@ -9,6 +9,7 @@
 </nav>
 <form method="get" action="/tracker" class="filters" role="search">
   <input type="hidden" name="view" value="{{ query.view }}">
+  {% if query.group %}<input type="hidden" name="group" value="place">{% endif %}
   <label for="q">Filter by company or role</label>
   <input id="q" type="search" name="q" value="{{ query.text }}" maxlength="100">
   <fieldset><legend>Status</legend>
@@ -16,6 +17,7 @@
   </fieldset>
   <button type="submit">Apply filters</button>
   <a href="/tracker.csv?{{ query.params() }}" download>Download CSV</a>
+  <a href="/tracker?{{ query.params(group=("" if query.group else "place")) }}">{{ "Show as one list" if query.group else "Group by place" }}</a>
 </form>
 {% if rows %}
 <table class="tracker">
@@ -26,9 +28,21 @@
     {% endfor %}
     <th scope="col">Next step</th><th scope="col"><span class="visually-hidden">Save</span></th>
   </tr></thead>
+  {% if query.group %}
+  {% for group in groups %}
+  <tbody>
+    <tr><th scope="rowgroup" colspan="7">{{ group.name }} ({{ group.count }})</th></tr>
+    {% for city in group.cities %}
+    {% if city.name %}<tr><th scope="rowgroup" colspan="7" class="muted">{{ city.name }} ({{ city.positions|length }})</th></tr>{% endif %}
+    {% for position in city.positions %}{% set row = rows[position] %}{% include "tracker_row.html" %}{% endfor %}
+    {% endfor %}
+  </tbody>
+  {% endfor %}
+  {% else %}
   <tbody>
     {% for row in rows %}{% include "tracker_row.html" %}{% endfor %}
   </tbody>
+  {% endif %}
 </table>
 {% else %}
 <p class="card">{% if query.view == "all" and not query.text and not query.statuses %}No applications yet. Mark a job Applied on Today to start tracking.{% else %}No applications match these filters.{% endif %}</p>
