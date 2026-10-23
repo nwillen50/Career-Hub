@@ -82,6 +82,7 @@ USAGE = """Usage:
                                              (CSV, TSV or Excel; also `hub alumni import`)
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
+  hub web [--port N]                         (the local web app on 127.0.0.1; prints a link to open)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
                                              are never requested; text can also come from stdin)
   hub companies suggestions | merge <id> | skip <id>   (near-duplicate company names)
@@ -142,6 +143,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _with_session(store, lambda s: _people_import(s, Path(args[2]), args[3:]))
         if args == ["schedule", "install"]:
             return _schedule_install()
+        if args[:1] == ["web"]:
+            return _web(args[1:])
         if args == ["nightly"]:
             return _nightly(store)
         if args[:1] == ["add-job"] and len(args) >= 2 and len(args) % 2 == 0:
@@ -361,6 +364,33 @@ def _schedule_install() -> int:
     print(
         f"Wrote {path}. It is not running yet. To start it:\n  {start}\nTo stop it later:\n  {stop}"
     )
+    return 0
+
+
+def _web(options: list[str]) -> int:
+    """`hub web [--port N]`: serve the web app on 127.0.0.1 only and print the link to open it."""
+    port = load_settings().web_port
+    words = list(options)
+    while words:
+        flag = words.pop(0)
+        if flag == "--port" and words and words[0].isdigit() and 1024 <= int(words[0]) <= 65535:
+            port = int(words.pop(0))
+        elif flag == "--host":
+            print("hub web only listens on 127.0.0.1; it cannot be told to use another address.")
+            return 2
+        else:
+            print(USAGE)
+            return 2
+    import secrets
+
+    import uvicorn
+
+    from careerhub.web.app import create_app
+
+    token = secrets.token_urlsafe(32)
+    print(f"Career Hub is at http://127.0.0.1:{port}/?t={token}")
+    print("Open that link; press Ctrl-C to stop.")
+    uvicorn.run(create_app(token, port), host="127.0.0.1", port=port, log_level="warning")
     return 0
 
 
