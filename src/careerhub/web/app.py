@@ -25,10 +25,10 @@ import secrets
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from importlib import resources
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import parse_qs, urlsplit
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Path, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -39,11 +39,32 @@ from careerhub.core.migrate import migrate
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
 from careerhub.core.settings import SettingsError
 from careerhub.core.storage import StorageError, open_database, session_factory
+from careerhub.modules.jobs.reactions import (
+    UNDO_SECONDS,
+    ReactionError,
+    react,
+    reacted_job_ids,
+    undo,
+)
 from careerhub.profile.files import ProfileFileError
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
 
+#: A job id the database can hold (SQLite integers are 64-bit); anything else is a 422, not a 500.
+JobId = Annotated[int, Path(ge=1, le=2**63 - 1)]
 SESSION_COOKIE = "ch_session"
 SECTION_COOKIE = "ch_today_section"
+REACTION_LABELS = {
+    "interested": "interested",
+    "not_interested": "not interested",
+    "applied": "applied",
+}
+REASON_LABELS = (
+    ("level", "Wrong level"),
+    ("location", "Wrong location"),
+    ("field", "Wrong field"),
+    ("company", "Not this company"),
+    ("pay", "Pay"),
+)
 SECTION_LABELS = (
     ("all", "All"),
     ("top", "Top jobs"),
@@ -227,6 +248,7 @@ def create_app(
                 else None,
                 "last_error": shortlist.last_error,
                 "waiting_for": shortlist.waiting_for,
+                "reasons": REASON_LABELS,
                 "sections": SECTION_LABELS,
                 "section": chosen,
                 "jobs": job_cards(data.jobs),
@@ -238,6 +260,53 @@ def create_app(
         if section in SECTIONS:  # remember the choice between visits
             response.set_cookie(SECTION_COOKIE, chosen, samesite="strict", path="/")
         return response
+
+    def reaction_page(request: Request, name: str, **context: Any) -> Response:
+        """Answer a reaction: a small card fragment for HTMX, or back to Today for a plain form."""
+        csrf = sessions.get(request.cookies.get(SESSION_COOKIE, ""), "")
+        if request.headers.get("hx-request") != "true":
+            return RedirectResponse("/today", status_code=303)
+        return templates.TemplateResponse(request, name, {"csrf": csrf, **context})
+
+    @app.post("/jobs/{job_id}/react")
+    async def react_to_job(request: Request, job_id: JobId, reason: str | None = None) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data to react to.", status_code=404)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"))
+        reaction = form.get("reaction", [""])[0]
+        with open_session() as session:
+            try:
+                saved = react(session, job_id, reaction, reason)
+            except ReactionError as error:
+                return reaction_page(request, "note.html", message=str(error))
+            feedback_id = saved.id
+        return reaction_page(
+            request,
+            "reacted.html",
+            job_id=job_id,
+            feedback_id=feedback_id,
+            label=REACTION_LABELS.get(reaction, reaction),
+            reason_label=dict(REASON_LABELS).get(reason or ""),
+            seconds=UNDO_SECONDS,
+        )
+
+    @app.post("/jobs/{job_id}/undo")
+    async def undo_reaction(request: Request, job_id: JobId) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data.", status_code=404)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"))
+        given = form.get("feedback_id", [""])[0]
+        feedback_id = int(given) if given.isdigit() else None
+        with open_session() as session:
+            taken_back = undo(session, job_id, feedback_id)
+            still_hidden = job_id in reacted_job_ids(session)
+        if not taken_back:
+            message = "It is too late to undo that."
+        elif still_hidden:
+            message = "Reaction undone. An earlier reaction still keeps this job off Today."
+        else:
+            message = "Reaction undone. The job is back on Today after a reload."
+        return reaction_page(request, "note.html", message=message)
 
     @app.post("/session/end")
     def end_session(request: Request) -> Response:

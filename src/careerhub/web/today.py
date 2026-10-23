@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.models import Interaction, Person, utcnow
 from careerhub.core.settings import load_settings
+from careerhub.modules.jobs.reactions import reacted_job_ids
 from careerhub.modules.jobs.scoring import ranked_jobs
 from careerhub.web.shortlist import (
     ShortlistData,
@@ -100,7 +101,7 @@ def gather_today(session: Session, now: datetime | None = None) -> TodayData:
     now = now or utcnow()
     zone = ZoneInfo(load_settings().timezone)
     local = now.astimezone(zone)  # "today" is the user's day, not the UTC day
-    shortlist = gather_shortlist(session, MAX_TOP_JOBS, now)
+    shortlist = gather_shortlist(session, MAX_TOP_JOBS, now, hide=reacted_job_ids(session))
     return TodayData(
         now,
         shortlist,

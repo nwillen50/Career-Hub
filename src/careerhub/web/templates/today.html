@@ -1,5 +1,19 @@
 {% extends "base.html" %}
-{% macro job_card(entry, rank) %}
+{% macro reactions(entry, csrf) %}
+{% if entry.job_id is not none %}
+<form method="post" action="/jobs/{{ entry.job_id }}/react" class="reactions" hx-post="/jobs/{{ entry.job_id }}/react" hx-target="closest article" hx-swap="outerHTML">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button type="submit" name="reaction" value="interested">Interested</button>
+  <button type="submit" name="reaction" value="applied">Applied</button>
+  <details class="why">
+    <summary>Not interested</summary>
+    <p class="muted">Pick the reason that fits best:</p>
+    {% for key, label in reasons %}<button type="submit" name="reaction" value="not_interested" formaction="/jobs/{{ entry.job_id }}/react?reason={{ key }}" hx-post="/jobs/{{ entry.job_id }}/react?reason={{ key }}">{{ label }}</button>{% endfor %}
+  </details>
+</form>
+{% endif %}
+{% endmacro %}
+{% macro job_card(entry, rank, csrf) %}
 <article class="card job">
   <h3>{{ rank }}. {% if entry.link %}<a href="{{ entry.link }}" rel="noopener noreferrer">{{ entry.title }}</a>{% else %}{{ entry.title }}{% endif %}</h3>
   <p class="where">{{ entry.company }}{% if entry.location %} · {{ entry.location }}{% endif %}{% if entry.salary %} · {{ entry.salary }}{% endif %}{% if entry.via %} · {{ entry.via }}{% endif %}</p>
@@ -21,6 +35,7 @@
     {% else %}<p class="muted">You don't know anyone here yet.</p>{% endif %}
     <ul class="footnotes">{% for note in entry.footnotes %}<li class="muted">{{ note }}</li>{% endfor %}</ul>
   </details>
+  {{ reactions(entry, csrf) }}
 </article>
 {% endmacro %}
 {% block content %}
@@ -45,7 +60,7 @@
 {% if section in ("all", "top") %}
 <section aria-labelledby="top-h">
   <h2 id="top-h">Top jobs ({{ jobs|length }})</h2>
-  {% for entry in jobs %}{{ job_card(entry, loop.index) }}
+  {% for entry in jobs %}{{ job_card(entry, loop.index, csrf) }}
   {% else %}
   <p class="card">Nothing ranked yet. Check that a source is approved and the nightly run finished, in <a href="/status">System status</a>.</p>
   {% endfor %}
