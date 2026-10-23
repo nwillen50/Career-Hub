@@ -66,6 +66,13 @@ from careerhub.modules.network import (
     tag_person,
     warm_paths,
 )
+from careerhub.modules.network.mappings import (
+    SavedMapping,
+    forget_mapping,
+    list_mappings,
+    load_mapping,
+    save_mapping,
+)
 from careerhub.modules.plan import suggest_week
 from careerhub.modules.plan.ics import IcsError
 from careerhub.pipeline import run_nightly
@@ -87,7 +94,9 @@ USAGE = """Usage:
   hub people find <text>                     (by name or company)
   hub people tag <id> [--school 'Tufts University'] <how you know them>
   hub people import-alumni <file> [--group G] [--sheet S] [--map field=Header] [--preview]
-                                             (CSV, TSV or Excel; also `hub alumni import`)
+                                             (CSV, TSV or Excel; also `hub alumni import`; the
+                                             --map/--sheet/--group are remembered per file name)
+  hub alumni mappings | forget <file>        (the remembered column mappings)
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
@@ -153,6 +162,10 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             )
         if args[:2] in (["people", "import-alumni"], ["alumni", "import"]) and len(args) >= 3:
             return _with_session(store, lambda s: _people_import(s, Path(args[2]), args[3:]))
+        if args == ["alumni", "mappings"]:
+            return _alumni_mappings()
+        if args[:2] == ["alumni", "forget"] and len(args) == 3:
+            return _alumni_forget(args[2])
         if args == ["schedule", "install"]:
             return _schedule_install()
         if args == ["nightly"]:
@@ -347,6 +360,11 @@ def _people_import(session: Session, path: Path, options: list[str] | None = Non
         else:
             print(USAGE)
             return 2
+    given = bool(overrides) or sheet is not None or group is not None
+    saved = load_mapping(path.name)
+    if saved is not None:  # what was saved applies; flags given now win and update it
+        overrides = {**saved.mapping, **overrides}
+        sheet, group = sheet or saved.sheet, group or saved.group
     try:
         if preview:
             shown = preview_alumni(session, path, group, sheet, overrides, _aliases())
@@ -363,8 +381,15 @@ def _people_import(session: Session, path: Path, options: list[str] | None = Non
             return 0
         report = import_alumni(session, path, group, sheet, overrides, aliases=_aliases())
         suggest_merges(session)
+        if given:
+            save_mapping(path.name, SavedMapping(overrides, sheet, group))
     except ProfileFileError as error:
         print(error)
+        if saved is not None and "no column called" in str(error):
+            print(
+                f"The mapping saved for {path.name} no longer fits this file. Pass --map again, "
+                f"or run `hub alumni forget {path.name}` to start over."
+            )
         return 1
     missing = f" (missing {' or '.join(report.skipped_for)})" if report.skipped_for else ""
     print(
@@ -667,6 +692,25 @@ def _profile_facts(session: Session, args: list[str]) -> int:
         return 1
     print(f"{'Accepted' if accept else 'Rejected'} {len(ids)} set(s) of facts.")
     return 0
+
+
+def _alumni_mappings() -> int:
+    """`hub alumni mappings`: list the file names with a saved column mapping (no people)."""
+    saved = list_mappings()
+    for name, fields in saved.items():
+        print(f"  {name}: {', '.join(fields) or 'no overrides'}")
+    if not saved:
+        print("No saved column mappings.")
+    return 0
+
+
+def _alumni_forget(file_name: str) -> int:
+    """`hub alumni forget <file>`: remove the saved mapping for a file name."""
+    if forget_mapping(Path(file_name).name):
+        print(f"Forgot the saved mapping for {Path(file_name).name}.")
+        return 0
+    print(f"No saved mapping for {Path(file_name).name}.")
+    return 1
 
 
 def _jobs_close(
