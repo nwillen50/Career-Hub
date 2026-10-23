@@ -125,7 +125,7 @@ def test_empty_state_scoring_off_and_failed_run(session: Session) -> None:
     assert "No follow-ups due." in html and "No deadlines this week." in html
     assert "Scoring starts when your profile is ready" in html  # the readiness checklist shows
     run = start_run(session, "nightly")
-    finish_run(session, run, "failed", "FetchError")
+    finish_run(session, run, 0, ConnectionError())
     html = web(session).get("/today").text
     assert 'role="alert"' in html and "The last nightly run failed" in html
 
@@ -175,7 +175,7 @@ def test_deadlines_this_week_only(session: Session) -> None:
 
 def test_last_successful_run_is_shown(session: Session) -> None:
     run = start_run(session, "nightly")
-    finish_run(session, run, "succeeded", None)
+    finish_run(session, run, 1)
     assert "Last successful run:" in web(session).get("/today").text
 
 
@@ -212,3 +212,55 @@ def test_the_database_error_page_still_shows_when_the_database_cannot_open(
     c = TestClient(app, base_url=f"http://127.0.0.1:{PORT}", follow_redirects=False)
     c.get(f"/?t={TOKEN}")
     assert c.get("/today").status_code == 503
+
+
+def test_today_is_the_users_day_not_the_utc_day(session: Session) -> None:
+    """Review: at 9pm in New York it is already tomorrow in UTC; follow-ups must not jump ahead."""
+    evening = datetime(2026, 10, 23, 1, 0, tzinfo=UTC)  # Oct 22, 9pm in New York
+    firm = Company(name="Globex", name_key="globex")
+    person = Person(full_name="Ben Example", company=firm)
+    session.add_all([firm, person])
+    session.flush()
+    for label, due in (
+        ("tonight", datetime(2026, 10, 23, 2, 0, tzinfo=UTC)),  # Oct 22, 10pm: due today
+        ("tomorrow", datetime(2026, 10, 23, 14, 0, tzinfo=UTC)),  # Oct 23, 10am: not yet
+    ):
+        session.add(
+            Interaction(
+                person_id=person.id, occurred_at=evening, channel="call", summary=label,
+                follow_up_due=due,
+            )
+        )  # fmt: skip
+    session.commit()
+    data = gather_today(session, evening)
+    assert [f.summary for f in data.follow_ups] == ["tonight"]
+    assert data.local_now is not None and data.local_now.day == 22
+
+
+def test_a_deadline_shows_even_if_the_job_is_not_one_of_the_five_cards(session: Session) -> None:
+    """Review: deadlines came only from the five shown cards."""
+    today = utcnow().date()
+    for n in range(1, 8):
+        add_job(session, n, 90 - n)
+    low = add_job(session, 8, 10, deadline=(today + timedelta(days=2)).isoformat())
+    edge = add_job(session, 9, 9, deadline=(today + timedelta(days=7)).isoformat())
+    html = web(session).get("/today").text
+    block = html.split("Deadlines this week", 1)[1]
+    assert low.title in block and edge.title not in block  # a 7-day window: today to today+6
+
+
+def test_a_follow_up_date_set_in_the_tracker_shows_on_today_and_in_the_count(
+    session: Session,
+) -> None:
+    """Review: Tracker follow-ups and Today follow-ups were two lists that never met."""
+    from careerhub.modules.jobs.applications import set_follow_up, track
+
+    job = add_job(session, 1, 80, company="Globex")
+    application = track(session, job.id, "applied")
+    set_follow_up(session, application.id, utcnow() - timedelta(days=2))
+    data = gather_today(session)
+    assert [f.kind for f in data.follow_ups] == ["application"]
+    html = web(session).get("/today").text
+    assert "Follow up on your application: Role 1 at Globex" in html and "2 days overdue" in html
+    track(session, job.id, "rejected")  # a closed application stops asking
+    assert gather_today(session).follow_ups == []
