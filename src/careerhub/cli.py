@@ -28,6 +28,7 @@ from careerhub.llm.commands import (
     models_remove,
     models_routes,
 )
+from careerhub.modules.attention import attention_state
 from careerhub.modules.jobs import (
     FetchError,
     SourceNotApproved,
@@ -99,6 +100,7 @@ USAGE = """Usage:
   hub alumni mappings | forget <file>        (the remembered column mappings)
   hub schedule install                       (write the nightly launchd job; prints how to start it)
   hub nightly                                (run the whole pipeline once)
+  hub attention [--json]                     (menu-bar count: follow-ups due + new top jobs)
   hub web [--port N]                         (the local web app on 127.0.0.1; prints a link to open)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
                                              are never requested; text can also come from stdin)
@@ -169,6 +171,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _alumni_forget(args[2])
         if args == ["schedule", "install"]:
             return _schedule_install()
+        if args[:1] == ["attention"] and args[1:] in ([], ["--json"]):
+            return _with_session(store, lambda s: _attention(s, as_json=bool(args[1:])))
         if args[:1] == ["web"]:
             return _web(args[1:])
         if args == ["nightly"]:
@@ -411,6 +415,15 @@ def _schedule_install() -> int:
     print(
         f"Wrote {path}. It is not running yet. To start it:\n  {start}\nTo stop it later:\n  {stop}"
     )
+    return 0
+
+
+def _attention(session: Session, as_json: bool) -> int:
+    """`hub attention [--json]`: print what the menu-bar icon shows (counts only)."""
+    import json
+
+    state = attention_state(session)
+    print(json.dumps(state.as_json(), sort_keys=True) if as_json else state.description)
     return 0
 
 
