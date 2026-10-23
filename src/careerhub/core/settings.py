@@ -106,6 +106,8 @@ class Settings(BaseModel):
     model_routes: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     #: Local time (24-hour ``HH:MM``) the nightly run starts.
     nightly_run_time: str = "02:00"
+    #: Days of silence after which an Applied application becomes Ghosted on the nightly run.
+    ghost_after_days: int = Field(default=30, ge=1)
 
     @model_validator(mode="after")
     def _check_providers_and_routes(self) -> Settings:
