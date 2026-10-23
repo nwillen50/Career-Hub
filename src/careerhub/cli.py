@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from sqlalchemy.orm import Session
 
-from careerhub.core.companies import find_companies
+from careerhub.core.companies import decide_merge, find_companies, pending_merges, suggest_merges
 from careerhub.core.migrate import migrate
 from careerhub.core.models import utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore, SecretsError
@@ -84,6 +84,7 @@ USAGE = """Usage:
   hub nightly                                (run the whole pipeline once)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
                                              are never requested; text can also come from stdin)
+  hub companies suggestions | merge <id> | skip <id>   (near-duplicate company names)
   hub targets find-boards | note <name> <ats> | import <file> | list | enable-matching
   hub targets enable <name>... | disable <name>...
                           (companies you follow; the Engine list is in docs/seeds)
@@ -145,6 +146,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _nightly(store)
         if args[:1] == ["add-job"] and len(args) >= 2 and len(args) % 2 == 0:
             return _with_session(store, lambda s: _add_job(s, args[1], args[2:]))
+        if args[:1] == ["companies"]:
+            return _with_session(store, lambda s: _companies(s, args[1:]))
         if args == ["targets", "find-boards"]:
             return _with_session(store, _find_boards)
         if args[:1] == ["targets"] and len(args) >= 2:
@@ -253,7 +256,7 @@ def _plan(session: Session) -> int:
 
 
 def _paths(session: Session, company_text: str) -> int:
-    matches = find_companies(session, company_text)
+    matches = find_companies(session, company_text, _aliases())
     if len(matches) > 1:
         print(f"{company_text!r} matches several companies; be more specific:")
         print("\n".join(f"  {c.name}" for c in matches))
@@ -326,7 +329,7 @@ def _people_import(session: Session, path: Path, options: list[str] | None = Non
             return 2
     try:
         if preview:
-            shown = preview_alumni(session, path, group, sheet, overrides)
+            shown = preview_alumni(session, path, group, sheet, overrides, _aliases())
             print(f"Header found on row {shown.header_row}. Columns:")
             for name, header in shown.mapping.items():
                 print(f"  {header!r} -> {name}")
@@ -338,7 +341,8 @@ def _people_import(session: Session, path: Path, options: list[str] | None = Non
                 f"skip {report.skipped}."
             )
             return 0
-        report = import_alumni(session, path, group, sheet, overrides)
+        report = import_alumni(session, path, group, sheet, overrides, aliases=_aliases())
+        suggest_merges(session)
     except ProfileFileError as error:
         print(error)
         return 1
@@ -608,6 +612,32 @@ def _profile_facts(session: Session, args: list[str]) -> int:
     return 0
 
 
+def _aliases() -> dict[str, str]:
+    """Return the user's company aliases from preferences.yaml (none if there is no file)."""
+    preferences = load_preferences()
+    return preferences.alias_keys() if preferences else {}
+
+
+def _companies(session: Session, args: list[str]) -> int:
+    """`hub companies suggestions | merge <id> | skip <id>`: answer near-duplicate suggestions."""
+    if args == ["suggestions"]:
+        pending = pending_merges(session)
+        for item in pending:
+            print(f"  {item.id}: {item.title}")
+        if not pending:
+            print("No merge suggestions.")
+        return 0
+    if len(args) == 2 and args[0] in ("merge", "skip") and args[1].isdigit():
+        try:
+            print(decide_merge(session, int(args[1]), accept=args[0] == "merge"))
+        except LookupError as error:
+            print(error)
+            return 1
+        return 0
+    print("Usage: hub companies suggestions | merge <id> | skip <id>")
+    return 2
+
+
 def _shortlist_build(session: Session) -> int:
     path = write_shortlist(session, utcnow())
     print(f"Wrote {path}. Open it in your browser and bookmark it.")
@@ -655,7 +685,7 @@ def _ingest(
         )
         return 1
     try:
-        report = ADAPTERS[kind](session, sources[0], client)
+        report = ADAPTERS[kind](session, sources[0], client, _aliases())
     except SourceNotApproved as error:
         print(error)
         return 1

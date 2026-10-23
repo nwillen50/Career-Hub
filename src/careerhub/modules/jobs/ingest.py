@@ -16,7 +16,7 @@ one approved source). `ingest_source` runs it, stores the result, and keeps the 
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 
 import httpx
@@ -50,6 +50,7 @@ def ingest_source(
     partial: bool = False,
     check_gone: GoneCheck | None = None,
     backstop_nights: int | None = None,
+    aliases: Mapping[str, str] | None = None,
 ) -> IngestReport:
     """Fetch and store one approved source, recording the fetch time and the source's health.
 
@@ -68,7 +69,7 @@ def ingest_source(
         note = _settle_empty_listing(session, source, label, client, check_gone, backstop_nights)
     elif source.config.get(STREAK_KEY):
         source.config = {k: v for k, v in source.config.items() if k not in _STREAK_KEYS}
-    report = store_jobs(session, source, jobs, partial=partial)
+    report = store_jobs(session, source, jobs, partial=partial, aliases=aliases)
     source.health = "ok"
     source.last_fetched_at = utcnow()
     session.commit()

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, cast
@@ -21,7 +22,7 @@ from typing import Any, cast
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, aliased
 
-from careerhub.core.companies import get_or_create_company
+from careerhub.core.companies import get_or_create_company, suggest_merges
 from careerhub.core.models import Company, Job, Source, utcnow
 from careerhub.core.names import company_key
 
@@ -57,9 +58,14 @@ def _squash(text: str | None) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
 
 
-def dedupe_key(company_name: str, title: str, location: str | None) -> str:
+def dedupe_key(
+    company_name: str,
+    title: str,
+    location: str | None,
+    aliases: Mapping[str, str] | None = None,
+) -> str:
     """Return the hash that two postings of the same job share, whatever their source."""
-    parts = "|".join((company_key(company_name), _squash(title), _squash(location)))
+    parts = "|".join((company_key(company_name, aliases), _squash(title), _squash(location)))
     return hashlib.sha256(parts.encode()).hexdigest()
 
 
@@ -74,6 +80,7 @@ def store_jobs(
     now: datetime | None = None,
     partial: bool = False,
     close_missing: bool = True,
+    aliases: Mapping[str, str] | None = None,
 ) -> IngestReport:
     """Save a listing from `source`. Safe to repeat: a rerun adds no duplicates.
 
@@ -103,7 +110,7 @@ def store_jobs(
             if job.status == "closed":
                 job.status = "new"
             continue
-        key = dedupe_key(item.company_name, item.title, item.location)
+        key = dedupe_key(item.company_name, item.title, item.location, aliases)
         original = session.scalars(
             select(Job)
             .where(Job.dedupe_key == key, Job.source_id != source.id, Job.duplicate_of_id.is_(None))
@@ -111,7 +118,7 @@ def store_jobs(
         ).first()
         session.add(
             Job(
-                company=_company(session, item.company_name),
+                company=_company(session, item.company_name, aliases),
                 source_id=source.id,
                 external_id=item.external_id,
                 title=item.title,
@@ -136,12 +143,13 @@ def store_jobs(
             job.status = "closed"
             closed += 1
     session.commit()
+    suggest_merges(session)
     return IngestReport(new, seen_again, reopened, closed, duplicates)
 
 
-def _company(session: Session, name: str) -> Company:
+def _company(session: Session, name: str, aliases: Mapping[str, str] | None = None) -> Company:
     """Return the company called `name`, creating it if needed (matched by company key)."""
-    company = get_or_create_company(session, name)
+    company = get_or_create_company(session, name, aliases)
     if company is None:  # a posting with a blank company name
         company = get_or_create_company(session, "unknown company")
     assert company is not None

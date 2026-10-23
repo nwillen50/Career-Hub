@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import html
 import re
+from collections.abc import Mapping
 from html.parser import HTMLParser
 from typing import Any
 
@@ -112,9 +113,18 @@ def job_is_gone(source: Source, job: Job, client: httpx.Client | None = None) ->
 
 
 def ingest_greenhouse(
-    session: Session, source: Source, client: httpx.Client | None = None
+    session: Session,
+    source: Source,
+    client: httpx.Client | None = None,
+    aliases: Mapping[str, str] | None = None,
 ) -> IngestReport:
     """Fetch and store one approved source, recording the fetch time and the source's health."""
     return ingest_source(
-        session, source, fetch_greenhouse, "Greenhouse", client, check_gone=job_is_gone
+        session,
+        source,
+        fetch_greenhouse,
+        "Greenhouse",
+        client,
+        check_gone=job_is_gone,
+        aliases=aliases,
     )

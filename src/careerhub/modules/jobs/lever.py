@@ -11,6 +11,7 @@ Lever's European site (`api.eu.lever.co`).
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -103,7 +104,12 @@ def job_is_gone(source: Source, job: Job, client: httpx.Client | None = None) ->
 
 
 def ingest_lever(
-    session: Session, source: Source, client: httpx.Client | None = None
+    session: Session,
+    source: Source,
+    client: httpx.Client | None = None,
+    aliases: Mapping[str, str] | None = None,
 ) -> IngestReport:
     """Fetch and store one approved Lever source, recording its health."""
-    return ingest_source(session, source, fetch_lever, "Lever", client, check_gone=job_is_gone)
+    return ingest_source(
+        session, source, fetch_lever, "Lever", client, check_gone=job_is_gone, aliases=aliases
+    )

@@ -12,6 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from careerhub.core.names import resolve_aliases
+
 
 class _Strict(BaseModel):
     """Base for the profile models: unknown keys are errors and objects are read-only."""
@@ -164,3 +166,16 @@ class Preferences(_Strict):
     work_authorization: Literal["us_citizen", "work_authorized", "needs_sponsorship"] | None = None
     #: Other names for a school, by its canonical name: {"Tufts University": ["Jumbo U"]}.
     school_aliases: dict[str, list[str]] = Field(default_factory=dict)
+    #: Your own names for companies that Career Hub counts as one: {"Old Name": "Name Now"}.
+    company_aliases: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("company_aliases")
+    @classmethod
+    def _check_aliases(cls, value: dict[str, str]) -> dict[str, str]:
+        """Reject blank names and loops now, with a clear message, not at import time."""
+        resolve_aliases(value)
+        return value
+
+    def alias_keys(self) -> dict[str, str]:
+        """Return the aliases as company keys, ready for `company_key(name, aliases)`."""
+        return resolve_aliases(self.company_aliases)

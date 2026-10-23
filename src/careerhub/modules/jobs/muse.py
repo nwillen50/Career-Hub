@@ -14,6 +14,7 @@ the PR and the board.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -88,7 +89,12 @@ def fetch_muse(source: Source, client: httpx.Client | None = None) -> list[Norma
 
 
 def ingest_muse(
-    session: Session, source: Source, client: httpx.Client | None = None
+    session: Session,
+    source: Source,
+    client: httpx.Client | None = None,
+    aliases: Mapping[str, str] | None = None,
 ) -> IngestReport:
     """Search and store one approved Muse source (a partial listing: nothing closes for missing)."""
-    return ingest_source(session, source, fetch_muse, "The Muse", client, partial=True)
+    return ingest_source(
+        session, source, fetch_muse, "The Muse", client, partial=True, aliases=aliases
+    )

@@ -15,6 +15,7 @@ happen, without saving anything and without showing anyone's details.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -76,6 +77,7 @@ def import_alumni(
     sheet: str | None = None,
     overrides: dict[str, str] | None = None,
     commit: bool = True,
+    aliases: Mapping[str, str] | None = None,
 ) -> AlumniReport:
     """Read the list at `path` and add or tag people. Raises `ProfileFileError` if unusable."""
     table = read_table(path, sheet, overrides)
@@ -90,7 +92,7 @@ def import_alumni(
             skipped += 1
             lacked.update(n for n, v in (("name", name), ("company", company_name)) if not v)
             continue
-        company = _company(session, company_name)
+        company = _company(session, company_name, aliases)
         email, url = table.get(row, "email"), table.get(row, "url")
         person = _find(session, name, company, email, url)
         tag = tag_for(row_group)
@@ -134,12 +136,15 @@ def preview_alumni(
     group: str | None = None,
     sheet: str | None = None,
     overrides: dict[str, str] | None = None,
+    aliases: Mapping[str, str] | None = None,
 ) -> Preview:
     """Say how `path` would be read and what an import would do, saving nothing."""
     table = read_table(path, sheet, overrides)
     _check(table, path, group)
     try:
-        report = import_alumni(session, path, group, sheet, overrides, commit=False)
+        report = import_alumni(
+            session, path, group, sheet, overrides, commit=False, aliases=aliases
+        )
     finally:
         session.rollback()
     mapping = {name: table.header[index] for name, index in table.mapping.items()}
@@ -152,8 +157,8 @@ def _add_school(person: Person, school: str) -> None:
         person.schools = [*(person.schools or []), school]
 
 
-def _company(session: Session, name: str) -> Company:
-    company = get_or_create_company(session, name)
+def _company(session: Session, name: str, aliases: Mapping[str, str] | None = None) -> Company:
+    company = get_or_create_company(session, name, aliases)
     if company is None:
         company = get_or_create_company(session, "unknown company")
     assert company is not None

@@ -154,11 +154,13 @@ def _run(
     report.cache_pruned = ResponseCache(sessions, settings.cache_ttl_days).prune()
     setup = build_router(settings, store, sessions, client, run_id)
     report.problems += [f"provider: {p}" for p in setup.problems]
+    preferences = load_preferences()
+    aliases = preferences.alias_keys() if preferences else {}
     for source in approved_sources(session):
         if source.kind not in ADAPTERS:
             continue
         try:
-            result = ADAPTERS[source.kind](session, source, client)
+            result = ADAPTERS[source.kind](session, source, client, aliases)
             report.sources_ok += 1
             report.new_jobs += result.new
             if result.note:
@@ -193,6 +195,7 @@ def _understand_and_rank(
     doc, rubric = load_profile_doc(), load_rubric()
     preferences = load_preferences()
     constraints = preferences.hard_constraints if preferences else HardConstraints()
+    aliases = preferences.alias_keys() if preferences else {}
     eligibility = (
         eligibility_from(doc, preferences, [e.degree or "" for e in _accepted_education(session)])
         if doc
@@ -228,7 +231,7 @@ def _understand_and_rank(
                 and extract_and_save(session, setup.router, job, extract_routes)
             ):
                 report.extracted += 1
-            assessment = assess_filters(session, job, constraints, eligibility)
+            assessment = assess_filters(session, job, constraints, eligibility, aliases)
             if not assessment.filter_passed:
                 report.filtered_out += 1
             elif (

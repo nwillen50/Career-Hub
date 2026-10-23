@@ -9,6 +9,7 @@ nightly rules in `ingest.py`.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
@@ -86,7 +87,10 @@ def fetch_ashby(source: Source, client: httpx.Client | None = None) -> list[Norm
 
 
 def ingest_ashby(
-    session: Session, source: Source, client: httpx.Client | None = None
+    session: Session,
+    source: Source,
+    client: httpx.Client | None = None,
+    aliases: Mapping[str, str] | None = None,
 ) -> IngestReport:
     """Fetch and store one approved Ashby source, recording its health."""
-    return ingest_source(session, source, fetch_ashby, "Ashby", client)
+    return ingest_source(session, source, fetch_ashby, "Ashby", client, aliases=aliases)

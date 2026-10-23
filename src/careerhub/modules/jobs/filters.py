@@ -12,6 +12,7 @@ The design rule is **never drop a good job by mistake**:
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
@@ -171,12 +172,13 @@ def apply_filters(
     fields: JobFields | None,
     constraints: HardConstraints,
     eligibility: Eligibility | None = None,
+    aliases: Mapping[str, str] | None = None,
 ) -> FilterResult:
     """Check `job` against `constraints`. `fields` are the extracted facts, if any."""
     reasons: list[str] = []
     uncertain: list[str] = []
-    excluded = {company_key(name) for name in constraints.excluded_companies}
-    if company_key(job.company.name) in excluded:
+    excluded = {company_key(name, aliases) for name in constraints.excluded_companies}
+    if company_key(job.company.name, aliases) in excluded:
         reasons.append(f"company {job.company.name} is on your excluded list")
     bad_words, loose_hits = _title_matches(constraints.excluded_title_words, job.title)
     if bad_words:
@@ -217,11 +219,12 @@ def assess_filters(
     job: Job,
     constraints: HardConstraints,
     eligibility: Eligibility | None = None,
+    aliases: Mapping[str, str] | None = None,
 ) -> Assessment:
     """Run the filters on `job` and save the result (replacing any earlier one)."""
     saved = job.structured_fields.get("fields")
     fields = JobFields.model_validate(saved) if saved else None
-    result = apply_filters(job, fields, constraints, eligibility)
+    result = apply_filters(job, fields, constraints, eligibility, aliases)
     assessment = session.scalars(select(Assessment).where(Assessment.job_id == job.id)).first()
     if assessment is None:
         assessment = Assessment(job_id=job.id)

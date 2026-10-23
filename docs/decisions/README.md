@@ -46,6 +46,7 @@ that supersedes the old one.
 | [0038](0038-alumni-layouts.md) | Alumni lists in any layout: sniffed delimiter, Excel, synonym columns, preview | Accepted |
 | [0039](0039-same-school.md) | Same-school warm paths: schools on people, school_key, an alumni search link that is built but never fetched | Accepted |
 | [0040](0040-apple-calendar.md) | Apple Calendar via EventKit: five facts only, lazy import, fake store in tests | Accepted |
+| [0041](0041-company-aliases-and-suggestions.md) | Company aliases are the user's, set in preferences; near-duplicate names are suggestions, never automatic merges | Accepted |
 
 ## Template
 
