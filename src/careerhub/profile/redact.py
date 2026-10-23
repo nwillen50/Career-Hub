@@ -76,16 +76,18 @@ def redact_address(text: str) -> str:
 # --- Transcripts: identity numbers and birth dates (CH-109) --------------------------------------
 _SSN = re.compile(r"(?<!\d)\d{3}[- ]\d{2}[- ]\d{4}(?!\d)")
 _ID_LABEL = (
-    r"(?:(?:student|university|campus|school|college|national|employee)\s+)?"
+    r"(?:(?:(?:student|university|campus|school|college|national|employee)\s+)?"
     r"(?:id(?:entification)?|sid|uid|ssn|social security)(?:\s*(?:no\.?|number|#|code))?"
+    r"|student\s+(?:number|no\.?)|banner(?:\s+id)?)"  # "Student Number: 123456", "Banner: 900123"
 )
 _LABELLED_ID = re.compile(rf"(?i)\b({_ID_LABEL})\s*[:#]?\s*[A-Za-z]{{0,3}}[\w-]*\d[\w-]*")
 _DATE = (
-    r"(?:\d{1,2}[/.\- ]\d{1,2}[/.\- ]\d{2,4}|\d{4}-\d{2}-\d{2}"
-    r"|\d{1,2}\s+[A-Za-z]{3,9}\.?,?\s+\d{4}|[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})"
+    r"(?:\d{1,2}[/.\- ]\d{1,2}[/.\- ]\d{2,4}|\d{4}[/.\-]\d{1,2}[/.\-]\d{1,2}"
+    r"|\d{1,2}(?:st|nd|rd|th)?[\s/.\-]+[A-Za-z]{3,9}\.?,?[\s/.\-]+\d{4}"
+    r"|[A-Za-z]{3,9}\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4})"
 )
 _LABELLED_DOB = re.compile(
-    rf"(?i)\b(date\s+of\s+birth|birth\s*date|birthday|d\.?o\.?b\.?|born)\b[^\n\d]{{0,30}}?{_DATE}"
+    rf"(?i)\b(date\s+of\s+birth|birth\s*date|birthday|d\.?o\.?b\.?|born)\b[^\d]{{0,30}}?{_DATE}"
 )
 # An unlabelled ID: 7 or more digits, with an optional letter prefix, standing alone.
 _LONG_NUMBER = re.compile(r"(?<![\w])[A-Za-z]?\d{7,}(?![\w])")
@@ -144,6 +146,11 @@ def remove_name(text: str, name: str, aliases: Sequence[str] = ()) -> str:
             both = rf"(?:{_letters_pattern(short)}[,\s]+{_letters_pattern(long)}|"
             both += rf"{_letters_pattern(long)}[,\s]+{_letters_pattern(short)})"
             text = re.sub(rf"(?<!\w){both}(?!\w)", "[name]", text, flags=re.IGNORECASE)
+    if len(pieces) >= 2:  # "Wu, Li" and "Li Wu", even when every part is short
+        forward = r"[,\s]+".join(_letters_pattern(p) for p in pieces)
+        backward = r"[,\s]+".join(_letters_pattern(p) for p in reversed(pieces))
+        for order in (forward, backward):
+            text = re.sub(rf"(?<!\w)(?:{order})(?!\w)", "[name]", text, flags=re.IGNORECASE)
     for part in sorted(long_parts, key=len, reverse=True):
         text = re.sub(
             rf"(?<!\w){_letters_pattern(part)}(?!\w)", "[name]", text, flags=re.IGNORECASE
