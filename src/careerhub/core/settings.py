@@ -135,6 +135,8 @@ class Settings(BaseModel):
     #: Scores at or above this get the green bubble; at or above `score_tier_mid`, the brass one.
     score_tier_high: int = Field(default=75, ge=1, le=100)
     score_tier_mid: int = Field(default=55, ge=0, le=99)
+    #: The port `hub web` listens on (always on 127.0.0.1, never another address).
+    web_port: int = Field(default=8765, ge=1024, le=65535)
     #: How the shortlist page orders jobs: "rank" (best first) or "place" (a heading per country,
     #: then per city; remote and unknown places last). Rank order holds inside each group (CH-121).
     shortlist_group_by: Literal["rank", "place"] = "rank"
