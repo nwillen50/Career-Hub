@@ -94,3 +94,35 @@ def test_a_failed_settings_save_leaves_no_key_behind(monkeypatch: pytest.MonkeyP
     with pytest.raises(OSError):
         main(["models", "add-custom", "mine", "openai", "m"], store)
     assert store.get(api_key_name("mine")) is None
+
+
+def test_a_cloud_preset_with_a_localhost_http_override_is_a_clear_settings_error() -> None:
+    """Review: this passed settings validation, then crashed with a raw pydantic error."""
+    from careerhub.core.settings import SettingsError
+
+    settings = Settings.model_validate(
+        {"preset_overrides": {"claude-haiku": {"base_url": "http://localhost:8080/v1"}}}
+    )
+    store = InMemoryKeyStore()
+    store.set(api_key_name("claude-haiku"), "K")
+    with pytest.raises(SettingsError, match="claude-haiku.*https"):
+        with_catalog(settings, store, lambda: False)
+
+
+def test_a_failed_save_keeps_a_key_that_was_already_there(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = InMemoryKeyStore()
+    store.set(api_key_name("mine"), "older-key")
+
+    def boom(settings: Settings) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr("careerhub.llm.commands.save_settings", boom)
+    with pytest.raises(OSError):
+        main(["models", "add-custom", "mine", "openai", "m"], store)
+    assert store.get(api_key_name("mine")) == "older-key"
+
+
+def test_the_refusal_message_says_how_to_mark_your_own_model() -> None:
+    fake = FakeProvider("mine", Destination.CLOUD, trains_on_data=True)
+    with pytest.raises(PrivacyViolation, match='"trains_on_data": false'):
+        check_allowed(PrivacyTier.PERSONAL, fake)

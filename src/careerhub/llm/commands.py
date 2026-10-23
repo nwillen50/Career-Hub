@@ -172,6 +172,7 @@ def models_add_custom(
         print("Invalid model: " + "; ".join(_why(e) for e in error.errors()))
         return 1
     key_name = api_key_name(provider.name)
+    previous = store.get(key_name)  # put it back if saving fails
     if provider.kind != "local":
         key = ask_secret(f"API key for {provider.name} (input is hidden): ").strip()
         if not key:
@@ -181,8 +182,11 @@ def models_add_custom(
     try:
         save_settings(settings.model_copy(update={"providers": (*settings.providers, provider)}))
     except BaseException:
-        if provider.kind != "local":
-            store.delete(key_name)  # a failed save must not leave a key with no model
+        if provider.kind != "local":  # a failed save must not leave a key with no model
+            if previous is None:
+                store.delete(key_name)
+            else:
+                store.set(key_name, previous)
         raise
     print(f"Added {provider.name}. Add it to model_routes in settings.json to use it.")
     return 0
