@@ -5,13 +5,24 @@
 {% if note %}<section class="card error" role="alert"><p>{{ note }}</p></section>{% endif %}
 {% if proposals %}
 <section aria-labelledby="prop-h"><h2 id="prop-h">Suggested changes waiting for you</h2>
-  <p class="muted">Nothing changes until you press Accept. Accepting edits only your preferences file, and keeps a copy of the old one next to it.</p>
+  <p class="muted">Nothing changes until you press Accept. Accepting a preference change edits only your preferences file, and keeps a copy of the old one next to it. Accepting a job board only saves it as a proposed source; you approve it separately.</p>
   {% for item in proposals %}
   <article class="card">
     <h3>{{ item.title }}</h3>
     <pre class="posting">{{ item.diff }}</pre>
     <form method="post" action="/proposals/{{ item.id }}/accept" class="inline-form"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" aria-label="Accept: {{ item.title }}">Accept</button></form>
     <form method="post" action="/proposals/{{ item.id }}/reject" class="inline-form"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" aria-label="Reject: {{ item.title }}">Reject</button></form>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
+{% if declined %}
+<section aria-labelledby="decl-h"><h2 id="decl-h">Declined</h2>
+  <p class="muted">Suggestions you said no to in the last month. Reopen one to see it again; nothing is applied until you press Accept.</p>
+  {% for item in declined %}
+  <article class="card">
+    <h3>{{ item.title }}</h3>
+    <form method="post" action="/proposals/{{ item.id }}/reopen" class="inline-form"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" aria-label="Reopen: {{ item.title }}">Reopen</button></form>
   </article>
   {% endfor %}
 </section>

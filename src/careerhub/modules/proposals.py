@@ -11,25 +11,38 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from careerhub.core.files import write_private
 from careerhub.core.models import Proposal, utcnow
 from careerhub.core.settings import load_settings
+from careerhub.modules.jobs.find_boards import BOARD_URLS
 from careerhub.profile.files import ProfileFileError, parse_yaml, preferences_path
 from careerhub.profile.models import Preferences
 
 KIND = "preference_change"
+SOURCE_KIND = "source_proposal"
+#: The kinds the conversation panel lists, accepts and rejects.
+PANEL_KINDS = (KIND, SOURCE_KIND)
 LIST_KEYS = ("excluded_title_words", "excluded_companies", "locations")
 MODE_KEYS = ("remote_ok", "hybrid_ok", "onsite_ok")
 MAX_VALUE_CHARS = 100
+_TOKEN = re.compile(r"^[a-z0-9-]{2,60}$")
 
 
 class ProposalError(Exception):
@@ -73,6 +86,40 @@ class PreferenceChange(BaseModel):
         return f"Turn {self.key.removesuffix('_ok')} jobs {'on' if self.value else 'off'}"
 
 
+class SourceChange(BaseModel):
+    """One company job board the person asked to follow."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["greenhouse", "lever", "ashby"]
+    company: str = Field(min_length=1, max_length=100)
+    token: str
+
+    @field_validator("company")
+    @classmethod
+    def _tidy_company(cls, value: str) -> str:
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("the company needs a name")
+        return value
+
+    @field_validator("token")
+    @classmethod
+    def _check_token(cls, value: str) -> str:
+        value = value.strip().lower()
+        if not _TOKEN.match(value):
+            raise ValueError("the board name must be 2 to 60 letters, digits or dashes")
+        return value
+
+    def url(self) -> str:
+        """Return the board's public address, built from the checked name."""
+        return BOARD_URLS[self.kind].format(token=self.token)
+
+    def title(self) -> str:
+        """Describe the suggestion in a sentence."""
+        return f"Follow {self.company} jobs ({self.kind} board {self.token!r})"
+
+
 class ConversationProposal(BaseModel):
     """What the model may attach to an answer (the schema the conversation prompt asks for)."""
 
@@ -80,6 +127,7 @@ class ConversationProposal(BaseModel):
 
     answer: str = Field(min_length=1, max_length=6000)  # cut to 1,500 for display
     change: PreferenceChange | None = None
+    source: SourceChange | None = None
 
 
 def _current() -> dict[str, Any]:
@@ -169,11 +217,11 @@ def propose(session: Session, change: PreferenceChange, now: datetime | None = N
 
 
 def pending_proposals(session: Session) -> list[Proposal]:
-    """Return the conversation's preference proposals waiting for the user, oldest first."""
+    """Return the conversation's proposals waiting for the user, oldest first."""
     return list(
         session.scalars(
             select(Proposal)
-            .where(Proposal.kind == KIND, Proposal.status == "pending")
+            .where(Proposal.kind.in_(PANEL_KINDS), Proposal.status == "pending")
             .order_by(Proposal.id)
         )
     )
@@ -181,7 +229,7 @@ def pending_proposals(session: Session) -> list[Proposal]:
 
 def _pending(session: Session, proposal_id: int) -> Proposal:
     proposal = session.get(Proposal, proposal_id)
-    if proposal is None or proposal.kind != KIND or proposal.status != "pending":
+    if proposal is None or proposal.kind not in PANEL_KINDS or proposal.status != "pending":
         raise ProposalError("That suggestion is no longer waiting for a decision.")
     return proposal
 
@@ -210,8 +258,12 @@ def accept(session: Session, proposal_id: int, now: datetime | None = None) -> P
     The change is applied only if the file still shows the same before/after the user saw.
     """
     proposal = _pending(session, proposal_id)
-    change = PreferenceChange.model_validate_json(proposal.body or "{}")
     when = now or utcnow()
+    if proposal.kind == SOURCE_KIND:
+        from careerhub.modules.source_proposals import accept_source
+
+        return accept_source(session, proposal, when)
+    change = PreferenceChange.model_validate_json(proposal.body or "{}")
     try:
         current = _current()
         new = apply_change(current, change)
@@ -251,5 +303,48 @@ def reject(session: Session, proposal_id: int, now: datetime | None = None) -> P
     proposal = _pending(session, proposal_id)
     proposal.status = "rejected"
     proposal.decided_at = now or utcnow()
+    session.commit()
+    return proposal
+
+
+def declined_proposals(session: Session, now: datetime | None = None) -> list[Proposal]:
+    """Return suggestions declined within `declined_keep_days`, newest first (they can be reopened).
+
+    Older ones are not deleted; they just stop being listed. The rule that the same suggestion is
+    not made again (`proposal_repeat_days`) is unchanged.
+    """
+    since = (now or utcnow()) - timedelta(days=load_settings().declined_keep_days)
+    return list(
+        session.scalars(
+            select(Proposal)
+            .where(
+                Proposal.kind.in_(PANEL_KINDS),
+                Proposal.status == "rejected",
+                Proposal.decided_at.is_not(None),
+                Proposal.decided_at >= since,
+            )
+            .order_by(Proposal.decided_at.desc(), Proposal.id.desc())
+        )
+    )
+
+
+def reopen(session: Session, proposal_id: int, now: datetime | None = None) -> Proposal:
+    """Put a declined suggestion back among the pending ones (nothing is applied)."""
+    proposal = session.get(Proposal, proposal_id)
+    if proposal is None or proposal.kind not in PANEL_KINDS or proposal.status != "rejected":
+        raise ProposalError("That suggestion is not on the Declined list.")
+    if proposal not in declined_proposals(session, now):
+        raise ProposalError("That suggestion was declined too long ago to reopen. Ask again.")
+    duplicate = session.scalars(
+        select(Proposal).where(
+            Proposal.kind == proposal.kind,
+            Proposal.body == proposal.body,
+            Proposal.status == "pending",
+        )
+    ).first()
+    if duplicate is not None:
+        raise ProposalError("The same suggestion is already waiting for you.")
+    proposal.status = "pending"
+    proposal.decided_at = None
     session.commit()
     return proposal

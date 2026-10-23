@@ -75,6 +75,8 @@ class Settings(BaseModel):
     empty_listing_backstop_nights: int = Field(default=3, ge=1, le=30)
     #: A change you declined in the conversation is not proposed again for this many days (CH-159).
     proposal_repeat_days: int = Field(default=90, ge=1, le=3650)
+    #: A declined suggestion stays on the Declined list (to reopen) this many days (CH-161).
+    declined_keep_days: int = Field(default=30, ge=1, le=365)
     #: Days a saved model answer is kept after it was last used (using it resets the clock).
     cache_ttl_days: int = Field(default=30, ge=1, le=3650)
     #: Skills the profile needs before scoring can be switched on (CH-102).

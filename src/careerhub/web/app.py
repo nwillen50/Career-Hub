@@ -57,9 +57,10 @@ from careerhub.modules.jobs.reactions import (
     reacted_job_ids,
     undo,
 )
-from careerhub.modules.proposals import ProposalError, pending_proposals
+from careerhub.modules.proposals import ProposalError, declined_proposals, pending_proposals
 from careerhub.modules.proposals import accept as accept_proposal
 from careerhub.modules.proposals import reject as reject_proposal
+from careerhub.modules.proposals import reopen as reopen_proposal
 from careerhub.profile.files import ProfileFileError, load_profile_doc
 from careerhub.profile.rubric import load_rubric
 from careerhub.web.job_detail import gather_job
@@ -549,6 +550,7 @@ def create_app(
                 "note": note,
                 "ready": open_router is not None,
                 "proposals": pending_proposals(session),
+                "declined": declined_proposals(session),
             },
         )
 
@@ -594,14 +596,16 @@ def create_app(
 
     @app.post("/proposals/{proposal_id}/{decision}")
     async def decide_proposal(request: Request, proposal_id: JobId, decision: str) -> Response:
-        if open_session is None or decision not in ("accept", "reject"):
+        if open_session is None or decision not in ("accept", "reject", "reopen"):
             return HTMLResponse("Not found.", status_code=404)
         with open_session() as session:
             try:
                 if decision == "accept":
                     accept_proposal(session, proposal_id)
-                else:
+                elif decision == "reject":
                     reject_proposal(session, proposal_id)
+                else:
+                    reopen_proposal(session, proposal_id)
             except ProposalError as problem:
                 return conversation_page(request, session, None, str(problem))
         return RedirectResponse("/conversation", status_code=303)

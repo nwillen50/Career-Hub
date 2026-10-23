@@ -21,13 +21,14 @@ from careerhub.llm.providers import ProviderError
 from careerhub.llm.validated import ValidationFailed, complete_validated
 from careerhub.modules.jobs.scoring import current_rank_adjustments, ranked_jobs, rubric_text
 from careerhub.modules.proposals import ConversationProposal, ProposalError, propose
+from careerhub.modules.source_proposals import propose_source_change
 from careerhub.profile.files import ProfileFileError
 from careerhub.profile.redact import personal_text
 from careerhub.profile.rubric import Rubric
 from careerhub.prompts import load_prompt, render
 
 PROMPT_NAME = "conversation"
-PROMPT_VERSION = 2
+PROMPT_VERSION = 3
 MAX_QUESTION_CHARS = 600
 MAX_ANSWER_CHARS = 1500
 TOP_JOBS_IN_CONTEXT = 5
@@ -137,11 +138,13 @@ def ask(
         return Answer(False, "No model could answer right now. Try again later.")
     reply = parsed.answer.strip()[:MAX_ANSWER_CHARS]
     proposal_id: int | None = None
-    if parsed.change is not None:
-        try:
+    try:
+        if parsed.change is not None:
             proposal_id = propose(session, parsed.change).id
-        except (ProposalError, ProfileFileError) as problem:
-            reply = f"{reply}\n\n(Not suggested: {problem})"
+        elif parsed.source is not None:
+            proposal_id = propose_source_change(session, parsed.source).id
+    except (ProposalError, ProfileFileError) as problem:
+        reply = f"{reply}\n\n(Not suggested: {problem})"
     session.add_all(
         [
             ConversationMessage(role="user", text=question, job_id=job_id),
