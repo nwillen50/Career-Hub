@@ -38,6 +38,7 @@ INVOCATIONS: dict[str, list[str]] = {
         "--title",
         "Engineer",
     ],
+    "jobs close": ["jobs", "close", "1"],
     "companies": ["companies", "suggestions"],
     "targets find-boards": ["targets", "find-boards"],
     "targets list": ["targets", "list"],
@@ -49,6 +50,7 @@ INVOCATIONS: dict[str, list[str]] = {
     "cache clear": ["cache", "clear"],
     "profile ready": ["profile", "ready"],
     "profile facts": ["profile", "facts"],
+    "score --all": ["score", "--all"],
     "shortlist build": ["shortlist", "build"],
     "sources list": ["sources", "list"],
     "sources add": ["sources", "add", "greenhouse", "Acme", "https://boards.example.com/acme"],
@@ -68,6 +70,7 @@ COVERS = {
     "hub schedule install": "schedule install",
     "hub nightly": "nightly",
     "hub add-job": "add-job",
+    "hub jobs close": "jobs close",
     "hub companies": "companies",
     "hub targets find-boards": "targets find-boards",
     "hub targets enable": "targets enable",
@@ -78,6 +81,7 @@ COVERS = {
     "hub cache clear": "cache clear",
     "hub profile ready": "profile ready",
     "hub profile facts": "profile facts",
+    "hub score --all": "score --all",
     "hub shortlist build": "shortlist build",
     "hub sources list": "sources list",
     "hub sources add": "sources add",
@@ -94,6 +98,7 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def no_network(*args: object, **kwargs: object) -> None:
         raise OSError("network is off in tests")
 
+    monkeypatch.setattr("builtins.input", lambda *args: "n")  # any yes/no question gets "no"
     monkeypatch.setattr(socket, "create_connection", no_network)
     monkeypatch.setattr(socket.socket, "connect", no_network)
 
