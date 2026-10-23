@@ -10,7 +10,7 @@ import csv
 import io
 from collections.abc import Collection
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, tzinfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -262,8 +262,17 @@ def _safe_cell(value: object) -> str:
     return f"'{text}" if text.startswith(_RISKY) else text
 
 
-def export_csv(rows: list[TrackerRow]) -> str:
-    """Return `rows` as CSV text (company, role, status, applied, follow-up, next step)."""
+def export_csv(rows: list[TrackerRow], zone: tzinfo | None = None) -> str:
+    """Return `rows` as CSV text (company, role, status, applied, follow-up, next step).
+
+    Dates are written in `zone` (the user's timezone) so the file agrees with the page.
+    """
+
+    def day(moment: datetime | None) -> str:
+        if moment is None:
+            return ""
+        return (moment.astimezone(zone) if zone else moment).date().isoformat()
+
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
     writer.writerow(["Company", "Role", "Status", "Applied", "Follow-up", "Next step"])
@@ -273,8 +282,8 @@ def export_csv(rows: list[TrackerRow]) -> str:
                 _safe_cell(row.company),
                 _safe_cell(row.title),
                 STATUS_LABELS.get(row.status, row.status),
-                row.applied_at.date().isoformat() if row.applied_at else "",
-                row.follow_up_due.date().isoformat() if row.follow_up_due else "",
+                day(row.applied_at),
+                day(row.follow_up_due),
                 _safe_cell(row.next_step),
             ]
         )

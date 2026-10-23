@@ -122,7 +122,8 @@ def gather_tracker(session: Session, query: TrackerQuery, now: datetime) -> list
 
 def csv_for(session: Session, query: TrackerQuery, now: datetime) -> str:
     """Return the matching applications as CSV text."""
-    return export_csv(tracker_rows(session, query.view, query.text, query.statuses, now))
+    zone = ZoneInfo(load_settings().timezone)
+    return export_csv(tracker_rows(session, query.view, query.text, query.statuses, now), zone)
 
 
 def follow_up_from_text(text: str) -> datetime | None:

@@ -503,10 +503,13 @@ def create_app(
             if application is None:
                 return reaction_page(request, "note.html", message="That application is gone.")
             try:
+                # check every input first, so a bad date cannot leave the status half changed
+                due = follow_up_from_text(form["follow_up"][0]) if "follow_up" in form else None
+                if "status" in form and form["status"][0] not in dict(STATUS_CHOICES):
+                    raise TrackerError(f"Unknown status {form['status'][0]!r}.")
                 if "status" in form:
                     change_status(session, application.job_id, form["status"][0])
                 if "follow_up" in form:
-                    due = follow_up_from_text(form["follow_up"][0])
                     set_follow_up(session, application_id, due)
                 if "next_step" in form:
                     set_next_step(session, application_id, form["next_step"][0])
