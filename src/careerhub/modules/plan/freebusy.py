@@ -77,10 +77,13 @@ def daily_windows(
     first_day: date,
     days: int,
     zone: tzinfo,
-    start: time = time(9, 0),
-    end: time = time(18, 0),
+    start: time,
+    end: time,
 ) -> list[Interval]:
-    """Return one working window per day (in `zone`, converted to UTC) for `days` days."""
+    """Return one working window per day (in `zone`, converted to UTC) for `days` days.
+
+    The hours are required: the plan's settings are the single source of truth for them.
+    """
     windows = []
     for offset in range(days):
         day = first_day + timedelta(days=offset)

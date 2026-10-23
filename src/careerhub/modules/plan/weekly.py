@@ -22,12 +22,11 @@ from sqlalchemy.orm import Session
 from careerhub.modules.jobs.scoring import current_rank_adjustments, ranked_jobs
 from careerhub.modules.network import warm_paths
 from careerhub.modules.plan.freebusy import Interval
+from careerhub.profile.models import PlanSettings
 
-#: How long an application takes, and an outreach message.
-APPLY_MINUTES = 90
-OUTREACH_MINUTES = 30
-#: No day gets more than this share of the weekly budget.
-DAILY_SHARE = 0.5
+#: The plan's defaults live in `PlanSettings` (preferences.yaml, `plan:`); these are its values for
+#: callers that pass nothing.
+DEFAULTS = PlanSettings()
 
 
 @dataclass(frozen=True)
@@ -73,7 +72,11 @@ class WeekPlan:
 
 
 def plan_week(
-    tasks: list[PlanTask], free: list[Interval], budget_minutes: int, zone: tzinfo
+    tasks: list[PlanTask],
+    free: list[Interval],
+    budget_minutes: int,
+    zone: tzinfo,
+    daily_share: float = DEFAULTS.daily_share,
 ) -> WeekPlan:
     """Place `tasks` into the `free` gaps without passing the budget. See the module rules."""
     plan = WeekPlan(budget_minutes)
@@ -81,7 +84,7 @@ def plan_week(
     cursors = [gap.start for gap in gaps]
     per_day: dict[date, int] = {}
     # The cap spreads work across days, but must never be smaller than the longest task.
-    daily_cap = max(int(budget_minutes * DAILY_SHARE), *(t.minutes for t in tasks), 0)
+    daily_cap = max(int(budget_minutes * daily_share), *(t.minutes for t in tasks), 0)
     ordered = sorted(
         tasks, key=lambda t: (t.due is None, t.due or datetime.max.replace(tzinfo=UTC), -t.priority)
     )
@@ -134,20 +137,21 @@ def end_of_day(day: date, zone: tzinfo) -> datetime:
     return datetime.combine(day, time(23, 59), zone).astimezone(UTC)
 
 
-def build_tasks(session: Session, zone: tzinfo, limit: int = 5) -> list[PlanTask]:
+def build_tasks(session: Session, zone: tzinfo, plan: PlanSettings | None = None) -> list[PlanTask]:
     """Turn the shortlist into tasks: apply to each job, and reach out first if you know someone."""
+    plan = plan or DEFAULTS
     tasks: list[PlanTask] = []
-    for job, assessment in ranked_jobs(session, limit, **current_rank_adjustments()):
+    for job, assessment in ranked_jobs(session, plan.tasks_per_plan, **current_rank_adjustments()):
         score = assessment.fit_score or 0.0
         due = _deadline(job.structured_fields, zone)
         label = f"{job.title} at {job.company.name}"
-        tasks.append(PlanTask(f"Apply: {label}", APPLY_MINUTES, score, due))
+        tasks.append(PlanTask(f"Apply: {label}", plan.apply_minutes, score, due))
         contacts = [p for p in warm_paths(session, job.company_id, limit=1) if p.strength > 0]
         if contacts:
             # Outreach before applying, so a referral can still help; due a day earlier.
             early = due - timedelta(days=1) if due else None
             title = f"Message {contacts[0].name} about {job.company.name}"
-            tasks.append(PlanTask(title, OUTREACH_MINUTES, score + 1, early))
+            tasks.append(PlanTask(title, plan.outreach_minutes, score + 1, early))
     return tasks
 
 
