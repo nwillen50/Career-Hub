@@ -88,7 +88,7 @@ Record each result on the matching ticket or ADR. Tick the box when it passes.
 - [ ] CH-165: set `"midday_refresh_on": true` in settings.json, run `uv run hub schedule install`,
   and check it wrote both `com.careerhub.nightly.plist` and `com.careerhub.refresh.plist` and
   started nothing. Start the refresh with the `launchctl bootstrap` line it prints. Success: at
-  12:30 `uv run hub status` (or the Status tab) shows a `refresh` run, and the shortlist page
+  12:30 the System status tab shows a `refresh` run, and the shortlist page
   updates without new scores.
 - [ ] CH-171: on the Contacts tab, your real LinkedIn contacts appear; edit "how you know them"
   for one person who also has an `alumni:` tag. Success: the tag stays. Log a contact with a
