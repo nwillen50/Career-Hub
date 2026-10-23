@@ -29,6 +29,7 @@ from careerhub.modules.jobs.muse import KIND as MUSE_KIND
 from careerhub.modules.jobs.muse import VIA
 from careerhub.modules.jobs.scoring import current_rank_adjustments, is_internship, ranked_jobs
 from careerhub.modules.network import WarmPath, warm_paths
+from careerhub.modules.network.schools import alumni_search_link, my_schools
 from careerhub.profile.readiness import current_readiness
 
 #: Today shows at most this many ranked jobs (PRD).
@@ -56,6 +57,9 @@ class ShortlistEntry:
     tailoring: dict[str, list[str]] | None = None
     #: Short muted lines at the bottom of the card (for example the internship ordering note).
     footnotes: tuple[str, ...] = ()
+    #: A link the user can open to search their school's alumni at this company on LinkedIn.
+    alumni_link: str | None = None
+    alumni_school: str | None = None
     #: Where the posting came from when the source requires credit (for example "via The Muse").
     via: str | None = None
 
@@ -79,6 +83,8 @@ def gather_shortlist(
     now = now or utcnow()
     adjustments = current_rank_adjustments()
     penalty = adjustments["internship_penalty"]
+    slug = load_settings().linkedin_school_slug
+    schools = my_schools(session) if slug else []
     stale_days = adjustments["stale_after_days"]
     entries = [
         ShortlistEntry(
@@ -92,6 +98,8 @@ def gather_shortlist(
             contacts=warm_paths(session, job.company_id, limit=MAX_CONTACTS),
             tailoring=_notes(assessment),
             footnotes=_footnotes(job, now, penalty, stale_days),
+            alumni_link=alumni_search_link(slug, job.company.name),
+            alumni_school=schools[0] if schools else None,
             via=VIA if _from_muse(session, job) else None,
         )
         for job, assessment in ranked_jobs(session, min(limit, MAX_JOBS), now=now, **adjustments)
@@ -172,6 +180,8 @@ main { max-width:46rem; margin:0 auto; padding:1.5rem 1rem 3rem; }
 h1 { font-size:1.6rem; margin:0 0 .25rem; } h2 { font-size:1.15rem; margin:0; }
 h3 { font-size:1rem; margin:.6rem 0 .2rem; } ul { margin:.2rem 0 .6rem; padding-left:1.2rem; }
 .meta { color:var(--muted); margin:0 0 1.5rem; }
+.same-school { font-size:.8rem; color:var(--accent); border:1px solid var(--accent);
+  border-radius:4px; padding:0 .3rem; }
 .footnote { color:var(--muted); font-size:.85rem; margin:.5rem 0 0; }
 .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
   padding:1rem 1.1rem; margin:0 0 1rem; }
@@ -250,7 +260,7 @@ def _render_entry(index: int, entry: ShortlistEntry) -> str:
         f'<article class="card"><h2><span class="score" aria-label="fit score">'
         f"{entry.score:.0f}/100</span>{index}. {heading}</h2>"
         f'<p class="where">{where}</p><p>{escape(_first_sentence(entry.explanation))}</p>'
-        f"{_render_contacts(entry.contacts)}"
+        f"{_render_contacts(entry.contacts)}{_render_alumni_link(entry)}"
         f"<details><summary>Full explanation</summary><p>{escape(entry.explanation)}</p>{table}"
         f"</details>{_render_tailoring(entry.tailoring)}{_render_footnotes(entry.footnotes)}"
         "</article>"
@@ -287,11 +297,25 @@ def _render_contacts(contacts: list[WarmPath]) -> str:
         return '<p class="meta">Who to contact: no one you know here yet.</p>'
     items = "".join(
         f"<li><strong>{escape(path.name)}</strong>"
+        f"{' <span class="same-school">Same school</span>' if path.same_school else ''}"
         f"{' (' + escape(path.title) + ')' if path.title else ''}"
         f"{': ' + escape('; '.join(path.reasons)) if path.reasons else ''}</li>"
         for path in contacts
     )
     return f"<h3>Who to contact</h3><ul>{items}</ul>"
+
+
+def _render_alumni_link(entry: ShortlistEntry) -> str:
+    """Render the link to search the user's school's alumni on LinkedIn (built, never fetched)."""
+    link = _safe_link(entry.alumni_link or "")
+    if not link:
+        return ""
+    school = escape(entry.alumni_school or "your school")
+    return (
+        f'<p class="meta"><a href="{escape(link, quote=True)}" rel="noopener noreferrer">'
+        f"Find {school} alumni at {escape(entry.company)} on LinkedIn</a> "
+        "(opens LinkedIn in your browser; Career Hub doesn't visit it).</p>"
+    )
 
 
 def shortlist_path() -> Path:

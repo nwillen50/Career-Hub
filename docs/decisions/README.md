@@ -44,6 +44,7 @@ that supersedes the old one.
 | [0036](0036-posting-age.md) | Posting age: source date or first seen; footnote; slight ordering penalty after 21 days | Accepted |
 | [0037](0037-profile-readiness.md) | Scoring starts when the profile is ready; `hub profile ready` switches it on | Accepted |
 | [0038](0038-alumni-layouts.md) | Alumni lists in any layout: sniffed delimiter, Excel, synonym columns, preview | Accepted |
+| [0039](0039-same-school.md) | Same-school warm paths: schools on people, school_key, an alumni search link that is built but never fetched | Accepted |
 
 ## Template
 

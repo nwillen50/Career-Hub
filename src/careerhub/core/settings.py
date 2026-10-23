@@ -81,6 +81,9 @@ class Settings(BaseModel):
     stale_after_days: int = Field(default=21, ge=1, le=365)
     #: How many fit-score points (of 100) an old posting loses in the ordering. 0 turns it off.
     stale_penalty_points: float = Field(default=5.0, ge=0, le=50)
+    #: Your school's LinkedIn page name (the last part of linkedin.com/school/<name>), so the
+    #: shortlist can offer a link to its alumni at each company. Career Hub only builds the link.
+    linkedin_school_slug: str | None = Field(default=None, pattern=r"^[A-Za-z0-9-]+$")
     #: Your timezone (an IANA name such as "America/New_York"), for working hours and calendars.
     timezone: str = "America/New_York"
     #: Calendar files (.ics) whose busy time the weekly plan avoids. Only times are read.

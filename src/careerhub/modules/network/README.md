@@ -39,3 +39,14 @@ the group comes from a Group column or `--group`. Add `--preview` first: it prin
 was mapped (or "ignored") and how many people would be added, tagged, or skipped, with no names and no
 changes. `--map company='Current Employer'` overrides one mapping. The synonym table is `SYNONYMS` in
 `layouts.py`. See [ADR-0038](../../../../docs/decisions/0038-alumni-layouts.md).
+
+## Same school (CH-101)
+
+People can have schools (`hub people tag 12 --school "Tufts University"`, or a school column in an
+alumni import). Someone at a company who went to one of *your* schools (from `profile.md` and your
+accepted facts) gets "Same school: ..." and 2 points; an alumni-list member for the same school is not
+counted twice. Names match loosely ("Tufts" is "Tufts University"; MIT, UMass... are built in; add
+yours with `school_aliases` in `preferences.yaml`). Put `linkedin_school_slug` (for example
+`tufts-university`) in `settings.json` and each shortlist card links to LinkedIn's alumni search for
+that company. Career Hub only builds the link; it never visits it. See
+[ADR-0039](../../../../docs/decisions/0039-same-school.md).

@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from careerhub.core.companies import get_or_create_company
 from careerhub.core.models import Company, Person
 from careerhub.modules.network.layouts import EXTRA_FIELDS, Table, read_table
+from careerhub.modules.network.schools import school_key
 from careerhub.profile.files import ProfileFileError
 
 ORIGIN = "alumni_list"
@@ -93,6 +94,7 @@ def import_alumni(
         email, url = table.get(row, "email"), table.get(row, "url")
         person = _find(session, name, company, email, url)
         tag = tag_for(row_group)
+        school = table.get(row, "school")
         if person is None:
             extras = "; ".join(
                 f"{label}: {value}"
@@ -109,13 +111,16 @@ def import_alumni(
                     origin=ORIGIN,
                     how_known=tag,
                     notes=extras or None,
+                    schools=[school] if school else None,
                 )
             )
             created += 1
         elif tag in _notes(person.how_known):
             unchanged += 1
+            _add_school(person, school)
         else:
             person.how_known = f"{person.how_known}; {tag}" if person.how_known else tag
+            _add_school(person, school)
             tagged += 1
         session.flush()  # so a repeat of the same person later in the file is found
     if commit:
@@ -139,6 +144,12 @@ def preview_alumni(
         session.rollback()
     mapping = {name: table.header[index] for name, index in table.mapping.items()}
     return Preview(table.header_row, mapping, tuple(table.ignored), report)
+
+
+def _add_school(person: Person, school: str) -> None:
+    """Remember `school` for `person` (a school already there, by key, is not added again)."""
+    if school and school_key(school) not in {school_key(s) for s in person.schools or []}:
+        person.schools = [*(person.schools or []), school]
 
 
 def _company(session: Session, name: str) -> Company:
