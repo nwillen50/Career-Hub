@@ -135,6 +135,9 @@ class Settings(BaseModel):
     #: Scores at or above this get the green bubble; at or above `score_tier_mid`, the brass one.
     score_tier_high: int = Field(default=75, ge=1, le=100)
     score_tier_mid: int = Field(default=55, ge=0, le=99)
+    #: How the shortlist page orders jobs: "rank" (best first) or "place" (a heading per country,
+    #: then per city; remote and unknown places last). Rank order holds inside each group (CH-121).
+    shortlist_group_by: Literal["rank", "place"] = "rank"
     #: Your timezone (an IANA name such as "America/New_York"), for working hours and calendars.
     timezone: str = "America/New_York"
     #: Calendar files (.ics) whose busy time the weekly plan avoids. Only times are read.
