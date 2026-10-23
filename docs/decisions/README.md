@@ -41,8 +41,9 @@ that supersedes the old one.
 | [0033](0033-company-names.md) | Company key ignores legal suffixes and web endings; one create/find path; migration merges duplicates | Accepted |
 | [0034](0034-add-a-job-by-link.md) | Add a job by link: public ATS APIs only, LinkedIn/Handshake never requested, manual jobs never auto-closed | Accepted |
 | [0035](0035-closed-vs-glitch.md) | Empty board: spot-check three jobs, else a three-night backstop; closures noted in the summary | Accepted |
-| [0037](0037-profile-readiness.md) | Scoring starts when the profile is ready; `hub profile ready` switches it on | Accepted |
 | [0036](0036-posting-age.md) | Posting age: source date or first seen; footnote; slight ordering penalty after 21 days | Accepted |
+| [0037](0037-profile-readiness.md) | Scoring starts when the profile is ready; `hub profile ready` switches it on | Accepted |
+| [0038](0038-alumni-layouts.md) | Alumni lists in any layout: sniffed delimiter, Excel, synonym columns, preview | Accepted |
 
 ## Template
 
