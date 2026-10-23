@@ -24,7 +24,9 @@ ingest or alumni import under that name created the company again, the suggestio
 4. A suggestion records the keys it was made for and refuses to merge if the companies at those ids
    no longer have them (SQLite can reuse ids).
 5. Not changed: `hub companies merge <id>` is the user's explicit command, so it asks no further yes/no.
-   A merge still cannot be undone; the dropped name's key is what remains.
+   A merge cannot be undone, and the old name now permanently finds the kept company (`merged_keys`);
+   undoing it would take a new command and a stored copy of what moved.
+6. Merged jobs get duplicate keys that apply the user's company aliases, as ingest does.
 
 ## Evidence
 
