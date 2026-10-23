@@ -38,6 +38,7 @@ class RowView:
     follow_up: str
     next_step: str
     overdue: bool
+    location: str = ""
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,8 @@ class TrackerQuery:
     statuses: tuple[str, ...] = ()
     sort: str = "company"
     descending: bool = False
+    #: True to list the applications under country and city headings (CH-170).
+    group: bool = False
 
     def params(self, **change: str) -> str:
         """Return this query as a URL query string, with `change` applied."""
@@ -61,6 +64,7 @@ class TrackerQuery:
             "dir": "desc" if self.descending else "asc",
         }
         values.update(change)
+        values["group"] = "place" if self.group else ""
         pairs = [(k, v) for k, v in values.items() if v and not (k == "view" and v == "all")]
         pairs += [("status", s) for s in self.statuses]
         return urlencode(pairs)
@@ -72,6 +76,7 @@ def clean_query(
     statuses: list[str],
     sort: str | None,
     direction: str | None,
+    group: str | None = None,
 ) -> TrackerQuery:
     """Check the raw query parameters; anything unknown falls back to the default."""
     return TrackerQuery(
@@ -80,6 +85,7 @@ def clean_query(
         statuses=tuple(s for s in statuses if s in APPLICATION_STATUSES),
         sort=sort if sort in SORTS else "company",
         descending=direction == "desc",
+        group=group == "place",
     )
 
 
@@ -101,6 +107,7 @@ def to_rows(rows: list[TrackerRow], query: TrackerQuery, now: datetime) -> list[
             _day(r.follow_up_due, zone),
             r.next_step or "",
             r.follow_up_due is not None and r.follow_up_due <= now,
+            r.location or "",
         )
         for r in rows
     ]

@@ -76,6 +76,7 @@ class TrackerRow:
     follow_up_due: datetime | None
     next_step: str | None
     deadline: str | None
+    location: str | None = None
 
 
 def track(
@@ -213,6 +214,7 @@ def tracker_rows(
                 application.follow_up_due,
                 application.next_step,
                 _deadline(job),
+                job.location,
             )
         )
     return rows

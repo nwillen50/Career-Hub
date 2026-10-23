@@ -70,6 +70,7 @@ from careerhub.modules.proposals import accept as accept_proposal
 from careerhub.modules.proposals import reject as reject_proposal
 from careerhub.profile.files import ProfileFileError, load_profile_doc
 from careerhub.profile.rubric import load_rubric
+from careerhub.web.grouping import group_by_place
 from careerhub.web.job_detail import gather_job
 from careerhub.web.people_view import gather_contacts, gather_interactions, people_choices
 from careerhub.web.plan_view import gather_plan
@@ -284,7 +285,7 @@ def create_app(
             app.add_api_route(path, tab(path), methods=["GET"], response_class=HTMLResponse)
 
     @app.get("/today", response_class=HTMLResponse)
-    def today(request: Request, section: str | None = None) -> Response:
+    def today(request: Request, section: str | None = None, group: str | None = None) -> Response:
         if open_session is None:
             return tab("/today")(request)
         opened["ok"] = opened["ok"] or check_database()
@@ -294,6 +295,8 @@ def create_app(
         with open_session() as session:
             data = gather_today(session)
         shortlist = data.shortlist
+        cards = job_cards(data.jobs)
+        by_place = group == "place"
         response = templates.TemplateResponse(
             request,
             "today.html",
@@ -312,7 +315,11 @@ def create_app(
                 "reasons": REASON_LABELS,
                 "sections": SECTION_LABELS,
                 "section": chosen,
-                "jobs": job_cards(data.jobs),
+                "jobs": cards,
+                "by_place": by_place,
+                "place_groups": group_by_place([c.entry.location for c in cards])
+                if by_place
+                else [],
                 "follow_ups": data.follow_ups,
                 "more_overdue": data.more_overdue,
                 "deadlines": data.deadlines,
@@ -461,13 +468,14 @@ def create_app(
         status: Annotated[list[str] | None, Query()] = None,
         sort: str | None = None,
         dir: str | None = None,  # noqa: A002  (the URL parameter is called dir)
+        group: str | None = None,
     ) -> Response:
         if open_session is None:
             return tab("/tracker")(request)
         opened["ok"] = opened["ok"] or check_database()
         if not opened["ok"]:
             return tab("/tracker")(request)
-        query = clean_query(view, q, status or [], sort, dir)
+        query = clean_query(view, q, status or [], sort, dir, group)
         with open_session() as session:
             rows = gather_tracker(session, query, utcnow())
         return templates.TemplateResponse(
@@ -479,6 +487,7 @@ def create_app(
                 heading="Tracker",
                 query=query,
                 rows=rows,
+                groups=group_by_place([r.location for r in rows]) if query.group else [],
                 views=VIEW_CHOICES,
                 columns=(
                     ("company", "Company"),
