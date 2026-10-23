@@ -34,6 +34,7 @@ from careerhub.modules.network import WarmPath, warm_paths
 from careerhub.modules.network.schools import alumni_search_link, my_schools
 from careerhub.profile.readiness import current_readiness
 from careerhub.web.assets import copy_fonts, tokens_css
+from careerhub.web.grouping import group_by_place
 
 #: Today shows at most this many ranked jobs (PRD).
 MAX_JOBS = 5
@@ -86,6 +87,8 @@ class ShortlistData:
     #: Scores at or above `tier_high` get the green bubble, at or above `tier_mid` the brass one.
     tier_high: int = 75
     tier_mid: int = 55
+    #: "rank" (one list, best first) or "place" (country and city headings, CH-121).
+    group_by: str = "rank"
 
 
 def gather_shortlist(
@@ -147,6 +150,7 @@ def gather_shortlist(
         None if readiness.on else tuple(readiness.missing),
         settings.score_tier_high,
         settings.score_tier_mid,
+        settings.shortlist_group_by,
     )
 
 
@@ -308,10 +312,36 @@ def render_shortlist(data: ShortlistData, now: datetime) -> str:
             "Check that a source is approved (<code>hub sources list</code>) and that the nightly "
             "run has completed.</p></section>"
         )
-    for index, entry in enumerate(data.entries, start=1):
-        parts.append(_render_entry(index, entry, data.tier_high, data.tier_mid))
+    if data.group_by == "place" and data.entries:
+        parts.append(_render_grouped(data))
+    else:
+        for index, entry in enumerate(data.entries, start=1):
+            parts.append(_render_entry(index, entry, data.tier_high, data.tier_mid))
     parts.append("</main></body></html>")
     return "".join(parts)
+
+
+def _jobs_word(count: int) -> str:
+    return f"{count} job{'s' if count != 1 else ''}"
+
+
+def _render_grouped(data: ShortlistData) -> str:
+    """Render the entries under country (h2) and city (h3) headings; cards become h4."""
+    groups = group_by_place([entry.location for entry in data.entries])
+    out = []
+    for group in groups:
+        out.append(f"<section><h2>{escape(group.name)} ({_jobs_word(group.count)})</h2>")
+        for city in group.cities:
+            if city.name:
+                out.append(f"<h3>{escape(city.name)} ({_jobs_word(len(city.positions))})</h3>")
+            for position in city.positions:  # the number stays the job's rank on the whole list
+                out.append(
+                    _render_entry(
+                        position + 1, data.entries[position], data.tier_high, data.tier_mid, 4
+                    )
+                )
+        out.append("</section>")
+    return "".join(out)
 
 
 def _bubble(score: float, high: int, mid: int) -> str:
@@ -323,7 +353,9 @@ def _bubble(score: float, high: int, mid: int) -> str:
     )
 
 
-def _render_entry(index: int, entry: ShortlistEntry, high: int = 75, mid: int = 55) -> str:
+def _render_entry(
+    index: int, entry: ShortlistEntry, high: int = 75, mid: int = 55, level: int = 2
+) -> str:
     link = _safe_link(entry.url)
     title = escape(entry.title)
     heading = (
@@ -346,7 +378,7 @@ def _render_entry(index: int, entry: ShortlistEntry, high: int = 75, mid: int = 
         else ""
     )
     return (
-        f'<article class="card"><div class="head"><div><h2>{index}. {heading}</h2>'
+        f'<article class="card"><div class="head"><div><h{level}>{index}. {heading}</h{level}>'
         f'<p class="where">{where}</p></div>{_bubble(entry.score, high, mid)}</div>'
         f"<p>{escape(_first_sentence(entry.explanation))}</p>"
         f"{_render_contacts(entry.contacts)}{_render_alumni_link(entry)}"

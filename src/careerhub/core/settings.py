@@ -91,6 +91,9 @@ class Settings(BaseModel):
     score_tier_mid: int = Field(default=55, ge=0, le=99)
     #: The port `hub web` listens on (always on 127.0.0.1, never another address).
     web_port: int = Field(default=8765, ge=1024, le=65535)
+    #: How the shortlist page orders jobs: "rank" (best first) or "place" (a heading per country,
+    #: then per city; remote and unknown places last). Rank order holds inside each group (CH-121).
+    shortlist_group_by: Literal["rank", "place"] = "rank"
     #: Your timezone (an IANA name such as "America/New_York"), for working hours and calendars.
     timezone: str = "America/New_York"
     #: Calendar files (.ics) whose busy time the weekly plan avoids. Only times are read.

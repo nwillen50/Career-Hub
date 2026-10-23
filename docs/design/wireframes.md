@@ -241,5 +241,10 @@ clears a job from the count.
   Extraction writes it from the posting alone (CH-98).
 - **Tracker filters.** Filter chips by status (combine them, e.g. Interested + Applied) next to
   the text filter. Saved views are stored filter combinations.
+- **Group by place.** Today and Tracker get a "Group by place" toggle (setting
+  `shortlist_group_by`, `rank` by default; the shortlist page already follows it). With it on: a
+  heading per country (the country with the best-ranked job first, `h2`), city subheadings (`h3`)
+  with job counts, remote jobs in their own group, places that can't be read last. Rank order holds
+  inside each group, and the card headline still always shows the location (CH-121).
 - **Adjustable defaults.** Plan defaults (task lengths, working hours per weekday) are settings
   (CH-104).

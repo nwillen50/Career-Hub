@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from careerhub.core.models import Assessment, Job
 from careerhub.core.names import company_key
 from careerhub.modules.jobs.extract import JobFields
+from careerhub.modules.jobs.places import country_matches, parse_places
 from careerhub.profile.eligibility import Eligibility, rank
 from careerhub.profile.models import HardConstraints
 
@@ -122,7 +123,12 @@ def _location_ok(
     if not job_places:
         return None, "no location was found for this job"
     places = [" ".join(place.lower().split()) for place in job_places]
+    read_places = parse_places(job_places)
     for wanted in constraints.locations:
+        if country_matches(
+            wanted, read_places
+        ):  # "Germany" matches "Berlin, Germany", "Munich, DE"
+            return True, ""
         city = _city(wanted)
         if city and any(city in place for place in places):
             return True, ""
