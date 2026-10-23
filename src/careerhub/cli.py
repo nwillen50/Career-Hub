@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import getpass
+import logging
 import sys
 from collections.abc import Callable
 from datetime import date
@@ -62,6 +63,7 @@ from careerhub.modules.network import (
 from careerhub.modules.plan import suggest_week
 from careerhub.modules.plan.ics import IcsError
 from careerhub.pipeline import run_nightly
+from careerhub.power import read_power_source
 from careerhub.profile.extract import ProfileFacts
 from careerhub.profile.facts import UnknownExtraction, decide, facts_text, pending
 from careerhub.profile.files import ProfileFileError, load_preferences, load_profile_doc
@@ -81,7 +83,7 @@ USAGE = """Usage:
   hub people import-alumni <file> [--group G] [--sheet S] [--map field=Header] [--preview]
                                              (CSV, TSV or Excel; also `hub alumni import`)
   hub schedule install                       (write the nightly launchd job; prints how to start it)
-  hub nightly                                (run the whole pipeline once)
+  hub nightly [--if-plugged-in]              (run the whole pipeline once; skip on battery)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
                                              are never requested; text can also come from stdin)
   hub companies suggestions | merge <id> | skip <id>   (near-duplicate company names)
@@ -142,8 +144,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _with_session(store, lambda s: _people_import(s, Path(args[2]), args[3:]))
         if args == ["schedule", "install"]:
             return _schedule_install()
-        if args == ["nightly"]:
-            return _nightly(store)
+        if args[:1] == ["nightly"] and args[1:] in ([], ["--if-plugged-in"]):
+            return _nightly(store, if_plugged_in=bool(args[1:]))
         if args[:1] == ["add-job"] and len(args) >= 2 and len(args) % 2 == 0:
             return _with_session(store, lambda s: _add_job(s, args[1], args[2:]))
         if args[:1] == ["companies"]:
@@ -356,7 +358,8 @@ def _people_import(session: Session, path: Path, options: list[str] | None = Non
 
 def _schedule_install() -> int:
     """Write the launchd job at the `nightly_run_time` setting; print how to start and stop it."""
-    path = install_plist(load_settings().nightly_run_time)
+    settings = load_settings()
+    path = install_plist(settings.nightly_run_time, require_power=settings.nightly_require_power)
     start, stop = launchctl_commands(path)
     print(
         f"Wrote {path}. It is not running yet. To start it:\n  {start}\nTo stop it later:\n  {stop}"
@@ -364,8 +367,19 @@ def _schedule_install() -> int:
     return 0
 
 
-def _nightly(store: KeyStore) -> int:
-    """Run the pipeline once; exit code 1 if the run failed outright."""
+def _nightly(
+    store: KeyStore, if_plugged_in: bool = False, power: Callable[[], str] = read_power_source
+) -> int:
+    """Run the pipeline once; exit code 1 if the run failed outright.
+
+    With `if_plugged_in`, a Mac on battery skips the run (a skip is not a failure: exit 0, and no
+    run is recorded, so the page keeps showing the last real run). An unreadable power source
+    runs the job anyway.
+    """
+    if if_plugged_in and power() == "battery":
+        print("Skipped: the Mac is on battery power. The next scheduled run will try again.")
+        logging.getLogger("careerhub.nightly").info("skipped: on battery")
+        return 0
     engine = open_database(store)
     migrate(engine)
     report = run_nightly(engine, store)
