@@ -209,13 +209,13 @@ def test_the_migration_recomputes_the_dedupe_keys_of_stored_jobs(tmp_path: Path)
 
     engine = old_database(tmp_path, [Company(name="Microsoft Corp.", name_key="microsoft corp.")])
     with session_factory(engine)() as session:
-        company = session.scalars(select(Company)).one()
+        company_id = session.scalars(select(Company.id)).one()  # old schema: id only
         source = Source(kind="greenhouse", name="s", url="u", status="approved")
         session.add(source)
         session.flush()
         session.add(
             Job(
-                company_id=company.id,
+                company_id=company_id,
                 source_id=source.id,
                 external_id="1",
                 title="Engineer",
@@ -232,3 +232,13 @@ def test_the_migration_recomputes_the_dedupe_keys_of_stored_jobs(tmp_path: Path)
         assert session.scalars(select(Job)).one().dedupe_key == dedupe_key(
             "Microsoft", "Engineer", "WA"
         )
+
+
+def test_short_names_keep_their_endings_so_different_companies_stay_apart() -> None:
+    """CH-134: stripping '.ai' and 'Corp' both left 'x', merging two companies."""
+    assert company_key("X.ai") != company_key("X Corp")
+    assert company_key("X.ai") == "xai" and company_key("X Corp") == "x"
+    # legal words still drop, so keys of names already stored do not change
+    assert company_key("HP Inc") == company_key("HP") == "hp"
+    assert company_key("3M Co") == company_key("3M") == "3m"
+    assert company_key("Acme Corp") == "acme"  # longer names still lose their endings
