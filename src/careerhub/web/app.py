@@ -104,13 +104,15 @@ def database_opens(store: KeyStore | None = None) -> bool:
 def make_session_opener(store: KeyStore | None = None) -> Callable[[], Session]:
     """Return a function that opens a database session, opening the encrypted database on first use.
 
-    The engine keeps one connection per thread, so a page served on any worker thread is safe.
+    Each session gets its own connection and releases it, so any worker thread is safe.
     """
     holder: dict[str, Engine] = {}
 
     def open_session() -> Session:
         if "engine" not in holder:
-            holder["engine"] = open_database(store or KeychainKeyStore())
+            holder["engine"] = open_database(
+                store or KeychainKeyStore(), one_connection_per_use=True
+            )
         return session_factory(holder["engine"])()
 
     return open_session
