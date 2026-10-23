@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% macro job_card(entry, rank) %}
+<article class="card job">
+  <h3>{{ rank }}. {% if entry.link %}<a href="{{ entry.link }}" rel="noopener noreferrer">{{ entry.title }}</a>{% else %}{{ entry.title }}{% endif %}</h3>
+  <p class="where">{{ entry.company }}{% if entry.location %} · {{ entry.location }}{% endif %}{% if entry.salary %} · {{ entry.salary }}{% endif %}{% if entry.via %} · {{ entry.via }}{% endif %}</p>
+  <p class="score">Fit score <strong>{{ entry.score|round|int }}</strong> out of 100</p>
+  <p>{{ entry.first_sentence }}</p>
+  <details>
+    <summary>Details</summary>
+    <p>{{ entry.explanation }}</p>
+    {% if entry.criteria %}
+    <table>
+      <caption class="muted">How it scored on each criterion</caption>
+      <thead><tr><th scope="col">Criterion</th><th scope="col">Score</th><th scope="col">Why</th></tr></thead>
+      <tbody>{% for c in entry.criteria %}<tr><td>{{ c.get("name", "") }}</td><td>{{ c.get("score", "") }}</td><td>{{ c.get("reason", "") }}</td></tr>{% endfor %}</tbody>
+    </table>
+    {% endif %}
+    <h4>Who to contact</h4>
+    {% if entry.contacts %}
+    <ul>{% for path in entry.contacts %}<li>{{ path.name }}{% if path.same_school %} (same school: {{ path.same_school }}){% endif %}{% if path.reasons %} ({{ path.reasons|join("; ") }}){% endif %}</li>{% endfor %}</ul>
+    {% else %}<p class="muted">You don't know anyone here yet.</p>{% endif %}
+    <ul class="footnotes">{% for note in entry.footnotes %}<li class="muted">{{ note }}</li>{% endfor %}</ul>
+  </details>
+</article>
+{% endmacro %}
+{% block content %}
+<p class="muted">Page built {{ built }}.{% if last_run %} Last successful run: {{ last_run }} UTC.{% else %} No successful run yet.{% endif %}</p>
+<nav aria-label="Sections" class="chips">
+  <ul>
+  {% for key, label in sections %}
+    <li><a href="/today?section={{ key }}"{% if key == section %} aria-current="true"{% endif %}>{{ label }}</a></li>
+  {% endfor %}
+  </ul>
+</nav>
+{% if last_error %}
+<section class="card error" role="alert"><h2>The last nightly run failed</h2>
+  <p>{{ last_error }} The jobs below are from an earlier run.</p></section>
+{% endif %}
+{% if waiting_for is not none %}
+<section class="card"><h2>Scoring starts when your profile is ready</h2>
+  <p>Still needed:</p>
+  <ul>{% for item in waiting_for %}<li>{{ item }}</li>{% else %}<li>Run <code>hub profile ready</code></li>{% endfor %}</ul>
+  <p>Then run <code>hub profile ready</code> once to switch scoring on.</p></section>
+{% endif %}
+{% if section in ("all", "top") %}
+<section aria-labelledby="top-h">
+  <h2 id="top-h">Top jobs ({{ jobs|length }})</h2>
+  {% for entry in jobs %}{{ job_card(entry, loop.index) }}
+  {% else %}
+  <p class="card">Nothing ranked yet. Check that a source is approved and the nightly run finished, in <a href="/status">System status</a>.</p>
+  {% endfor %}
+</section>
+{% endif %}
+{% if section in ("all", "exploration") %}
+<section aria-labelledby="explore-h">
+  <h2 id="explore-h">Exploration pick</h2>
+  <p class="card muted">Exploration picks start once Career Hub has learned from your reactions to jobs.</p>
+</section>
+{% endif %}
+{% if section in ("all", "followups") %}
+<section aria-labelledby="follow-h">
+  <h2 id="follow-h">Follow-ups due ({{ follow_ups|length }})</h2>
+  {% if more_overdue %}<p><a href="/tracker">+{{ more_overdue }} more overdue</a></p>{% endif %}
+  {% for item in follow_ups %}
+  <p class="card">Follow up with {{ item.person }}{% if item.company %} at {{ item.company }}{% endif %}
+    ({% if item.overdue_days %}{{ item.overdue_days }} day{{ "s" if item.overdue_days != 1 }} overdue{% else %}due today{% endif %}){% if item.summary %}: {{ item.summary }}{% endif %}</p>
+  {% else %}<p class="card muted">No follow-ups due.</p>{% endfor %}
+</section>
+{% endif %}
+{% if section in ("all", "deadlines") %}
+<section aria-labelledby="dead-h">
+  <h2 id="dead-h">Deadlines this week</h2>
+  {% for item in deadlines %}
+  <p class="card">{{ item.when.strftime("%a %b %d") }}: {% if item.link %}<a href="{{ item.link }}" rel="noopener noreferrer">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %} at {{ item.company }}</p>
+  {% else %}<p class="card muted">No deadlines this week.</p>{% endfor %}
+</section>
+{% endif %}
+{% endblock %}

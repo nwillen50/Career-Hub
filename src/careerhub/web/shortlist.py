@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from html import escape
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from sqlalchemy import select
@@ -67,6 +68,10 @@ class ShortlistEntry:
     alumni_school: str | None = None
     #: Where the posting came from when the source requires credit (for example "via The Muse").
     via: str | None = None
+    #: The pay range as the posting states it ("$120,000 to $150,000"), if it does.
+    salary: str | None = None
+    #: The application deadline, if the posting states one.
+    deadline: date | None = None
     #: A work-visa note for a job abroad, in words ("Needs a work visa for Germany: ...").
     visa_flag: str | None = None
 
@@ -115,6 +120,8 @@ def gather_shortlist(
             alumni_link=alumni_search_link(slug, job.company.name),
             alumni_school=schools[0] if schools else None,
             via=VIA if _from_muse(session, job) else None,
+            salary=_salary(job),
+            deadline=_deadline(job),
             visa_flag=_visa_note(job, rights),
         )
         for job, assessment in ranked_jobs(session, min(limit, MAX_JOBS), now=now, **adjustments)
@@ -160,6 +167,31 @@ def _footnotes(job: Job, now: datetime, penalty: float, stale_days: int) -> tupl
     return tuple(notes)
 
 
+def _stated(job: Job) -> dict[str, Any]:
+    """Return the facts extraction saved for `job` (empty if none)."""
+    return dict((job.structured_fields or {}).get("fields") or {})
+
+
+def _salary(job: Job) -> str | None:
+    """Return the pay range the posting states, in words, or None."""
+    low, high = _stated(job).get("salary_min_usd"), _stated(job).get("salary_max_usd")
+    if isinstance(low, int) and isinstance(high, int):
+        return f"${low:,} to ${high:,}" if low != high else f"${low:,}"
+    if isinstance(high, int):
+        return f"up to ${high:,}"
+    if isinstance(low, int):
+        return f"from ${low:,}"
+    return None
+
+
+def _deadline(job: Job) -> date | None:
+    """Return the application deadline the posting states, or None."""
+    try:
+        return date.fromisoformat(str(_stated(job).get("deadline")))
+    except ValueError:
+        return None
+
+
 def _visa_note(job: Job, work_rights: list[str]) -> str | None:
     """Return the work-visa flag for a job abroad, or None."""
     saved = (job.structured_fields or {}).get("fields")
@@ -191,10 +223,15 @@ def _safe_link(url: str) -> str | None:
     return url.strip() if parsed.scheme in ("http", "https") and parsed.netloc else None
 
 
+safe_link = _safe_link  # public names for the web app's views
+
+
 def _first_sentence(text: str) -> str:
     match = re.match(r"(.+?[.!?])(\s|$)", text.strip(), re.DOTALL)
     return match.group(1) if match else text.strip()
 
+
+first_sentence = _first_sentence
 
 _STYLE = """
 * { box-sizing: border-box; }
