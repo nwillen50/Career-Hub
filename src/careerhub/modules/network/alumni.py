@@ -198,6 +198,17 @@ def _valid_url(value: str) -> str:
     return value if _URL_SHAPE.fullmatch(value) else ""
 
 
+def _same_person(a: str, b: str) -> bool:
+    """Say whether two names can be one person: they share every word of the shorter name.
+
+    "Ada Sample" and "Augusta Ada Sample" can; "John Smith" and "Jane Smith" cannot (relatives can
+    share an email address). Commas and hyphens count as spaces.
+    """
+    words_a, words_b = (set(re.split(r"[\s,\-]+", _name_key(n))) - {""} for n in (a, b))
+    shorter, longer = sorted((words_a, words_b), key=len)
+    return bool(shorter) and shorter <= longer
+
+
 def _name_key(name: str) -> str:
     """Fold case (all alphabets, not just ASCII) and collapse spaces, so names compare fairly."""
     return " ".join(name.split()).casefold()
@@ -206,15 +217,15 @@ def _name_key(name: str) -> str:
 def _find(session: Session, name: str, company: Company, email: str, url: str) -> Person | None:
     """Find an existing person: a matching link or email, or the same name at the same company.
 
-    A shared email or link also needs one word of the name in common ("Ada Sample" and
-    "Augusta Ada Sample"), because an office address or a copied cell must not merge different
-    people. Names are compared in Python because SQLite folds only ASCII case.
+    A shared email or link also needs the names to be compatible ("Ada Sample" and "Augusta Ada
+    Sample"), because an office address, a copied cell, or a relative's shared address must not
+    merge different people. Names are compared in Python because SQLite folds only ASCII case.
     """
     wanted = _name_key(name)
     for column, value in ((Person.profile_url, url), (Person.email, email.lower())):
         if value:
             for found in session.scalars(select(Person).where(func.lower(column) == value.lower())):
-                if set(_name_key(found.full_name).split()) & set(wanted.split()):
+                if _same_person(found.full_name, name):
                     return found
     for found in session.scalars(select(Person).where(Person.company_id == company.id)):
         if _name_key(found.full_name) == wanted:

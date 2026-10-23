@@ -158,3 +158,13 @@ def test_semicolon_in_a_group_name_stays_one_tag(tmp_path: Path, session: Sessio
     assert again.unchanged == 1 and again.tagged == 0
     person = session.scalars(select(Person)).one()
     assert person.how_known == "alumni: Tufts, Class of 2020"
+
+
+def test_relatives_sharing_an_email_stay_two_people(tmp_path: Path, session: Session) -> None:
+    """Review: 'John Smith' and 'Jane Smith' share a family address but are not one person."""
+    rows = (
+        "John Smith,Acme Corp,,Example University,smiths@example.com,\n"
+        "Jane Smith,Globex,,Example University,smiths@example.com,\n"
+    )
+    report = import_alumni(session, write(tmp_path, HEADER + rows))
+    assert report.created == 2
