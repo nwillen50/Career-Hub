@@ -39,14 +39,28 @@ def logs_dir() -> Path:
     return folder
 
 
-def render_plist(run_time: str, python: str | None = None, logs: Path | None = None) -> bytes:
-    """Build the launchd property list that runs `hub nightly` every day at `run_time`."""
+def render_plist(
+    run_time: str,
+    python: str | None = None,
+    logs: Path | None = None,
+    require_power: bool = False,
+) -> bytes:
+    """Build the launchd property list that runs `hub nightly` every day at `run_time`.
+
+    With `require_power` the job passes `--if-plugged-in`, so on battery it skips that night.
+    """
     hour, minute = parse_clock(run_time)
     logs = logs or logs_dir()
     job = {
         "Label": LABEL,
         # The venv's own Python, so the job doesn't depend on the shell's PATH.
-        "ProgramArguments": [python or sys.executable, "-m", "careerhub.cli", "nightly"],
+        "ProgramArguments": [
+            python or sys.executable,
+            "-m",
+            "careerhub.cli",
+            "nightly",
+            *(["--if-plugged-in"] if require_power else []),
+        ],
         "StartCalendarInterval": {"Hour": hour, "Minute": minute},
         "RunAtLoad": False,
         "StandardOutPath": str(logs / "nightly.out.log"),
@@ -64,7 +78,7 @@ def agents_dir() -> Path:
     return Path.home() / "Library" / "LaunchAgents"
 
 
-def install_plist(run_time: str, folder: Path | None = None) -> Path:
+def install_plist(run_time: str, folder: Path | None = None, require_power: bool = False) -> Path:
     """Write the plist (replacing an older one for this job) and return its path.
 
     It is *not* loaded; the caller shows the user the `launchctl` command.
@@ -72,7 +86,7 @@ def install_plist(run_time: str, folder: Path | None = None) -> Path:
     folder = folder or agents_dir()
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{LABEL}.plist"
-    path.write_bytes(render_plist(run_time))
+    path.write_bytes(render_plist(run_time, require_power=require_power))
     os.chmod(path, 0o644)  # launchd requires agents not to be writable by others
     return path
 

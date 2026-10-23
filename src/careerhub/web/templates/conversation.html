@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="{% if job %}/jobs/{{ job.id }}{% else %}/today{% endif %}">&larr; Back</a></p>
+<p class="muted">Ask why a job is ranked where it is. Answers come from your saved scores and explanations. This can explain, but it cannot change anything or contact anyone.{% if job %} Asking about <strong>{{ job.title }}</strong> at {{ job.company.name }}.{% endif %}</p>
+{% if note %}<section class="card error" role="alert"><p>{{ note }}</p></section>{% endif %}
+{% if proposals %}
+<section aria-labelledby="prop-h"><h2 id="prop-h">Suggested changes waiting for you</h2>
+  <p class="muted">Nothing changes until you press Accept. Accepting edits only your preferences file, and keeps a copy of the old one next to it.</p>
+  {% for item in proposals %}
+  <article class="card">
+    <h3>{{ item.title }}</h3>
+    <pre class="posting">{{ item.diff }}</pre>
+    <form method="post" action="/proposals/{{ item.id }}/accept" class="inline-form"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" aria-label="Accept: {{ item.title }}">Accept</button></form>
+    <form method="post" action="/proposals/{{ item.id }}/reject" class="inline-form"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" aria-label="Reject: {{ item.title }}">Reject</button></form>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
+<section aria-labelledby="chat-h"><h2 id="chat-h">Conversation</h2>
+  {% for message in messages %}
+  <p class="card{% if message.role == "assistant" %} answer{% endif %}"><strong>{{ "You" if message.role == "user" else "Career Hub" }}:</strong> {{ message.text }}</p>
+  {% else %}<p class="card muted">No questions yet.</p>{% endfor %}
+</section>
+<form method="post" action="/conversation" class="ask">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% if job_id %}<input type="hidden" name="job" value="{{ job_id }}">{% endif %}
+  <label for="question">Your question</label>
+  <textarea id="question" name="question" rows="3" maxlength="600" required></textarea>
+  <button type="submit">Ask</button>
+</form>
+{% endblock %}

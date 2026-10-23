@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from urllib.parse import quote, unquote
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -23,12 +24,23 @@ def get_or_create_company(
     key = company_key(name, aliases)
     if not key:
         return None
-    company = session.scalars(select(Company).where(Company.name_key == key)).first()
+    company = _by_key(session, key)
     if company is None:
         company = Company(name=" ".join(name.split()), name_key=key)
         session.add(company)
         session.flush()
     return company
+
+
+def _by_key(session: Session, key: str) -> Company | None:
+    """Return the company with this key, or the one a company of this key was merged into."""
+    found = session.scalars(select(Company).where(Company.name_key == key)).first()
+    if found is not None:
+        return found
+    for company in session.scalars(select(Company).where(Company.merged_keys.is_not(None))):
+        if key in (company.merged_keys or []):
+            return company
+    return None
 
 
 def find_companies(
@@ -42,7 +54,7 @@ def find_companies(
     key = company_key(text, aliases)
     if not key:
         return []
-    exact = session.scalars(select(Company).where(Company.name_key == key)).first()
+    exact = _by_key(session, key)
     if exact is not None:
         return [exact]
     word = re.compile(rf"(?<!\w){re.escape(key)}(?!\w)")
@@ -50,10 +62,25 @@ def find_companies(
     return [c for c in everyone if word.search(c.name_key)]
 
 
-def merge_companies(session: Session, keep: Company, drop: Company) -> None:
-    """Move everything from `drop` to `keep` and delete `drop`."""
-    for job in session.scalars(select(Job).where(Job.company_id == drop.id)):
+def merge_companies(
+    session: Session, keep: Company, drop: Company, aliases: Mapping[str, str] | None = None
+) -> None:
+    """Move everything from `drop` to `keep` and delete `drop`.
+
+    `drop`'s name stays findable (`merged_keys`), so a later import under the old name joins `keep`
+    instead of creating the company again. Moved jobs get new duplicate keys, and the same posting
+    seen by two sources is linked.
+    """
+    from careerhub.modules.jobs.store import (
+        dedupe_key,
+        link_duplicates,
+    )  # core must not import jobs at load
+
+    moved = list(session.scalars(select(Job).where(Job.company_id == drop.id)))
+    for job in moved:
         job.company_id = keep.id
+        job.dedupe_key = dedupe_key(keep.name, job.title, job.location, aliases)
+    keep.merged_keys = sorted({*(keep.merged_keys or []), drop.name_key, *(drop.merged_keys or [])})
     for person in session.scalars(select(Person).where(Person.company_id == drop.id)):
         person.company_id = keep.id
     keep.notes = "\n".join(t for t in (keep.notes, drop.notes) if t) or None
@@ -64,6 +91,15 @@ def merge_companies(session: Session, keep: Company, drop: Company) -> None:
     session.flush()
     session.delete(drop)
     session.flush()
+    link_duplicates(session, [job.dedupe_key for job in moved])
+
+
+def _same_keys(ids: Mapping[str, str], keep: Company, drop: Company) -> bool:
+    """Say whether the companies at the saved ids still have the keys the suggestion names."""
+    return all(
+        wanted is None or unquote(wanted) == company.name_key
+        for wanted, company in ((ids.get("keep_key"), keep), (ids.get("drop_key"), drop))
+    )
 
 
 def _near_miss(a: str, b: str) -> bool:
@@ -104,7 +140,10 @@ def suggest_merges(session: Session) -> int:
             Proposal(
                 kind=MERGE_KIND,
                 title=title,
-                body=f"keep={keep.id} drop={drop.id}",
+                body=(
+                    f"keep={keep.id} drop={drop.id} "
+                    f"keep_key={quote(keep.name_key)} drop_key={quote(drop.name_key)}"
+                ),
                 origin="agent",
             )
         )
@@ -125,7 +164,9 @@ def pending_merges(session: Session) -> list[Proposal]:
     )
 
 
-def decide_merge(session: Session, proposal_id: int, accept: bool) -> str:
+def decide_merge(
+    session: Session, proposal_id: int, accept: bool, aliases: Mapping[str, str] | None = None
+) -> str:
     """Accept (merge) or reject suggestion `proposal_id`; return a sentence saying what happened.
 
     The shorter name is kept. If either company has since been merged or removed, the suggestion
@@ -141,10 +182,11 @@ def decide_merge(session: Session, proposal_id: int, accept: bool) -> str:
         ids = dict(part.split("=") for part in (proposal.body or "").split())
         keep = session.get(Company, int(ids.get("keep", 0)))
         drop = session.get(Company, int(ids.get("drop", 0)))
-        if keep is None or drop is None:
+        # SQLite reuses ids, so a suggestion also checks the keys it was made for (CH-154)
+        if keep is None or drop is None or not _same_keys(ids, keep, drop):
             message = "One of those companies is already gone; nothing merged."
         else:
-            merge_companies(session, keep, drop)
+            merge_companies(session, keep, drop, aliases)
             message = f"Merged {drop.name} into {keep.name}."
     session.commit()
     return message
