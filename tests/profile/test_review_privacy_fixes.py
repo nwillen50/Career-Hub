@@ -46,3 +46,28 @@ def test_names_made_of_short_parts_go_in_either_order(text: str) -> None:
 def test_local_provider_ignores_proxy_environment() -> None:
     """CH-151: a prompt for a local model must never be routed through HTTP_PROXY."""
     assert LocalProvider("l", "m")._client.trust_env is False
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Date of birth: 3rd of March 2001",
+        "D.O.B 4 Mar 01",
+        "Date of Birth – 03·04·2001",
+        "born 2001",
+        "Born in 2001",
+    ],
+)
+def test_more_birth_date_spellings_are_removed(line: str) -> None:
+    cleaned = transcript_text(f"Transcript\n{line}\nCS101 A", "Li Wu")
+    assert "2001" not in cleaned and "01" not in cleaned.replace("CS101", "")
+    assert "CS101 A" in cleaned
+
+
+def test_a_birth_label_does_not_swallow_the_next_sentence() -> None:
+    cleaned = transcript_text("Born in Ohio. Graduated May 5, 2020 CS 101 A", "Li Wu")
+    assert "Ohio" in cleaned and "May 5, 2020" in cleaned and "CS 101 A" in cleaned
+
+
+def test_a_hyphenated_short_name_is_removed() -> None:
+    assert "Wu" not in personal_text("Li-Wu", "Li Wu")
