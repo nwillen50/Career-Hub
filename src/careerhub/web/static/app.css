@@ -28,3 +28,14 @@ footer { max-width: 56rem; margin: 0 auto; padding: 0 var(--space-5) var(--space
 button { font: inherit; padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
   border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+.posting { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3); }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: var(--space-2); border-bottom: 1px solid var(--divider); vertical-align: top; }
+.reactions button { margin-right: var(--space-2); }
+.why { display: inline-block; }
+.chips ul { display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; padding: 0; }
+.chips a[aria-current="true"] { background: var(--chip-selected); color: var(--chip-selected-text);
+  border-color: var(--chip-selected-border); }
+.chips a { border: 1px solid var(--chip-border); border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3); text-decoration: none; display: inline-block; }
