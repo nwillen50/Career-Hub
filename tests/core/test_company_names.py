@@ -237,5 +237,8 @@ def test_the_migration_recomputes_the_dedupe_keys_of_stored_jobs(tmp_path: Path)
 def test_short_names_keep_their_endings_so_different_companies_stay_apart() -> None:
     """CH-134: stripping '.ai' and 'Corp' both left 'x', merging two companies."""
     assert company_key("X.ai") != company_key("X Corp")
-    assert company_key("X.ai") == "xai" and company_key("X Corp") == "x corp"
+    assert company_key("X.ai") == "xai" and company_key("X Corp") == "x"
+    # legal words still drop, so keys of names already stored do not change
+    assert company_key("HP Inc") == company_key("HP") == "hp"
+    assert company_key("3M Co") == company_key("3M") == "3m"
     assert company_key("Acme Corp") == "acme"  # longer names still lose their endings

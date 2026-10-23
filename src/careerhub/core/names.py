@@ -42,17 +42,21 @@ def company_key(name: str, aliases: Mapping[str, str] | None = None) -> str:
     if len(words) > 1 and words[0] == "the":
         words = words[1:]
     unstripped = list(words)
+    web_stripped = False
     while words:
         last = words[-1].rstrip(".")
         if len(words) > 1 and last in LEGAL_WORDS:
             words.pop()
         elif _WEB_SUFFIX.search(last) and last != _WEB_SUFFIX.sub("", last):
             words[-1] = _WEB_SUFFIX.sub("", last)
+            web_stripped = True
         else:
             break
     key = _tidy(words)
-    if len(key) < MIN_KEY_LENGTH and words != unstripped:
-        key = _tidy(unstripped)  # "X.ai" and "X Corp" would both shrink to "x": keep their endings
+    if len(key) < MIN_KEY_LENGTH and web_stripped:
+        # "X.ai" would shrink to "x", the same as "X Corp". Only a web ending is kept: legal words
+        # still drop ("HP Inc" stays "hp"), so names already stored do not change.
+        key = _tidy(unstripped)
     key = BUILT_IN_ALIASES.get(key, key)
     return aliases.get(key, key) if aliases else key
 
