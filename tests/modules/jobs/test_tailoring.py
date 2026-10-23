@@ -164,3 +164,15 @@ def _now():  # type: ignore[no-untyped-def]
     from datetime import UTC, datetime
 
     return datetime(2026, 10, 21, tzinfo=UTC)
+
+
+def test_with_a_profile_epoch_only_a_new_epoch_makes_new_notes(session: Session) -> None:
+    """CH-115: the same rule as scoring."""
+    job = scored_job(session)
+    provider = FakeProvider("m", replies=[NOTES, NOTES])
+    router = Router([provider])
+    assert tailor_job(session, router, job, DOC, RESUME, ["m"], profile_epoch=0)
+    edited = DOC.model_copy(update={"about": "A different About section."})
+    assert tailor_job(session, router, job, edited, RESUME, ["m"], profile_epoch=0) is None
+    assert tailor_job(session, router, job, edited, RESUME, ["m"], profile_epoch=1)
+    assert len(provider.requests) == 2

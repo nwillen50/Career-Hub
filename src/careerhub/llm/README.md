@@ -103,8 +103,14 @@ hub models list                       presets, which are on, prices and the date
 hub models add anthropic              asks for the key (hidden); one key switches on Haiku and Sonnet
 hub models add gemini --tier free     the tier is required: free trains on your data
 hub models remove openai              asks first, then deletes the key from the Keychain
-hub models add-custom NAME KIND MODEL [--base-url U] [--input N] [--output N] [--trains-on-data]
+hub models add-custom NAME KIND MODEL [--base-url U] [--input N] [--output N] [--no-training]
 hub models routes                     the model each task will try, and why
 ```
+
+A custom cloud model is assumed to **train on your data** (so personal tasks never route to it)
+until you pass `--no-training`; a provider in `settings.json` with no `trains_on_data` is treated the
+same way. Cloud addresses (`base_url`, including `preset_overrides`) must be `https://` with a host;
+only `local` models and local presets may use `http://localhost`. If saving settings fails, the key
+just stored is removed again.
 
 Keys go only into the Keychain: never printed, logged, or written to `settings.json`.
