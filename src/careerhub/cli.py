@@ -20,10 +20,10 @@ from careerhub.core.migrate import migrate
 from careerhub.core.models import utcnow
 from careerhub.core.paths import database_path
 from careerhub.core.secrets import (
+    DATABASE_KEY_NAME,
     KeychainKeyStore,
     KeyStore,
     SecretsError,
-    get_or_create_database_key,
 )
 from careerhub.core.settings import SettingsError, load_settings
 from careerhub.core.storage import StorageError, WrongKeyError, open_database, session_factory
@@ -389,9 +389,13 @@ def _backup_list() -> int:
 
 def _backup_restore(store: KeyStore, backup: Path, folder: Path) -> int:
     """Restore `backup` into the new `folder`, check it, and say how to switch over."""
+    key = store.get(DATABASE_KEY_NAME)  # read-only: a restore must not create a new key
+    if key is None:
+        print("Restore failed: there is no database key in the Keychain to open the backup with.")
+        return 1
     try:
-        report = restore_backup(backup, folder, get_or_create_database_key(store))
-    except (RestoreError, WrongKeyError) as error:
+        report = restore_backup(backup, folder, key)
+    except (RestoreError, WrongKeyError, ValueError) as error:
         print(f"Restore failed: {error}")
         return 1
     total = sum(report.counts.values())
