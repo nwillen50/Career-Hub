@@ -34,7 +34,9 @@ from fastapi.templating import Jinja2Templates
 
 from careerhub.core.migrate import migrate
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
+from careerhub.core.settings import SettingsError
 from careerhub.core.storage import StorageError, open_database
+from careerhub.profile.files import ProfileFileError
 
 SESSION_COOKIE = "ch_session"
 ALLOWED_HOSTS = ("127.0.0.1", "localhost")
@@ -177,6 +179,23 @@ def create_app(
         )
         response.delete_cookie(SESSION_COOKIE)
         return response
+
+    @app.exception_handler(SettingsError)
+    @app.exception_handler(ProfileFileError)
+    def settings_problem(request: Request, error: Exception) -> Response:
+        """Show a designed error page, not a stack trace, for a broken settings or profile file."""
+        return page(
+            request,
+            503,
+            title="A settings file has a problem",
+            heading="A settings file has a problem",
+            message=(
+                "Career Hub could not read settings.json, preferences.yaml, or profile.md. "
+                "Run `hub profile show` in the terminal to see which line to fix, then reload. "
+                "Nothing was changed."
+            ),
+            error=True,
+        )
 
     return app
 
