@@ -23,6 +23,11 @@ class _Collect(HTMLParser):
         self.inline_style = False
         self.inline_script = False
         self._in_script = False
+        self._label_depth = 0
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "label" and self._label_depth:
+            self._label_depth -= 1
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         a = dict(attrs)
@@ -31,10 +36,19 @@ class _Collect(HTMLParser):
             self.lang = a.get("lang")
         elif tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
             self.headings.append(int(tag[1]))
-        elif tag == "label" and a.get("for"):
-            self.labels.add(a["for"] or "")
+        elif tag == "label":
+            self._label_depth += 1
+            if a.get("for"):
+                self.labels.add(a["for"] or "")
         elif tag in {"input", "select", "textarea"}:
-            self.fields.append((a.get("id"), a.get("aria-label"), a.get("type") == "hidden"))
+            wrapped = self._label_depth > 0  # <label><input> names the field too
+            self.fields.append(
+                (
+                    a.get("id"),
+                    a.get("aria-label") or ("wrapped" if wrapped else None),
+                    a.get("type") == "hidden",
+                )
+            )
         elif tag == "img" and a.get("alt") is None:
             self.images_without_alt += 1
         elif tag == "a" and self.first_link is None:
