@@ -47,6 +47,7 @@ def test_the_example_loads_with_a_five_dollar_budget_and_the_documented_routes()
     assert settings.model_routes["score"] == ("claude-haiku", "claude-sonnet")
     assert settings.model_routes["tailor"] == ("claude-haiku", "local-8b")
     assert settings.model_routes["profile_extract"] == ("claude-haiku", "local-8b")
+    assert settings.model_routes["chat"] == ("claude-haiku", "local-8b")
 
 
 def test_with_the_three_keys_every_routed_model_is_switched_on() -> None:

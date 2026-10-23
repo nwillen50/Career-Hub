@@ -1,0 +1,18 @@
+<tr id="app-{{ row.application_id }}"{% if row.overdue %} class="overdue"{% endif %}>
+  <td>
+    <form id="row-{{ row.application_id }}" method="post" action="/applications/{{ row.application_id }}" hx-post="/applications/{{ row.application_id }}" hx-target="closest tr" hx-swap="outerHTML">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+    </form>
+    {{ row.company }}
+  </td>
+  <td><a href="/jobs/{{ row.job_id }}">{{ row.title }}</a></td>
+  <td>
+    <select name="status" form="row-{{ row.application_id }}" aria-label="Status for {{ row.title }} at {{ row.company }}">
+      {% for key, label in status_choices %}<option value="{{ key }}"{% if key == row.status %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </td>
+  <td>{{ row.applied or "—" }}</td>
+  <td><input type="date" name="follow_up" value="{{ row.follow_up }}" form="row-{{ row.application_id }}" aria-label="Follow-up date for {{ row.title }} at {{ row.company }}">{% if row.overdue %} <span class="overdue-note">due</span>{% endif %}</td>
+  <td><input type="text" name="next_step" value="{{ row.next_step }}" maxlength="500" form="row-{{ row.application_id }}" aria-label="Next step for {{ row.title }} at {{ row.company }}"></td>
+  <td><button type="submit" form="row-{{ row.application_id }}" aria-label="Save changes for {{ row.title }} at {{ row.company }}">Save</button>{% if error %} <span role="alert" class="overdue-note">{{ error }}</span>{% endif %}</td>
+</tr>

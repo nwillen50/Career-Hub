@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="card{% if error %} error{% endif %}"{% if error %} role="alert"{% endif %}>
+    <p>{{ message }}</p>
+    {% if empty %}<p class="muted">Nothing to show yet.</p>{% endif %}
+  </section>
+{% endblock %}

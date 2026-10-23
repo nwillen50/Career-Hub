@@ -11,10 +11,12 @@ empty and error states.
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from html import escape
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from sqlalchemy import select
@@ -25,13 +27,17 @@ from careerhub.core.models import Assessment, Job, RunLog, Source, utcnow
 from careerhub.core.paths import data_dir
 from careerhub.core.settings import load_settings
 from careerhub.modules.jobs.age import age_days
+from careerhub.modules.jobs.extract import JobFields
 from careerhub.modules.jobs.muse import KIND as MUSE_KIND
 from careerhub.modules.jobs.muse import VIA
 from careerhub.modules.jobs.scoring import current_rank_adjustments, is_internship, ranked_jobs
+from careerhub.modules.jobs.visa import visa_flag
 from careerhub.modules.network import WarmPath, warm_paths
 from careerhub.modules.network.schools import alumni_search_link, my_schools
+from careerhub.profile.files import load_preferences
 from careerhub.profile.readiness import current_readiness
 from careerhub.web.assets import copy_fonts, tokens_css
+from careerhub.web.grouping import group_by_place
 
 #: Today shows at most this many ranked jobs (PRD).
 MAX_JOBS = 5
@@ -63,6 +69,14 @@ class ShortlistEntry:
     alumni_school: str | None = None
     #: Where the posting came from when the source requires credit (for example "via The Muse").
     via: str | None = None
+    #: The pay range as the posting states it ("$120,000 to $150,000"), if it does.
+    salary: str | None = None
+    #: The application deadline, if the posting states one.
+    deadline: date | None = None
+    #: The job's id in the database, for reactions (None in tests that don't need it).
+    job_id: int | None = None
+    #: A work-visa note for a job abroad, in words ("Needs a work visa for Germany: ...").
+    visa_flag: str | None = None
 
 
 @dataclass(frozen=True)
@@ -78,18 +92,31 @@ class ShortlistData:
     #: Scores at or above `tier_high` get the green bubble, at or above `tier_mid` the brass one.
     tier_high: int = 75
     tier_mid: int = 55
+    #: "rank" (one list, best first) or "place" (country and city headings, CH-121).
+    group_by: str = "rank"
 
 
 def gather_shortlist(
-    session: Session, limit: int = MAX_JOBS, now: datetime | None = None
+    session: Session,
+    limit: int = MAX_JOBS,
+    now: datetime | None = None,
+    hide: Collection[int] = (),
 ) -> ShortlistData:
-    """Collect the top jobs and the state of the latest nightly run."""
+    """Collect the top jobs and the state of the latest nightly run (`hide`: job ids to skip)."""
     now = now or utcnow()
     adjustments = current_rank_adjustments()
     penalty = adjustments["internship_penalty"]
     slug = load_settings().linkedin_school_slug
     schools = my_schools(session) if slug else []
     stale_days = adjustments["stale_after_days"]
+    wanted = min(limit, MAX_JOBS)
+    ranked = [
+        row
+        for row in ranked_jobs(session, wanted + len(hide), now=now, **adjustments)
+        if row[0].id not in hide
+    ][:wanted]
+    preferences = load_preferences()
+    rights = preferences.work_rights if preferences else []
     entries = [
         ShortlistEntry(
             title=job.title,
@@ -105,8 +132,12 @@ def gather_shortlist(
             alumni_link=alumni_search_link(slug, job.company.name),
             alumni_school=schools[0] if schools else None,
             via=VIA if _from_muse(session, job) else None,
+            salary=_salary(job),
+            deadline=_deadline(job),
+            job_id=job.id,
+            visa_flag=_visa_note(job, rights),
         )
-        for job, assessment in ranked_jobs(session, min(limit, MAX_JOBS), now=now, **adjustments)
+        for job, assessment in ranked
     ]
     runs = list(
         session.scalars(
@@ -127,6 +158,7 @@ def gather_shortlist(
         None if readiness.on else tuple(readiness.missing),
         settings.score_tier_high,
         settings.score_tier_mid,
+        settings.shortlist_group_by,
     )
 
 
@@ -146,6 +178,39 @@ def _footnotes(job: Job, now: datetime, penalty: float, stale_days: int) -> tupl
     if penalty > 0 and is_internship(job):
         notes.append(INTERNSHIP_NOTE)
     return tuple(notes)
+
+
+def _stated(job: Job) -> dict[str, Any]:
+    """Return the facts extraction saved for `job` (empty if none)."""
+    return dict((job.structured_fields or {}).get("fields") or {})
+
+
+def _salary(job: Job) -> str | None:
+    """Return the pay range the posting states, in words, or None."""
+    low, high = _stated(job).get("salary_min_usd"), _stated(job).get("salary_max_usd")
+    if isinstance(low, int) and isinstance(high, int):
+        return f"${low:,} to ${high:,}" if low != high else f"${low:,}"
+    if isinstance(high, int):
+        return f"up to ${high:,}"
+    if isinstance(low, int):
+        return f"from ${low:,}"
+    return None
+
+
+def _deadline(job: Job) -> date | None:
+    """Return the application deadline the posting states, or None."""
+    try:
+        return date.fromisoformat(str(_stated(job).get("deadline")))
+    except ValueError:
+        return None
+
+
+def _visa_note(job: Job, work_rights: list[str]) -> str | None:
+    """Return the work-visa flag for a job abroad, or None."""
+    saved = (job.structured_fields or {}).get("fields")
+    fields = JobFields.model_validate(saved) if saved else None
+    flag = visa_flag(fields, job.location, work_rights)
+    return flag.text if flag else None
 
 
 def _from_muse(session: Session, job: Job) -> bool:
@@ -171,10 +236,21 @@ def _safe_link(url: str) -> str | None:
     return url.strip() if parsed.scheme in ("http", "https") and parsed.netloc else None
 
 
+safe_link = _safe_link  # public names for the web app's views
+tailoring_notes = _notes
+stated_fields = _stated
+posting_footnotes = _footnotes
+from_muse = _from_muse
+salary_text = _salary
+deadline_of = _deadline
+
+
 def _first_sentence(text: str) -> str:
     match = re.match(r"(.+?[.!?])(\s|$)", text.strip(), re.DOTALL)
     return match.group(1) if match else text.strip()
 
+
+first_sentence = _first_sentence
 
 _STYLE = """
 * { box-sizing: border-box; }
@@ -205,6 +281,7 @@ main { max-width:46rem; margin:0 auto; padding:var(--space-5) var(--space-4) var
 .where { color:var(--muted); margin:var(--space-1) 0 var(--space-3); font-size:15px; }
 .same-school { font-size:13px; font-weight:600; background:var(--panel); color:var(--panel-text);
   border-radius:var(--radius-pill); padding:1px var(--space-2); }
+.visa { font-size:.9rem; margin:var(--space-2) 0 0; }
 .footnote { color:var(--muted); font-size:.85rem; margin:var(--space-2) 0 0; }
 a { color:var(--accent); } a:hover { color:var(--accent-hover); }
 a:focus-visible, summary:focus-visible { outline:3px solid var(--focus); outline-offset:2px; }
@@ -252,10 +329,36 @@ def render_shortlist(data: ShortlistData, now: datetime) -> str:
             "Check that a source is approved (<code>hub sources list</code>) and that the nightly "
             "run has completed.</p></section>"
         )
-    for index, entry in enumerate(data.entries, start=1):
-        parts.append(_render_entry(index, entry, data.tier_high, data.tier_mid))
+    if data.group_by == "place" and data.entries:
+        parts.append(_render_grouped(data))
+    else:
+        for index, entry in enumerate(data.entries, start=1):
+            parts.append(_render_entry(index, entry, data.tier_high, data.tier_mid))
     parts.append("</main></body></html>")
     return "".join(parts)
+
+
+def _jobs_word(count: int) -> str:
+    return f"{count} job{'s' if count != 1 else ''}"
+
+
+def _render_grouped(data: ShortlistData) -> str:
+    """Render the entries under country (h2) and city (h3) headings; cards become h4."""
+    groups = group_by_place([entry.location for entry in data.entries])
+    out = []
+    for group in groups:
+        out.append(f"<section><h2>{escape(group.name)} ({_jobs_word(group.count)})</h2>")
+        for city in group.cities:
+            if city.name:
+                out.append(f"<h3>{escape(city.name)} ({_jobs_word(len(city.positions))})</h3>")
+            for position in city.positions:  # the number stays the job's rank on the whole list
+                out.append(
+                    _render_entry(
+                        position + 1, data.entries[position], data.tier_high, data.tier_mid, 4
+                    )
+                )
+        out.append("</section>")
+    return "".join(out)
 
 
 def _bubble(score: float, high: int, mid: int) -> str:
@@ -267,7 +370,9 @@ def _bubble(score: float, high: int, mid: int) -> str:
     )
 
 
-def _render_entry(index: int, entry: ShortlistEntry, high: int = 75, mid: int = 55) -> str:
+def _render_entry(
+    index: int, entry: ShortlistEntry, high: int = 75, mid: int = 55, level: int = 2
+) -> str:
     link = _safe_link(entry.url)
     title = escape(entry.title)
     heading = (
@@ -290,9 +395,9 @@ def _render_entry(index: int, entry: ShortlistEntry, high: int = 75, mid: int = 
         else ""
     )
     return (
-        f'<article class="card"><div class="head"><div><h2>{index}. {heading}</h2>'
+        f'<article class="card"><div class="head"><div><h{level}>{index}. {heading}</h{level}>'
         f'<p class="where">{where}</p></div>{_bubble(entry.score, high, mid)}</div>'
-        f"<p>{escape(_first_sentence(entry.explanation))}</p>"
+        f"<p>{escape(_first_sentence(entry.explanation))}</p>{_render_visa(entry.visa_flag)}"
         f"{_render_contacts(entry.contacts)}{_render_alumni_link(entry)}"
         f"<details><summary>Full explanation</summary><p>{escape(entry.explanation)}</p>{table}"
         f"</details>{_render_tailoring(entry.tailoring)}{_render_footnotes(entry.footnotes)}"
@@ -305,6 +410,11 @@ _TAILORING_TITLES = (
     ("gaps", "Gaps to address"),
     ("resume_suggestions", "Resume edits to consider"),
 )
+
+
+def _render_visa(flag: str | None) -> str:
+    """Render the work-visa note in words (never by color alone); nothing when there is none."""
+    return f'<p class="visa"><strong>Work visa:</strong> {escape(flag)}</p>' if flag else ""
 
 
 def _render_footnotes(footnotes: tuple[str, ...]) -> str:

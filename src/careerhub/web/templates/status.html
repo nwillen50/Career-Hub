@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="muted">Read-only. Nothing on this page shows a key, a prompt, or your profile.</p>
+
+<section aria-labelledby="runs-h"><h2 id="runs-h">Recent runs</h2>
+  {% if status.runs %}
+  <table>
+    <caption class="muted">The latest runs, newest first</caption>
+    <thead><tr><th scope="col">Step</th><th scope="col">Result</th><th scope="col">Started</th><th scope="col">Items</th><th scope="col">Cost</th><th scope="col">Problem</th></tr></thead>
+    <tbody>{% for run in status.runs %}<tr><td>{{ run.step }}</td><td>{{ run.status }}</td><td>{{ run.started }}</td><td>{{ run.items }}</td><td>{{ run.cost }}</td><td>{{ run.problem or "none" }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p class="card muted">No runs yet. Run <code>hub nightly</code> or wait for the scheduled run.</p>{% endif %}
+</section>
+
+<section aria-labelledby="src-h"><h2 id="src-h">Job sources</h2>
+  {% if status.sources %}
+  <table>
+    <caption class="muted">Each source and how its last fetch went</caption>
+    <thead><tr><th scope="col">Name</th><th scope="col">Kind</th><th scope="col">Decision</th><th scope="col">Health</th><th scope="col">Last fetch</th></tr></thead>
+    <tbody>{% for s in status.sources %}<tr><td>{{ s.name }}</td><td>{{ s.kind }}</td><td>{{ s.status }}</td><td>{{ s.health }}</td><td>{{ s.last_fetch or "never" }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p class="card muted">No sources yet. Add one with <code>hub sources add</code>.</p>{% endif %}
+</section>
+
+<section aria-labelledby="spend-h"><h2 id="spend-h">Model spending</h2>
+  <p class="card"><strong>{{ status.spend_text }}</strong></p>
+</section>
+
+<section aria-labelledby="models-h"><h2 id="models-h">Models</h2>
+  {% if status.models_problem %}<p class="card error" role="alert">{{ status.models_problem }}</p>{% else %}
+  <p>Switched on: {{ status.models_on|join(", ") or "none yet (run hub models add)" }}.</p>
+  <table>
+    <caption class="muted">The model each task tries, in order, and why</caption>
+    <thead><tr><th scope="col">Task</th><th scope="col">Route</th><th scope="col">Why</th></tr></thead>
+    <tbody>{% for task, route, why in status.routes %}<tr><td>{{ task }}</td><td>{{ route }}</td><td>{{ why }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% endif %}
+</section>
+
+<section aria-labelledby="ready-h"><h2 id="ready-h">Profile and scoring</h2>
+  {% if status.scoring_on %}<p class="card">Scoring is on since {{ status.scoring_since }}.</p>
+  {% else %}
+  <p class="card">Scoring is off until the profile is ready. Still needed:</p>
+  <ul>{% for item in status.missing %}<li>{{ item }}</li>{% else %}<li>Run <code>hub profile ready</code></li>{% endfor %}</ul>
+  {% endif %}
+</section>
+
+<section aria-labelledby="wait-h"><h2 id="wait-h">Waiting for your decision</h2>
+  <ul>
+    <li>{{ status.proposed_sources }} proposed job source{{ "s" if status.proposed_sources != 1 }}: <code>hub sources list</code>, then <code>hub sources approve &lt;id&gt;</code></li>
+    <li>{{ status.merge_suggestions }} company merge suggestion{{ "s" if status.merge_suggestions != 1 }}: <code>hub companies suggestions</code></li>
+  </ul>
+</section>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<nav aria-label="Saved views" class="chips">
+  <ul>
+  {% for key, label in views %}
+    <li><a href="/tracker?{{ query.params(view=key) }}"{% if key == query.view %} aria-current="true"{% endif %}>{{ label }}</a></li>
+  {% endfor %}
+  </ul>
+</nav>
+<form method="get" action="/tracker" class="filters" role="search">
+  <input type="hidden" name="view" value="{{ query.view }}">
+  <label for="q">Filter by company or role</label>
+  <input id="q" type="search" name="q" value="{{ query.text }}" maxlength="100">
+  <fieldset><legend>Status</legend>
+    {% for key, label in status_choices %}<label class="inline"><input type="checkbox" name="status" value="{{ key }}"{% if key in query.statuses %} checked{% endif %}> {{ label }}</label> {% endfor %}
+  </fieldset>
+  <button type="submit">Apply filters</button>
+  <a href="/tracker.csv?{{ query.params() }}" download>Download CSV</a>
+</form>
+{% if rows %}
+<table class="tracker">
+  <caption class="muted">{{ rows|length }} application{{ "s" if rows|length != 1 }}. Sort by choosing a column heading.</caption>
+  <thead><tr>
+    {% for key, label in columns %}
+    <th scope="col"><a href="/tracker?{{ query.params(sort=key, dir=("asc" if query.sort == key and query.descending else "desc" if query.sort == key else "asc")) }}"{% if query.sort == key %} aria-sort="{{ "descending" if query.descending else "ascending" }}"{% endif %}>{{ label }}</a></th>
+    {% endfor %}
+    <th scope="col">Next step</th><th scope="col"><span class="visually-hidden">Save</span></th>
+  </tr></thead>
+  <tbody>
+    {% for row in rows %}{% include "tracker_row.html" %}{% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="card">{% if query.view == "all" and not query.text and not query.statuses %}No applications yet. Mark a job Applied on Today to start tracking.{% else %}No applications match these filters.{% endif %}</p>
+{% endif %}
+{% endblock %}

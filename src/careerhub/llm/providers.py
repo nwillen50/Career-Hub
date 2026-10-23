@@ -51,6 +51,7 @@ class _HttpProvider:
 
     destination = Destination.CLOUD
     trains_on_data = False
+    _trust_env = True  # cloud calls may use the user's proxy settings; local ones never do
 
     def __init__(
         self,
@@ -68,7 +69,7 @@ class _HttpProvider:
         self.trains_on_data = trains_on_data
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
-        self._client = client or httpx.Client(timeout=TIMEOUT_SECONDS)
+        self._client = client or httpx.Client(timeout=TIMEOUT_SECONDS, trust_env=self._trust_env)
 
     def _post(self, path: str, body: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
         """POST `body` as JSON and return the decoded reply."""
@@ -168,6 +169,7 @@ class LocalProvider(OpenAIProvider):
     """
 
     destination = Destination.LOCAL
+    _trust_env = False  # a proxy variable must never carry a Personal prompt off this machine
 
     def __init__(
         self,

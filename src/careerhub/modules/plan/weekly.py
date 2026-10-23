@@ -19,6 +19,7 @@ from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
 from sqlalchemy.orm import Session
 
+from careerhub.modules.jobs.reactions import settled_job_ids
 from careerhub.modules.jobs.scoring import current_rank_adjustments, ranked_jobs
 from careerhub.modules.network import warm_paths
 from careerhub.modules.plan.freebusy import Interval
@@ -143,7 +144,10 @@ def build_tasks(session: Session, zone: tzinfo, plan: PlanSettings | None = None
     """Turn the shortlist into tasks: apply to each job, and reach out first if you know someone."""
     plan = plan or DEFAULTS
     tasks: list[PlanTask] = []
-    for job, assessment in ranked_jobs(session, plan.tasks_per_plan, **current_rank_adjustments()):
+    # A job already reacted to (applied, not interested...) is not planned again (CH-143 review).
+    done = settled_job_ids(session)
+    ranked = ranked_jobs(session, plan.tasks_per_plan + len(done), **current_rank_adjustments())
+    for job, assessment in [row for row in ranked if row[0].id not in done][: plan.tasks_per_plan]:
         score = assessment.fit_score or 0.0
         due = _deadline(job.structured_fields, zone)
         label = f"{job.title} at {job.company.name}"
