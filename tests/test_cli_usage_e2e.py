@@ -27,6 +27,7 @@ INVOCATIONS: dict[str, list[str]] = {
     "people tag": ["people", "tag", "1", "met", "at", "a", "talk"],
     "people import-alumni": ["people", "import-alumni", "MISSING.csv", "--preview"],
     "alumni import": ["alumni", "import", "MISSING.csv", "--preview"],
+    "alumni mappings": ["alumni", "mappings"],
     "schedule install": ["schedule", "install"],
     "nightly": ["nightly"],
     "add-job": [
@@ -63,6 +64,7 @@ COVERS = {
     "hub people find": "people find",
     "hub people tag": "people tag",
     "hub people import-alumni": "people import-alumni",
+    "hub alumni mappings": "alumni mappings",
     "hub schedule install": "schedule install",
     "hub nightly": "nightly",
     "hub add-job": "add-job",
