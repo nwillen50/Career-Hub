@@ -10,9 +10,9 @@ import csv
 import io
 from collections.abc import Collection
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, tzinfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from careerhub.core.models import (
@@ -76,6 +76,7 @@ class TrackerRow:
     follow_up_due: datetime | None
     next_step: str | None
     deadline: str | None
+    location: str | None = None
 
 
 def track(
@@ -107,6 +108,41 @@ def track(
     if commit:
         session.commit()
     return application
+
+
+def mark_ghosted(session: Session, days: int, now: datetime | None = None) -> int:
+    """Mark long-silent applications as Ghosted and return how many (CH-168).
+
+    An application still "applied" is silent when nothing has happened for `days` days: it was
+    applied for, edited or changed (`updated_at`), and nobody at the company was contacted
+    (an Interaction with someone who works there) in that time. An application with a follow-up
+    date still ahead is not silent. Changing the status back makes it
+    active again, and it counts as a change, so it is not re-marked until another `days` pass.
+    """
+    now = now or utcnow()
+    cutoff = now - timedelta(days=days)
+    marked = 0
+    for application, company_id in session.execute(
+        select(Application, Job.company_id)
+        .join(Job, Job.id == Application.job_id)
+        .where(Application.status == "applied", Application.updated_at < cutoff)
+    ).all():
+        if application.applied_at is not None and application.applied_at >= cutoff:
+            continue
+        if application.follow_up_due is not None and application.follow_up_due >= now:
+            continue  # the user scheduled a follow-up: not silent
+        last_contact = session.scalar(
+            select(func.max(Interaction.occurred_at))
+            .join(Person, Person.id == Interaction.person_id)
+            .where(Person.company_id == company_id, Interaction.occurred_at <= now)
+        )  # a contact dated in the future has not happened yet, so it protects nothing
+        if last_contact is not None and last_contact >= cutoff:
+            continue
+        application.status = "ghosted"
+        marked += 1
+    if marked:
+        session.commit()
+    return marked
 
 
 def sync_with_reaction(
@@ -213,6 +249,7 @@ def tracker_rows(
                 application.follow_up_due,
                 application.next_step,
                 _deadline(job),
+                job.location,
             )
         )
     return rows
@@ -262,8 +299,17 @@ def _safe_cell(value: object) -> str:
     return f"'{text}" if text.startswith(_RISKY) else text
 
 
-def export_csv(rows: list[TrackerRow]) -> str:
-    """Return `rows` as CSV text (company, role, status, applied, follow-up, next step)."""
+def export_csv(rows: list[TrackerRow], zone: tzinfo | None = None) -> str:
+    """Return `rows` as CSV text (company, role, status, applied, follow-up, next step).
+
+    Dates are written in `zone` (the user's timezone) so the file agrees with the page.
+    """
+
+    def day(moment: datetime | None) -> str:
+        if moment is None:
+            return ""
+        return (moment.astimezone(zone) if zone else moment).date().isoformat()
+
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
     writer.writerow(["Company", "Role", "Status", "Applied", "Follow-up", "Next step"])
@@ -273,8 +319,8 @@ def export_csv(rows: list[TrackerRow]) -> str:
                 _safe_cell(row.company),
                 _safe_cell(row.title),
                 STATUS_LABELS.get(row.status, row.status),
-                row.applied_at.date().isoformat() if row.applied_at else "",
-                row.follow_up_due.date().isoformat() if row.follow_up_due else "",
+                day(row.applied_at),
+                day(row.follow_up_due),
                 _safe_cell(row.next_step),
             ]
         )

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% from "macros.html" import reactions with context %}
-{% macro job_card(entry, rank, csrf) %}
+{% macro job_card(entry, rank, csrf, level=3) %}
 <article class="card job">
-  <h3>{{ rank }}. {% if entry.job_id is not none %}<a href="/jobs/{{ entry.job_id }}">Details</a> · {% endif %}{% if entry.link %}<a href="{{ entry.link }}" rel="noopener noreferrer">{{ entry.title }}</a>{% else %}{{ entry.title }}{% endif %}</h3>
+  <h{{ level }}>{{ rank }}. {% if entry.job_id is not none %}<a href="/jobs/{{ entry.job_id }}">Details</a> · {% endif %}{% if entry.link %}<a href="{{ entry.link }}" rel="noopener noreferrer">{{ entry.title }}</a>{% else %}{{ entry.title }}{% endif %}</h{{ level }}>
   <p class="where">{{ entry.company }}{% if entry.location %} · {{ entry.location }}{% endif %}{% if entry.salary %} · {{ entry.salary }}{% endif %}{% if entry.via %} · {{ entry.via }}{% endif %}</p>
   <p class="score">Fit score <strong>{{ entry.score|round|int }}</strong> out of 100</p>
   <p>{{ entry.first_sentence }}</p>
@@ -27,10 +27,11 @@
 {% endmacro %}
 {% block content %}
 <p class="muted">Page built {{ built }}.{% if last_run %} Last successful run: {{ last_run }} UTC.{% else %} No successful run yet.{% endif %}</p>
+<p><a href="/conversation">Ask a question about these jobs</a></p>
 <nav aria-label="Sections" class="chips">
   <ul>
   {% for key, label in sections %}
-    <li><a href="/today?section={{ key }}"{% if key == section %} aria-current="true"{% endif %}>{{ label }}</a></li>
+    <li><a href="/today?section={{ key }}{% if by_place %}&amp;group=place{% endif %}"{% if key == section %} aria-current="true"{% endif %}>{{ label }}</a></li>
   {% endfor %}
   </ul>
 </nav>
@@ -47,10 +48,20 @@
 {% if section in ("all", "top") %}
 <section aria-labelledby="top-h">
   <h2 id="top-h">Top jobs ({{ jobs|length }})</h2>
+  {% if jobs|length > 1 %}<p><a href="/today?section={{ section }}{% if not by_place %}&amp;group=place{% endif %}">{{ "Show best first" if by_place else "Group by place" }}</a></p>{% endif %}
+  {% if by_place and jobs %}
+  {% for group in place_groups %}
+  <h3>{{ group.name }} ({{ group.count }})</h3>
+  {% for city in group.cities %}
+  {% if city.name %}<h4>{{ city.name }} ({{ city.positions|length }})</h4>{% endif %}
+  {% for position in city.positions %}{{ job_card(jobs[position], position + 1, csrf, 5 if city.name else 4) }}
+  {% endfor %}{% endfor %}{% endfor %}
+  {% else %}
   {% for entry in jobs %}{{ job_card(entry, loop.index, csrf) }}
   {% else %}
   <p class="card">Nothing ranked yet. Check that a source is approved and the nightly run finished, in <a href="/status">System status</a>.</p>
   {% endfor %}
+  {% endif %}
 </section>
 {% endif %}
 {% if section in ("all", "exploration") %}

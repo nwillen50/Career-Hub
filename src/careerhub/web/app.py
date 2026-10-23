@@ -28,7 +28,7 @@ from importlib import resources
 from typing import Annotated, Any
 from urllib.parse import parse_qs, urlsplit
 
-from fastapi import FastAPI, Path, Request, Response
+from fastapi import FastAPI, Path, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -36,10 +36,20 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from careerhub.core.migrate import migrate
+from careerhub.core.models import Application, Job, utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
-from careerhub.core.settings import SettingsError
+from careerhub.core.settings import SettingsError, load_settings
 from careerhub.core.storage import StorageError, open_database, session_factory
-from careerhub.llm.catalog import ollama_is_running
+from careerhub.llm import Router
+from careerhub.llm.catalog import ollama_is_running, with_catalog
+from careerhub.llm.setup import NoRoute, build_router, routes_for
+from careerhub.modules.conversation import ask, build_context, recent_messages
+from careerhub.modules.jobs.applications import (
+    TrackerError,
+    set_follow_up,
+    set_next_step,
+)
+from careerhub.modules.jobs.applications import track as change_status
 from careerhub.modules.jobs.reactions import (
     UNDO_SECONDS,
     ReactionError,
@@ -47,11 +57,35 @@ from careerhub.modules.jobs.reactions import (
     reacted_job_ids,
     undo,
 )
-from careerhub.profile.files import ProfileFileError
+from careerhub.modules.network import UnknownPerson
+from careerhub.modules.network.interactions import (
+    CHANNELS,
+    InteractionError,
+    log_interaction,
+    set_follow_up_done,
+    set_own_words,
+)
+from careerhub.modules.proposals import ProposalError, declined_proposals, pending_proposals
+from careerhub.modules.proposals import accept as accept_proposal
+from careerhub.modules.proposals import reject as reject_proposal
+from careerhub.modules.proposals import reopen as reopen_proposal
+from careerhub.profile.files import ProfileFileError, load_profile_doc
+from careerhub.profile.rubric import load_rubric
+from careerhub.web.grouping import group_by_place
 from careerhub.web.job_detail import gather_job
+from careerhub.web.people_view import gather_contacts, gather_interactions, people_choices
 from careerhub.web.plan_view import gather_plan
 from careerhub.web.status_view import gather_status
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
+from careerhub.web.tracker_view import (
+    STATUS_CHOICES,
+    VIEW_CHOICES,
+    TrackerQuery,
+    clean_query,
+    csv_for,
+    follow_up_from_text,
+    gather_tracker,
+)
 
 #: A job id the database can hold (SQLite integers are 64-bit); anything else is a 422, not a 500.
 JobId = Annotated[int, Path(ge=1, le=2**63 - 1)]
@@ -88,12 +122,16 @@ TABS = (
     ("/today", "Today"),
     ("/plan", "Plan"),
     ("/tracker", "Tracker"),
+    ("/contacts", "Contacts"),
+    ("/interactions", "Interactions"),
     ("/status", "System status"),
 )
 PAGES = {
     "/today": ("Today", "Your top jobs, follow-ups, and deadlines will appear here."),
     "/plan": ("Plan", "This week's suggested blocks will appear here."),
     "/tracker": ("Tracker", "Applications and their statuses will appear here."),
+    "/contacts": ("Contacts", "The people you know will appear here."),
+    "/interactions": ("Interactions", "Your contact log and follow-ups will appear here."),
     "/status": ("System status", "Runs, sources, models, and spending will appear here."),
 }
 
@@ -124,6 +162,24 @@ def make_session_opener(store: KeyStore | None = None) -> Callable[[], Session]:
     return open_session
 
 
+def make_router_opener(
+    store: KeyStore | None = None,
+) -> Callable[[], tuple[Router, list[str]]]:
+    """Return a function that builds the model router and the providers to try for "chat".
+
+    Raises `NoRoute` (from `routes_for`) when no usable model is set up for chat.
+    """
+
+    def open_router() -> tuple[Router, list[str]]:
+        keys = store or KeychainKeyStore()
+        sessions = session_factory(open_database(keys, one_connection_per_use=True))
+        settings = with_catalog(load_settings(), keys, ollama_is_running).settings
+        setup = build_router(settings, keys, sessions)
+        return setup.router, routes_for(settings, "chat", setup.built)
+
+    return open_router
+
+
 def create_app(
     token: str,
     port: int,
@@ -131,6 +187,7 @@ def create_app(
     open_session: Callable[[], Session] | None = None,
     key_store: KeyStore | None = None,
     local_running: Callable[[], bool] = ollama_is_running,
+    open_router: Callable[[], tuple[Router, list[str]]] | None = None,
 ) -> FastAPI:
     """Build the app. `token` is this start's secret; `check_database` says if data is usable.
 
@@ -225,11 +282,11 @@ def create_app(
         return render
 
     for path in PAGES:
-        if path not in ("/today", "/plan", "/status"):
+        if path not in ("/today", "/plan", "/status", "/tracker", "/contacts", "/interactions"):
             app.add_api_route(path, tab(path), methods=["GET"], response_class=HTMLResponse)
 
     @app.get("/today", response_class=HTMLResponse)
-    def today(request: Request, section: str | None = None) -> Response:
+    def today(request: Request, section: str | None = None, group: str | None = None) -> Response:
         if open_session is None:
             return tab("/today")(request)
         opened["ok"] = opened["ok"] or check_database()
@@ -239,6 +296,8 @@ def create_app(
         with open_session() as session:
             data = gather_today(session)
         shortlist = data.shortlist
+        cards = job_cards(data.jobs)
+        by_place = group == "place"
         response = templates.TemplateResponse(
             request,
             "today.html",
@@ -257,7 +316,11 @@ def create_app(
                 "reasons": REASON_LABELS,
                 "sections": SECTION_LABELS,
                 "section": chosen,
-                "jobs": job_cards(data.jobs),
+                "jobs": cards,
+                "by_place": by_place,
+                "place_groups": group_by_place([c.entry.location for c in cards])
+                if by_place
+                else [],
                 "follow_ups": data.follow_ups,
                 "more_overdue": data.more_overdue,
                 "deadlines": data.deadlines,
@@ -388,6 +451,293 @@ def create_app(
         else:
             message = "Reaction undone. The job is back on Today after a reload."
         return reaction_page(request, "note.html", message=message)
+
+    def tracker_context(request: Request, **extra: Any) -> dict[str, Any]:
+        return {
+            "tabs": TABS,
+            "current": "/tracker",
+            "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+            "status_choices": STATUS_CHOICES,
+            **extra,
+        }
+
+    @app.get("/tracker", response_class=HTMLResponse)
+    def tracker_tab(
+        request: Request,
+        view: str | None = None,
+        q: str | None = None,
+        status: Annotated[list[str] | None, Query()] = None,
+        sort: str | None = None,
+        dir: str | None = None,  # noqa: A002  (the URL parameter is called dir)
+        group: str | None = None,
+    ) -> Response:
+        if open_session is None:
+            return tab("/tracker")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/tracker")(request)
+        query = clean_query(view, q, status or [], sort, dir, group)
+        with open_session() as session:
+            rows = gather_tracker(session, query, utcnow())
+        return templates.TemplateResponse(
+            request,
+            "tracker.html",
+            tracker_context(
+                request,
+                title="Tracker",
+                heading="Tracker",
+                query=query,
+                rows=rows,
+                groups=group_by_place([r.location for r in rows]) if query.group else [],
+                views=VIEW_CHOICES,
+                columns=(
+                    ("company", "Company"),
+                    ("title", "Role"),
+                    ("status", "Status"),
+                    ("applied", "Applied"),
+                    ("follow_up", "Follow-up"),
+                ),
+            ),
+        )
+
+    @app.get("/tracker.csv")
+    def tracker_csv(
+        request: Request,
+        view: str | None = None,
+        q: str | None = None,
+        status: Annotated[list[str] | None, Query()] = None,
+    ) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data.", status_code=404)
+        query = clean_query(view, q, status or [], None, None)
+        with open_session() as session:
+            text = csv_for(session, query, utcnow())
+        return Response(
+            text,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="applications.csv"'},
+        )
+
+    @app.post("/applications/{application_id}")
+    async def update_application(request: Request, application_id: JobId) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data.", status_code=404)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True)
+        error: str | None = None
+        with open_session() as session:
+            application = session.get(Application, application_id)
+            if application is None:
+                return reaction_page(request, "note.html", message="That application is gone.")
+            try:
+                # check every input first, so a bad date cannot leave the status half changed
+                due = follow_up_from_text(form["follow_up"][0]) if "follow_up" in form else None
+                if "status" in form and form["status"][0] not in dict(STATUS_CHOICES):
+                    raise TrackerError(f"Unknown status {form['status'][0]!r}.")
+                if "status" in form:
+                    change_status(session, application.job_id, form["status"][0])
+                if "follow_up" in form:
+                    set_follow_up(session, application_id, due)
+                if "next_step" in form:
+                    set_next_step(session, application_id, form["next_step"][0])
+            except TrackerError as problem:
+                session.rollback()
+                error = str(problem)
+            except ValueError:  # a date that is not YYYY-MM-DD
+                session.rollback()
+                error = "That date was not understood. Use YYYY-MM-DD."
+            rows = gather_tracker(session, TrackerQuery(), utcnow())
+            row = next((r for r in rows if r.application_id == application_id), None)
+        if request.headers.get("hx-request") != "true" or row is None:
+            return RedirectResponse("/tracker", status_code=303)
+        return templates.TemplateResponse(
+            request, "tracker_row.html", tracker_context(request, row=row, error=error)
+        )
+
+    def people_page(
+        request: Request, path: str, template: str, session: Session, **extra: Any
+    ) -> Response:
+        title = PAGES[path][0]
+        return templates.TemplateResponse(
+            request,
+            template,
+            {
+                "tabs": TABS,
+                "current": path,
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": title,
+                "heading": title,
+                "note": None,
+                **extra,
+            },
+        )
+
+    def contacts_page(
+        request: Request, session: Session, text: str = "", note: str | None = None
+    ) -> Response:
+        return people_page(
+            request, "/contacts", "contacts.html", session,
+            contacts=gather_contacts(session, text), text=text, note=note,
+        )  # fmt: skip
+
+    def interactions_page(
+        request: Request, session: Session, person_id: int | None = None, note: str | None = None
+    ) -> Response:
+        return people_page(
+            request, "/interactions", "interactions.html", session,
+            interactions=gather_interactions(session, utcnow()), people=people_choices(session),
+            channels=CHANNELS, person_id=person_id, note=note,
+        )  # fmt: skip
+
+    @app.get("/contacts", response_class=HTMLResponse)
+    def contacts_tab(request: Request, q: str | None = None) -> Response:
+        if open_session is None or not (opened["ok"] or check_database()):
+            return tab("/contacts")(request)
+        opened["ok"] = True
+        with open_session() as session:
+            return contacts_page(request, session, (q or "")[:100])
+
+    @app.post("/people/{person_id}")
+    async def edit_person(request: Request, person_id: JobId) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data.", status_code=404)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True)
+        with open_session() as session:
+            try:
+                set_own_words(session, person_id, form.get("how_known", [""])[0])
+            except UnknownPerson:
+                return contacts_page(request, session, note="That person is gone.")
+            except InteractionError as problem:
+                session.rollback()
+                return contacts_page(request, session, note=str(problem))
+        return RedirectResponse("/contacts", status_code=303)
+
+    @app.get("/interactions", response_class=HTMLResponse)
+    def interactions_tab(request: Request, person: int | None = None) -> Response:
+        if open_session is None or not (opened["ok"] or check_database()):
+            return tab("/interactions")(request)
+        opened["ok"] = True
+        with open_session() as session:
+            return interactions_page(request, session, person)
+
+    @app.post("/interactions")
+    async def add_interaction(request: Request) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data.", status_code=404)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True)
+        raw = form.get("person", [""])[0]
+        person_id = int(raw) if raw.isdigit() and 0 < int(raw) < 2**63 else None
+        with open_session() as session:
+            try:
+                if person_id is None:
+                    raise InteractionError("Choose who you contacted.")
+                due = follow_up_from_text(form.get("follow_up", [""])[0])
+                log_interaction(
+                    session, person_id, form.get("channel", ["other"])[0],
+                    form.get("summary", [""])[0], follow_up_due=due,
+                )  # fmt: skip
+            except UnknownPerson:
+                return interactions_page(request, session, note="That person is gone.")
+            except InteractionError as problem:
+                session.rollback()
+                return interactions_page(request, session, person_id, str(problem))
+            except ValueError:  # a date that is not YYYY-MM-DD
+                session.rollback()
+                return interactions_page(
+                    request, session, person_id, "That date was not understood. Use YYYY-MM-DD."
+                )
+        return RedirectResponse("/interactions", status_code=303)
+
+    @app.post("/interactions/{interaction_id}/done")
+    async def finish_follow_up(request: Request, interaction_id: JobId) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data.", status_code=404)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"))
+        with open_session() as session:
+            try:
+                set_follow_up_done(session, interaction_id, form.get("done", ["1"])[0] != "0")
+            except InteractionError as problem:
+                session.rollback()
+                return interactions_page(request, session, note=str(problem))
+        return RedirectResponse("/interactions", status_code=303)
+
+    def conversation_page(
+        request: Request, session: Session, job_id: int | None, note: str | None = None
+    ) -> Response:
+        job = session.get(Job, job_id) if job_id is not None else None
+        return templates.TemplateResponse(
+            request,
+            "conversation.html",
+            {
+                "tabs": TABS,
+                "current": "/today",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": "Ask a question",
+                "heading": "Ask a question",
+                "messages": recent_messages(session, job_id),
+                "job": job,
+                "job_id": job.id if job is not None else None,
+                "note": note,
+                "ready": open_router is not None,
+                "proposals": pending_proposals(session),
+                "declined": declined_proposals(session),
+            },
+        )
+
+    @app.get("/conversation", response_class=HTMLResponse)
+    def conversation(request: Request, job: int | None = None) -> Response:
+        if open_session is None:
+            return tab("/today")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/today")(request)
+        with open_session() as session:
+            return conversation_page(request, session, job)
+
+    @app.post("/conversation")
+    async def ask_question(request: Request) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data.", status_code=404)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"))
+        question = form.get("question", [""])[0]
+        raw_job = form.get("job", [""])[0]
+        job_id = int(raw_job) if raw_job.isdigit() and int(raw_job) < 2**63 else None
+        with open_session() as session:
+            if open_router is None:
+                return conversation_page(request, session, job_id, "No model is set up yet.")
+            try:
+                router, routes = open_router()
+            except NoRoute:
+                return conversation_page(
+                    request,
+                    session,
+                    job_id,
+                    "No model is set up for questions yet. Run `hub models add` in the terminal.",
+                )
+            doc = load_profile_doc()
+            name, aliases = (doc.name, doc.aliases) if doc else ("", [])
+            context = build_context(session, load_rubric(), name, aliases, job_id)
+            answer = ask(session, router, routes, question, context, name, aliases, job_id)
+            if answer.ok:
+                return RedirectResponse(
+                    "/conversation" + (f"?job={job_id}" if job_id else ""), status_code=303
+                )
+            return conversation_page(request, session, job_id, answer.text)
+
+    @app.post("/proposals/{proposal_id}/{decision}")
+    async def decide_proposal(request: Request, proposal_id: JobId, decision: str) -> Response:
+        if open_session is None or decision not in ("accept", "reject", "reopen"):
+            return HTMLResponse("Not found.", status_code=404)
+        with open_session() as session:
+            try:
+                if decision == "accept":
+                    accept_proposal(session, proposal_id)
+                elif decision == "reject":
+                    reject_proposal(session, proposal_id)
+                else:
+                    reopen_proposal(session, proposal_id)
+            except ProposalError as problem:
+                return conversation_page(request, session, None, str(problem))
+        return RedirectResponse("/conversation", status_code=303)
 
     @app.post("/session/end")
     def end_session(request: Request) -> Response:

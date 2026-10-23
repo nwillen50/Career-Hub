@@ -10,6 +10,7 @@ Expected cost: a few dollars a month at most (tailoring is about 15 cents).
 | `score` (rubric ratings) | Your profile | `claude-haiku`, then `claude-sonnet` |
 | `tailor` (resume notes) | Your profile and resume | `claude-haiku`, then `local-8b` |
 | `profile_extract` | Your resume and transcript | `claude-haiku`, then `local-8b` |
+| `chat` (questions in the conversation panel) | Your saved scores and explanations | `claude-haiku`, then `local-8b` |
 
 Gemini's free tier may train on what you send, so it only ever gets postings. The router refuses to
 send anything personal to it, and the settings below never route it there.
