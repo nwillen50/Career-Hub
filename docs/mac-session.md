@@ -62,7 +62,7 @@ Record each result on the matching ticket or ADR. Tick the box when it passes.
   `uv run hub ingest greenhouse --company <board>`.
 - [ ] `uv run hub nightly`, then open the shortlist page. Check explanations, warm paths, and the
   weekly plan make sense.
-- [ ] `uv run hub backup` (if present) restores into an empty folder without errors.
+- [ ] Back up the data folder by copying it (there is no `hub backup` command yet) and open the copy with the same Keychain key.
 
 ## 6. Later (when those tickets land)
 
