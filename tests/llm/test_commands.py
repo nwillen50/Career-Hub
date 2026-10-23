@@ -97,7 +97,8 @@ def test_routes_show_the_reason_and_no_route_for_personal_tasks_with_gemini_free
 def test_add_custom_saves_a_provider_and_the_key_only_in_the_store(data_dir: Path) -> None:
     store = InMemoryKeyStore()
     argv = ["models", "add-custom", "my-llm", "openai", "some-model", "--base-url"]
-    assert main([*argv, "http://localhost:8000/v1", "--input", "0.5", "--output", "1"], store) == 0
+    url = "https://llm.example.com/v1"
+    assert main([*argv, url, "--input", "0.5", "--output", "1", "--no-training"], store) == 0
     provider = load_settings().providers[0]
     assert (provider.name, provider.trains_on_data, provider.input_per_mtok) == (
         "my-llm",

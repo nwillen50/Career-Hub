@@ -41,7 +41,9 @@ def check_allowed(tier: PrivacyTier, provider: Provider) -> None:
         )
     if tier >= PrivacyTier.PERSONAL and provider.trains_on_data:
         raise PrivacyViolation(
-            f"{provider.name!r} may train on API data, so it can't see {tier.name} data."
+            f"{provider.name!r} may train on API data, so it can't see {tier.name} data. "
+            'For a model of your own that does not train on your data, set "trains_on_data": false '
+            "for it in settings.json."
         )
 
 
