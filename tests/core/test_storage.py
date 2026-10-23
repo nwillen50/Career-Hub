@@ -140,3 +140,25 @@ def test_sqlite_side_files_are_private_too(db_path: Path) -> None:
     assert all(p.exists() for p in side_files)
     for p in [db_path, *side_files]:
         assert stat.S_IMODE(p.stat().st_mode) == 0o600, p.name
+
+
+def test_a_connection_per_use_engine_serves_other_threads_without_complaint(tmp_path: Path) -> None:
+    """Review: the shared per-thread pool printed 'can only be used in that same thread' errors."""
+    import threading
+
+    engine = open_engine(tmp_path / "t.db", new_database_key(), one_connection_per_use=True)
+    errors: list[BaseException] = []
+
+    def work() -> None:
+        try:
+            with engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+        except BaseException as error:  # noqa: BLE001  (the test reports any failure)
+            errors.append(error)
+
+    threads = [threading.Thread(target=work) for _ in range(12)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert errors == [] and engine.pool.status().startswith("NullPool")
