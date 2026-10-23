@@ -4,6 +4,7 @@ Every table subclasses `Base`. Importing this package must import every model mo
 `Base.metadata` lists every table; migrations and the drift check rely on it.
 """
 
+from careerhub.core.models.application import APPLICATION_STATUSES, Application
 from careerhub.core.models.assessment import Assessment
 from careerhub.core.models.base import (
     NAMING_CONVENTION,
@@ -27,6 +28,8 @@ from careerhub.core.models.llm_usage import LLMUsage
 from careerhub.core.models.profile_extraction import ProfileExtraction
 
 __all__ = [
+    "APPLICATION_STATUSES",
+    "Application",
     "Assessment",
     "NAMING_CONVENTION",
     "Base",
