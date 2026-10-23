@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from careerhub.core.migrate import migrate
-from careerhub.core.models import Assessment, Job, Source
+from careerhub.core.models import Assessment, Company, Job, Source
 from careerhub.core.secrets import new_database_key
 from careerhub.core.storage import open_engine, session_factory
 from careerhub.llm import Destination, PrivacyTier, PrivacyViolation, Router
@@ -173,3 +173,75 @@ def test_ranking_orders_by_score_and_hides_closed_duplicate_and_filtered_jobs(
     third.status = "closed"
     session.commit()
     assert [job.title for job, _ in ranked_jobs(session)] == ["High", "Low"]
+
+
+def test_with_a_profile_epoch_only_a_new_epoch_scores_again(session: Session) -> None:
+    """CH-115: a profile edit alone does not re-score; a raised epoch does."""
+    job = add_job(session, "1", "Engineer")
+    provider = FakeProvider("m", replies=[answer(), answer()])
+    router = Router([provider])
+    assert score_job(session, router, job, DOC, RUBRIC, ["m"], profile_epoch=0)
+    edited = DOC.model_copy(update={"about": "Completely different about text."})
+    assert score_job(session, router, job, edited, RUBRIC, ["m"], profile_epoch=0) is None
+    assert score_job(session, router, job, edited, RUBRIC, ["m"], profile_epoch=1)
+    assert len(provider.requests) == 2
+
+
+def test_the_change_snapshot_holds_only_redacted_text() -> None:
+    """Review: the snapshot file must not keep a name, email, or phone number."""
+    from careerhub.modules.jobs.scoring import profile_snapshot
+
+    doc = DOC.model_copy(
+        update={
+            "about": "Jane Sample, jane@example.com, 617-555-0100, likes robots.",
+            "aliases": [],
+        }
+    )
+    text = str(profile_snapshot(doc, None, None))
+    assert "jane" not in text and "example.com" not in text and "617" not in text
+    assert "likes" in text and "robots" in text
+
+
+def test_rubric_text_is_redacted_before_it_reaches_a_model() -> None:
+    """CH-133: an email, link, or the user's name typed into rubric.yaml must not be sent."""
+    rubric = Rubric(
+        version=1,
+        criteria=[
+            Criterion(
+                name="field",
+                weight=1,
+                description="Jane Sample wants roles; write jane@example.com or https://x.io/jane",
+            )
+        ],
+    )
+    job = Job(title="Engineer", company=Company(name="Acme"), raw_text="x")
+    prompt = build_request(job, DOC, rubric).prompt
+    assert "jane@example.com" not in prompt
+    assert "https://x.io" not in prompt
+    assert "Jane Sample" not in prompt
+
+
+def test_a_redacted_criterion_name_still_scores(session: Session) -> None:
+    """CH-133 review: the model echoes the redacted name, and it must still match."""
+    rubric = Rubric(
+        version=1,
+        criteria=[
+            Criterion(name="Fit with jane@example.com's lab", weight=1, description="Likes it"),
+            Criterion(name="level", weight=1, description="Call 617-555-0100 to ask"),
+        ],
+    )
+    job = add_job(session, "1", "Engineer")
+    prompt = build_request(job, DOC, rubric).prompt
+    assert "jane@example.com" not in prompt and "617-555-0100" not in prompt
+    reply = json.dumps(
+        {
+            "criteria": [
+                {"name": "Fit with [email]'s lab", "score": 8, "reason": "r"},
+                {"name": "level", "score": 4, "reason": "r"},
+            ],
+            "explanation": "Fine.",
+        }
+    )
+    router = Router([FakeProvider("m", replies=[reply])])
+    saved = score_job(session, router, job, DOC, rubric, ["m"])
+    assert saved is not None and saved.fit_score == 60.0
