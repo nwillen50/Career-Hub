@@ -80,9 +80,14 @@ def profile_text(doc: ProfileDoc, facts: ProfileFacts | None = None) -> str:
     return personal_text("\n".join(lines), doc.name, doc.aliases)
 
 
-def rubric_text(rubric: Rubric) -> str:
-    """List the criteria with their weights and descriptions."""
-    return "\n".join(f"- {c.name} (weight {c.weight:g}): {c.description}" for c in rubric.criteria)
+def rubric_text(rubric: Rubric, name: str = "", aliases: Sequence[str] = ()) -> str:
+    """List the criteria with their weights and descriptions, as safe for a cloud model.
+
+    The user writes rubric.yaml by hand, so it goes through `personal_text` like the profile: a
+    name, email, phone number, or link typed into a criterion can't reach a model.
+    """
+    lines = "\n".join(f"- {c.name} (weight {c.weight:g}): {c.description}" for c in rubric.criteria)
+    return personal_text(lines, name, aliases)
 
 
 def combine(rubric: Rubric, answer: ScoreAnswer) -> float:
@@ -187,7 +192,7 @@ def build_request(
     prompt = render(
         load_prompt(PROMPT_NAME, PROMPT_VERSION),
         profile=profile_text(doc, facts),
-        rubric=rubric_text(rubric),
+        rubric=rubric_text(rubric, doc.name, doc.aliases),
         company=job.company.name,
         title=job.title,
         preferences=preferences_text(doc, preferences),

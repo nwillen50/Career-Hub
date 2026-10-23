@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from careerhub.core.migrate import migrate
-from careerhub.core.models import Assessment, Job, Source
+from careerhub.core.models import Assessment, Company, Job, Source
 from careerhub.core.secrets import new_database_key
 from careerhub.core.storage import open_engine, session_factory
 from careerhub.llm import Destination, PrivacyTier, PrivacyViolation, Router
@@ -173,3 +173,22 @@ def test_ranking_orders_by_score_and_hides_closed_duplicate_and_filtered_jobs(
     third.status = "closed"
     session.commit()
     assert [job.title for job, _ in ranked_jobs(session)] == ["High", "Low"]
+
+
+def test_rubric_text_is_redacted_before_it_reaches_a_model() -> None:
+    """CH-133: an email, link, or the user's name typed into rubric.yaml must not be sent."""
+    rubric = Rubric(
+        version=1,
+        criteria=[
+            Criterion(
+                name="field",
+                weight=1,
+                description="Jane Sample wants roles; write jane@example.com or https://x.io/jane",
+            )
+        ],
+    )
+    job = Job(title="Engineer", company=Company(name="Acme"), raw_text="x")
+    prompt = build_request(job, DOC, rubric).prompt
+    assert "jane@example.com" not in prompt
+    assert "https://x.io" not in prompt
+    assert "Jane Sample" not in prompt
