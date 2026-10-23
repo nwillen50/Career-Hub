@@ -84,6 +84,9 @@ class Settings(BaseModel):
     #: Your school's LinkedIn page name (the last part of linkedin.com/school/<name>), so the
     #: shortlist can offer a link to its alumni at each company. Career Hub only builds the link.
     linkedin_school_slug: str | None = Field(default=None, pattern=r"^[A-Za-z0-9-]+$")
+    #: Scores at or above this get the green bubble; at or above `score_tier_mid`, the brass one.
+    score_tier_high: int = Field(default=75, ge=1, le=100)
+    score_tier_mid: int = Field(default=55, ge=0, le=99)
     #: Your timezone (an IANA name such as "America/New_York"), for working hours and calendars.
     timezone: str = "America/New_York"
     #: Calendar files (.ics) whose busy time the weekly plan avoids. Only times are read.

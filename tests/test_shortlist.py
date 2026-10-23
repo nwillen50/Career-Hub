@@ -50,7 +50,7 @@ def entry(**kw: object) -> ShortlistEntry:
 def test_a_job_shows_title_link_score_reason_and_criteria() -> None:
     html = render_shortlist(ShortlistData([entry()], NOW), NOW)
     assert 'href="https://example.com/jobs/1"' in html and 'rel="noopener noreferrer"' in html
-    assert "82/100" in html and "Strong match on field." in html
+    assert 'aria-label="Fit score 82 out of 100"' in html and "Strong match on field." in html
     assert "<summary>Full explanation</summary>" in html and "Right field" in html
     assert html.startswith("<!doctype html>") and 'lang="en"' in html and "<h1>" in html
 
