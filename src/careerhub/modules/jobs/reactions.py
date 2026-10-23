@@ -72,7 +72,7 @@ def reacted_job_ids(session: Session) -> set[int]:
 
 
 def settled_job_ids(session: Session) -> set[int]:
-    """Return the jobs whose newest reaction is "applied" or "not interested" (nothing left to plan).
+    """Return jobs whose newest reaction is "applied" or "not interested" (nothing left to plan).
 
     A job marked only "interested" is not settled: the user may still want to apply.
     """
