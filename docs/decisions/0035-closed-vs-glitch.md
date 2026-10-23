@@ -29,9 +29,19 @@ When a complete-listing board that had open jobs lists none:
 The count is kept as `empty_streak` in the source's `config` (text) to avoid a schema change for one
 integer; it is removed when it resets.
 
+## Amendment (CH-132, Oct 23): a cut-off listing
+
+A listing that is not empty can still be cut off or paged. When a complete-listing board with at
+least 4 open jobs loses more than `listing_drop_share` (setting, default 0.5) of them in one night,
+up to 3 of the missing jobs are checked one by one. Only if all answer "not found" do they close.
+Otherwise (still there, can't tell, or no per-job address) nothing is closed for being missing that
+night: the listing is stored like a partial one, so a job closes only after `PARTIAL_CLOSE_DAYS`
+without being seen, and the summary notes it. Flagged for Nicholas: the 0.5 default and the minimum
+of 4 jobs.
+
 ## Evidence
 
-`tests/modules/jobs/test_closed_vs_glitch.py`.
+`tests/modules/jobs/test_closed_vs_glitch.py`, `tests/modules/jobs/test_truncated_listing.py`.
 
 ## Consequences
 

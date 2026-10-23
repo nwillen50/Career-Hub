@@ -171,3 +171,13 @@ excludes your expected graduation date, and **US citizenship** if you set `work_
 Degree *field* and job *level* (new grad, entry, internship) never filter. `internship_rank_penalty`
 (0 to 10, default 0) ranks internships a little lower without changing their score, and the page
 says so. `also_qualified_fields` lists fields you count as your own (used by scoring, CH-114).
+
+## Places (CH-120)
+
+`places.py` reads location text ("Munich, DE", "Remote - EU") into city, region, and an ISO
+country code, with no model call. Unreadable text keeps its original and an unknown country;
+`DE`/`CA`-style codes are read as a US state unless the city is a well-known foreign one. The
+location filter now also matches by country, so a preference of "Germany" matches "Berlin,
+Germany" and "Munich, DE". Decision (flagged for Nicholas): places are parsed when needed rather
+than stored in a new column, so there is no migration and no re-extraction; the parser is cheap
+and deterministic. CH-121 (grouping) and CH-122 (work-visa flags) can use `parse_places` directly.
