@@ -112,6 +112,12 @@ class Settings(BaseModel):
     #: A board that lists no jobs for this many nights in a row (and whose jobs could not be
     #: checked one by one) is treated as having closed everything (CH-103).
     empty_listing_backstop_nights: int = Field(default=3, ge=1, le=30)
+    #: A profile list item (a skill, a school, a location) that changes by more than this many
+    #: letters counts as a new item and re-scores jobs; a smaller change is a typo fix (CH-115).
+    score_typo_distance: int = Field(default=2, ge=0, le=10)
+    #: Re-score once at least this percent of the words in About or the accepted resume facts have
+    #: changed since the last scoring run (CH-115). Small edits add up.
+    score_free_text_change_percent: float = Field(default=5.0, ge=0, le=100)
     #: If a board's listing loses more than this share of its open jobs in one night, it may be cut
     #: off, so the missing jobs are checked (or kept open for a while) rather than closed (CH-132).
     listing_drop_share: float = Field(default=0.5, gt=0, le=1)

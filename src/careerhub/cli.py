@@ -47,6 +47,7 @@ from careerhub.modules.jobs.manual import (
     guess_from_link,
     set_manual_job_closed,
 )
+from careerhub.modules.jobs.scoring import profile_snapshot
 from careerhub.modules.jobs.targets import (
     TargetsError,
     load_targets,
@@ -68,8 +69,9 @@ from careerhub.modules.network import (
 from careerhub.modules.plan import suggest_week
 from careerhub.modules.plan.ics import IcsError
 from careerhub.pipeline import run_nightly
+from careerhub.profile.changes import check, force_rescore
 from careerhub.profile.extract import ProfileFacts
-from careerhub.profile.facts import UnknownExtraction, decide, facts_text, pending
+from careerhub.profile.facts import UnknownExtraction, accepted_facts, decide, facts_text, pending
 from careerhub.profile.files import ProfileFileError, load_preferences, load_profile_doc
 from careerhub.profile.models import PlanSettings, Preferences, ProfileDoc
 from careerhub.profile.profile import Profile, format_profile, load_profile
@@ -104,6 +106,7 @@ USAGE = """Usage:
   hub profile ready [--off]                 (check the profile, then switch scoring on or off)
   hub profile facts                         (what was read from your resume and transcript)
   hub profile facts accept <number|all> | reject <number>
+  hub score --all                           (score every job again on the next nightly run)
   hub shortlist build                        (write the shortlist page)
   hub sources list
   hub sources add <kind> <name> <url>     (saved as proposed; nothing is fetched yet)
@@ -123,7 +126,10 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
         if args == ["profile", "show"]:
             print(format_profile(_load_profile(store)))
             print(_readiness_summary())
+            print(_rescore_summary(store))
             return 0
+        if args == ["score", "--all"]:
+            return _score_all()
         if (
             len(args) == 4
             and args[0] == "ingest"
@@ -566,6 +572,43 @@ def _cache_clear(store: KeyStore, expired_only: bool) -> int:
     cache = ResponseCache(session_factory(engine), load_settings().cache_ttl_days)
     removed = cache.prune() if expired_only else cache.clear()
     print(f"Removed {removed} saved model {'answer' if removed == 1 else 'answers'}.")
+    return 0
+
+
+def _rescore_summary(store: KeyStore) -> str:
+    """Say whether the next nightly run will score jobs again because the profile changed."""
+    doc, preferences = load_profile_doc(), load_preferences()
+    if doc is None:
+        return "\nRe-scoring: no profile yet."
+    try:
+        engine = open_database(store)
+        migrate(engine)
+        with session_factory(engine)() as session:
+            facts = accepted_facts(session)
+    except (StorageError, SecretsError):
+        facts = None
+    settings = load_settings()
+    fingerprint = check(
+        profile_snapshot(doc, facts, preferences),
+        settings.score_typo_distance,
+        settings.score_free_text_change_percent,
+        save=False,
+    )
+    if fingerprint.first_run:
+        return "\nRe-scoring: nothing has been scored yet, so the first run scores every job."
+    if not fingerprint.reasons:
+        return "\nRe-scoring: the profile has not changed enough; scores stay as they are."
+    return "\nRe-scoring: the next nightly run will score jobs again because of:\n" + "\n".join(
+        f"  - {reason}" for reason in fingerprint.reasons
+    )
+
+
+def _score_all() -> int:
+    """`hub score --all`: make the next nightly run score and tailor every job again."""
+    if force_rescore() is None:
+        print("Nothing has been scored yet, so the first nightly run scores every job anyway.")
+        return 0
+    print("The next nightly run will score and tailor every job again (this can cost money).")
     return 0
 
 

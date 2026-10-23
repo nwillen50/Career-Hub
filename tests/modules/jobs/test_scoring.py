@@ -175,6 +175,33 @@ def test_ranking_orders_by_score_and_hides_closed_duplicate_and_filtered_jobs(
     assert [job.title for job, _ in ranked_jobs(session)] == ["High", "Low"]
 
 
+def test_with_a_profile_epoch_only_a_new_epoch_scores_again(session: Session) -> None:
+    """CH-115: a profile edit alone does not re-score; a raised epoch does."""
+    job = add_job(session, "1", "Engineer")
+    provider = FakeProvider("m", replies=[answer(), answer()])
+    router = Router([provider])
+    assert score_job(session, router, job, DOC, RUBRIC, ["m"], profile_epoch=0)
+    edited = DOC.model_copy(update={"about": "Completely different about text."})
+    assert score_job(session, router, job, edited, RUBRIC, ["m"], profile_epoch=0) is None
+    assert score_job(session, router, job, edited, RUBRIC, ["m"], profile_epoch=1)
+    assert len(provider.requests) == 2
+
+
+def test_the_change_snapshot_holds_only_redacted_text() -> None:
+    """Review: the snapshot file must not keep a name, email, or phone number."""
+    from careerhub.modules.jobs.scoring import profile_snapshot
+
+    doc = DOC.model_copy(
+        update={
+            "about": "Jane Sample, jane@example.com, 617-555-0100, likes robots.",
+            "aliases": [],
+        }
+    )
+    text = str(profile_snapshot(doc, None, None))
+    assert "jane" not in text and "example.com" not in text and "617" not in text
+    assert "likes" in text and "robots" in text
+
+
 def test_rubric_text_is_redacted_before_it_reaches_a_model() -> None:
     """CH-133: an email, link, or the user's name typed into rubric.yaml must not be sent."""
     rubric = Rubric(

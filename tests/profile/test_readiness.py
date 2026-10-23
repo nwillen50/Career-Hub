@@ -178,6 +178,30 @@ def test_an_empty_shortlist_data_has_no_waiting_message() -> None:
     assert ShortlistData().waiting_for is None
 
 
+def test_profile_show_says_whether_the_next_run_rescores_and_hub_score_all_forces_it(
+    data: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """CH-115: the re-scoring line, a typo-sized edit, a real edit, and `hub score --all`."""
+    from careerhub.modules.jobs.scoring import profile_snapshot
+    from careerhub.profile.changes import check
+    from careerhub.profile.files import load_preferences, load_profile_doc
+
+    fill(data)
+    store = InMemoryKeyStore()
+    main(["profile", "show"], store)
+    assert "first run scores every job" in capsys.readouterr().out
+    doc = load_profile_doc()
+    assert doc is not None
+    check(profile_snapshot(doc, None, load_preferences()), 2, 5)  # what a nightly run stores
+    main(["profile", "show"], store)
+    assert "scores stay as they are" in capsys.readouterr().out
+    fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[Python]"))
+    main(["profile", "show"], store)
+    assert "skills: 4 removed" in capsys.readouterr().out
+    assert main(["score", "--all"], store) == 0
+    assert "every job again" in capsys.readouterr().out
+
+
 def test_the_skills_message_explains_what_to_do_in_plain_words(data: Path) -> None:
     """CH-123: both sources, the duplicate rule, and the setting are named."""
     fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[Python]"))
