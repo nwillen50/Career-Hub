@@ -7,6 +7,10 @@
 - when the monthly budget is reached, model work stops but the page is still written;
 - missing profile files or model routes skip the stages that need them and say so.
 
+`run_refresh` is the light midday version (CH-165): ingest, understand with free or local models
+only, and filter, then rewrite the shortlist page. It never scores, tailors, reads profile files
+for facts, or backs up, and it is recorded as step `refresh`.
+
 The run is recorded in `run_log` (step `nightly`). It is marked **failed**, which the shortlist page
 shows, only when nothing useful could be done: every approved source failed, or the page could
 not be written. Smaller problems are returned in `NightlyReport.problems` (type names and counts,
@@ -26,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.backup import backup_database
 from careerhub.core.models import Job, utcnow
-from careerhub.core.runlog import finish_run, start_run
+from careerhub.core.runlog import close_interrupted_runs, finish_run, start_run
 from careerhub.core.secrets import KeyStore
 from careerhub.core.settings import Settings, load_settings
 from careerhub.core.storage import session_factory
@@ -42,23 +46,26 @@ from careerhub.modules.jobs import (
     approved_sources,
 )
 from careerhub.modules.jobs.adapters import ADAPTERS
+from careerhub.modules.jobs.applications import mark_ghosted
 from careerhub.modules.jobs.extract import extract_and_save
 from careerhub.modules.jobs.filters import assess_filters
 from careerhub.modules.jobs.scoring import (
     ScoringError,
     current_rank_adjustments,
+    profile_snapshot,
     ranked_jobs,
     score_job,
 )
 from careerhub.modules.jobs.store import only_visible_copies
 from careerhub.modules.jobs.tailoring import tailor_job
+from careerhub.profile.changes import check
 from careerhub.profile.eligibility import Eligibility, eligibility_from
 from careerhub.profile.extract import EducationFact
 from careerhub.profile.extract import extract_and_save as extract_profile_and_save
 from careerhub.profile.facts import accepted_facts
 from careerhub.profile.files import load_preferences, load_profile_doc
 from careerhub.profile.inputs import find_resume, find_transcript
-from careerhub.profile.models import HardConstraints, ProfileDoc
+from careerhub.profile.models import HardConstraints, Preferences, ProfileDoc
 from careerhub.profile.readiness import current_readiness
 from careerhub.profile.rubric import load_rubric
 from careerhub.web.shortlist import MAX_JOBS, write_shortlist
@@ -114,14 +121,45 @@ def run_nightly(
 
     Returns the report; a problem in one source or job never raises.
     """
+    return _execute("nightly", engine, store, settings, client, now, light=False)
+
+
+def run_refresh(
+    engine: Engine,
+    store: KeyStore,
+    settings: Settings | None = None,
+    client: httpx.Client | None = None,
+    now: datetime | None = None,
+) -> NightlyReport:
+    """Run the light midday refresh once and record it (step `refresh`).
+
+    Fetches sources, understands new postings with free or local models only, filters, and
+    rewrites the shortlist page. No scoring, tailoring or backup, and no paid model calls.
+    """
+    return _execute("refresh", engine, store, settings, client, now, light=True)
+
+
+def _execute(
+    step: str,
+    engine: Engine,
+    store: KeyStore,
+    settings: Settings | None,
+    client: httpx.Client | None,
+    now: datetime | None,
+    light: bool,
+) -> NightlyReport:
+    """Shared body of `run_nightly` and `run_refresh`."""
     settings = settings or load_settings()
     sessions = session_factory(engine)
     report = NightlyReport()
     with sessions() as session:
-        run = start_run(session, "nightly")
+        interrupted = close_interrupted_runs(session, step)
+        if interrupted:
+            report.notes.append(f"an earlier run was interrupted ({interrupted}x); marked failed")
+        run = start_run(session, step)
         error: BaseException | None = None
         try:
-            _run(session, engine, store, settings, client, report, run.id)
+            _run(session, engine, store, settings, client, report, run.id, light)
             if report.sources_failed and not report.sources_ok:
                 raise FetchError("every approved source failed")
         except Exception as caught:
@@ -136,7 +174,8 @@ def run_nightly(
             report.problems.append(
                 f"run failed: the shortlist page could not be written ({caught.errno})"
             )
-        _backup(engine, settings, report)
+        if not light:
+            _backup(engine, settings, report)
     return report
 
 
@@ -148,10 +187,12 @@ def _run(
     client: httpx.Client | None,
     report: NightlyReport,
     run_id: int,
+    light: bool = False,
 ) -> None:
     sessions = session_factory(engine)
     settings = with_catalog(settings, store, lambda: ollama_is_running(client)).settings
-    report.cache_pruned = ResponseCache(sessions, settings.cache_ttl_days).prune()
+    if not light:
+        report.cache_pruned = ResponseCache(sessions, settings.cache_ttl_days).prune()
     setup = build_router(settings, store, sessions, client, run_id)
     report.problems += [f"provider: {p}" for p in setup.problems]
     preferences = load_preferences()
@@ -168,14 +209,34 @@ def _run(
         except (FetchError, SourceNotApproved) as caught:
             report.sources_failed += 1
             report.problems.append(f"source {source.id} failed: {type(caught).__name__}")
+    ghosted = mark_ghosted(session, settings.ghost_after_days)
+    if ghosted:
+        report.notes.append(
+            f"{ghosted} applications had no news for {settings.ghost_after_days} days and are "
+            "now marked Ghosted (change the status to undo)"
+        )
     jobs = list(
         session.scalars(
             only_visible_copies(select(Job).where(Job.status != "closed")).order_by(Job.id)
         )
     )
-    _understand_and_rank(session, setup, settings, jobs, report)
+    _understand_and_rank(session, setup, settings, jobs, report, light)
     for note, count in Counter(setup.router.skipped).items():
         report.problems.append(f"fell back past a model ({note}, {count}x)")
+
+
+def _costs_nothing(settings: Settings, name: str) -> bool:
+    """Say whether provider `name` is local or has zero prices (so the refresh may use it).
+
+    Extraction reads public job postings (PUBLIC tier), so a free tier that trains on data is
+    acceptable here; personal data never reaches it (the router refuses that).
+    """
+    for provider in settings.providers:
+        if provider.name == name:
+            return provider.kind == "local" or (
+                provider.input_per_mtok == 0 and provider.output_per_mtok == 0
+            )
+    return False
 
 
 def _backup(engine: Engine, settings: Settings, report: NightlyReport) -> None:
@@ -191,6 +252,7 @@ def _understand_and_rank(
     settings: Settings,
     jobs: list[Job],
     report: NightlyReport,
+    light: bool = False,
 ) -> None:
     doc, rubric = load_profile_doc(), load_rubric()
     preferences = load_preferences()
@@ -201,20 +263,24 @@ def _understand_and_rank(
         if doc
         else Eligibility()
     )
-    if (doc is None or rubric is None) and current_readiness(session).on:
+    if not light and (doc is None or rubric is None) and current_readiness(session).on:
         report.problems.append("scoring skipped: profile.md or rubric.yaml is missing")
     try:
         extract_routes = routes_for(settings, "extract", setup.built)
+        if light:
+            extract_routes = [r for r in extract_routes if _costs_nothing(settings, r)]
+            if not extract_routes:
+                report.notes.append("no free or local model for 'extract', so nothing new was read")
     except NoRoute:
         extract_routes = []
         report.problems.append("understanding skipped: no usable model for 'extract'")
     try:
-        score_routes = routes_for(settings, "score", setup.built)
+        score_routes = [] if light else routes_for(settings, "score", setup.built)
     except NoRoute:
         score_routes = []
         report.problems.append("scoring skipped: no usable model for 'score'")
     readiness = current_readiness(session, settings.profile_min_skills)
-    if not readiness.on:
+    if not readiness.on and not light:
         # Ingesting, understanding and filtering are cheap, so they run; scoring and tailoring wait.
         score_routes = []
         report.notes.append(
@@ -223,6 +289,7 @@ def _understand_and_rank(
         )
     budget_hit = False
     failures = 0
+    epoch = profile_epoch(session, settings, doc, preferences) if readiness.on else None
     for job in jobs:
         try:
             if (
@@ -239,7 +306,9 @@ def _understand_and_rank(
                 and rubric
                 and score_routes
                 and not budget_hit
-                and score_job(session, setup.router, job, doc, rubric, score_routes, preferences)
+                and score_job(
+                    session, setup.router, job, doc, rubric, score_routes, preferences, epoch
+                )
             ):
                 report.scored += 1
         except BudgetExceeded:
@@ -252,6 +321,8 @@ def _understand_and_rank(
             failures += 1
     if failures:
         report.problems.append(f"{failures} jobs could not be understood or scored")
+    if light:
+        return
     if doc is not None:
         _extract_profile_facts(session, setup, settings, doc, report)
     if doc is not None and not budget_hit and readiness.on:
@@ -292,6 +363,21 @@ def _extract_profile_facts(
             report.problems.append(f"the {kind} could not be read into facts")
 
 
+def profile_epoch(
+    session: Session, settings: Settings, doc: ProfileDoc | None, preferences: Preferences | None
+) -> int | None:
+    """Return the number scoring and tailoring use for "the profile", raising it on a real change.
+
+    None when there is no profile yet. See `profile/changes.py` for what counts as a change.
+    """
+    if doc is None:
+        return None
+    current = profile_snapshot(doc, accepted_facts(session), preferences)
+    return check(
+        current, settings.score_typo_distance, settings.score_free_text_change_percent
+    ).epoch
+
+
 def _accepted_education(session: Session) -> list[EducationFact]:
     """Return the education entries from the user's accepted resume and transcript facts."""
     facts = accepted_facts(session)
@@ -322,9 +408,10 @@ def _tailor_top_jobs(
         report.problems.append("tailoring skipped: the resume could not be read (hub profile show)")
         return
     failures = 0
+    epoch = profile_epoch(session, settings, doc, load_preferences())
     for job, _assessment in ranked_jobs(session, MAX_JOBS, **current_rank_adjustments()):
         try:
-            if tailor_job(session, setup.router, job, doc, source, routes):
+            if tailor_job(session, setup.router, job, doc, source, routes, epoch):
                 report.tailored += 1
         except BudgetExceeded:
             report.problems.append("monthly budget reached: tailoring paused")

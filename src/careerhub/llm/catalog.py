@@ -22,10 +22,10 @@ from importlib import resources
 from typing import Literal
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from careerhub.core.secrets import KeyStore
-from careerhub.core.settings import ProviderSetting, Settings
+from careerhub.core.settings import ProviderSetting, Settings, SettingsError
 from careerhub.llm.providers import api_key_name
 
 #: The privacy tier of each task, which decides the providers it may use by default.
@@ -110,7 +110,13 @@ def _apply_overrides(preset: Preset, settings: Settings) -> ProviderSetting:
     }
     if override is not None:
         values.update(override.model_dump(exclude_none=True))
-    return ProviderSetting.model_validate(values)
+    try:
+        return ProviderSetting.model_validate(values)
+    except (
+        ValidationError
+    ) as error:  # for example http:// for a cloud preset (the check needs the kind)
+        reasons = "; ".join(str(e.get("ctx", {}).get("error") or e["msg"]) for e in error.errors())
+        raise SettingsError(f"preset_overrides for {preset.name!r}: {reasons}") from None
 
 
 def _cost(provider: ProviderSetting) -> float:
