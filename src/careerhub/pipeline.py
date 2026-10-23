@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.backup import backup_database
 from careerhub.core.models import Job, utcnow
-from careerhub.core.runlog import finish_run, start_run
+from careerhub.core.runlog import close_interrupted_runs, finish_run, start_run
 from careerhub.core.secrets import KeyStore
 from careerhub.core.settings import Settings, load_settings
 from careerhub.core.storage import session_factory
@@ -51,18 +51,20 @@ from careerhub.modules.jobs.filters import assess_filters
 from careerhub.modules.jobs.scoring import (
     ScoringError,
     current_rank_adjustments,
+    profile_snapshot,
     ranked_jobs,
     score_job,
 )
 from careerhub.modules.jobs.store import only_visible_copies
 from careerhub.modules.jobs.tailoring import tailor_job
+from careerhub.profile.changes import check
 from careerhub.profile.eligibility import Eligibility, eligibility_from
 from careerhub.profile.extract import EducationFact
 from careerhub.profile.extract import extract_and_save as extract_profile_and_save
 from careerhub.profile.facts import accepted_facts
 from careerhub.profile.files import load_preferences, load_profile_doc
 from careerhub.profile.inputs import find_resume, find_transcript
-from careerhub.profile.models import HardConstraints, ProfileDoc
+from careerhub.profile.models import HardConstraints, Preferences, ProfileDoc
 from careerhub.profile.readiness import current_readiness
 from careerhub.profile.rubric import load_rubric
 from careerhub.web.shortlist import MAX_JOBS, write_shortlist
@@ -150,6 +152,9 @@ def _execute(
     sessions = session_factory(engine)
     report = NightlyReport()
     with sessions() as session:
+        interrupted = close_interrupted_runs(session, step)
+        if interrupted:
+            report.notes.append(f"an earlier run was interrupted ({interrupted}x); marked failed")
         run = start_run(session, step)
         error: BaseException | None = None
         try:
@@ -277,6 +282,7 @@ def _understand_and_rank(
         )
     budget_hit = False
     failures = 0
+    epoch = profile_epoch(session, settings, doc, preferences) if readiness.on else None
     for job in jobs:
         try:
             if (
@@ -293,7 +299,9 @@ def _understand_and_rank(
                 and rubric
                 and score_routes
                 and not budget_hit
-                and score_job(session, setup.router, job, doc, rubric, score_routes, preferences)
+                and score_job(
+                    session, setup.router, job, doc, rubric, score_routes, preferences, epoch
+                )
             ):
                 report.scored += 1
         except BudgetExceeded:
@@ -348,6 +356,21 @@ def _extract_profile_facts(
             report.problems.append(f"the {kind} could not be read into facts")
 
 
+def profile_epoch(
+    session: Session, settings: Settings, doc: ProfileDoc | None, preferences: Preferences | None
+) -> int | None:
+    """Return the number scoring and tailoring use for "the profile", raising it on a real change.
+
+    None when there is no profile yet. See `profile/changes.py` for what counts as a change.
+    """
+    if doc is None:
+        return None
+    current = profile_snapshot(doc, accepted_facts(session), preferences)
+    return check(
+        current, settings.score_typo_distance, settings.score_free_text_change_percent
+    ).epoch
+
+
 def _accepted_education(session: Session) -> list[EducationFact]:
     """Return the education entries from the user's accepted resume and transcript facts."""
     facts = accepted_facts(session)
@@ -378,9 +401,10 @@ def _tailor_top_jobs(
         report.problems.append("tailoring skipped: the resume could not be read (hub profile show)")
         return
     failures = 0
+    epoch = profile_epoch(session, settings, doc, load_preferences())
     for job, _assessment in ranked_jobs(session, MAX_JOBS, **current_rank_adjustments()):
         try:
-            if tailor_job(session, setup.router, job, doc, source, routes):
+            if tailor_job(session, setup.router, job, doc, source, routes, epoch):
                 report.tailored += 1
         except BudgetExceeded:
             report.problems.append("monthly budget reached: tailoring paused")
