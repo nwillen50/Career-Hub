@@ -72,7 +72,7 @@ def test_each_checklist_item_is_reported_when_absent(data: Path) -> None:
         "profile/rubric.yaml": None,
         "inputs/resume/resume.txt": None,
     }
-    expected = ["graduation", "locations", "rubric", "resume"]
+    expected = ["graduation", "Locations", "Rubric", "Resume"]
     for (name, text), word in zip(cases.items(), expected, strict=True):
         fill(data)  # reset
         path = data / name
@@ -83,10 +83,10 @@ def test_each_checklist_item_is_reported_when_absent(data: Path) -> None:
 
 def test_too_few_skills_and_no_interests_are_reported(data: Path) -> None:
     fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[Python]"))
-    assert any("at least 5 skills (you have 1)" in item for item in missing_items(None))
+    assert any("Skills: 1 of 5 needed." in item for item in missing_items(None))
     thin = PROFILE.replace("interests: [robotics]\n", "")
     fill(data, profile__profile_dot_md=thin)
-    assert any("interests or an About" in item for item in missing_items(None))
+    assert any("Interests: add" in item for item in missing_items(None))
     fill(data, profile__profile_dot_md=thin + "I like building things.\n")
     assert not any("interests" in item for item in missing_items(None))
 
@@ -143,7 +143,7 @@ def test_hub_profile_ready_refuses_until_the_checklist_passes_then_switches_on_a
     store = InMemoryKeyStore()
     fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[Python]"))
     assert main(["profile", "ready"], store) == 1
-    assert "at least 5 skills" in capsys.readouterr().out and scoring_since() is None
+    assert "Skills: " in capsys.readouterr().out and scoring_since() is None
     fill(data)
     assert main(["profile", "ready"], store) == 0
     assert scoring_since() is not None and "Scoring is on" in capsys.readouterr().out
@@ -162,7 +162,7 @@ def test_the_page_says_scoring_starts_when_the_profile_is_ready_and_what_is_miss
         shortlist = gather_shortlist(session)
         assert shortlist.waiting_for is not None and "resume" in shortlist.waiting_for[0]
         html = render_shortlist(shortlist, date_now())
-        assert "Scoring starts when your profile is ready" in html and "<li>a resume" in html
+        assert "Scoring starts when your profile is ready" in html and "<li>Resume: " in html
         set_scoring(True, date(2026, 10, 22))
         assert gather_shortlist(session).waiting_for is None
         assert "Scoring starts" not in render_shortlist(gather_shortlist(session), date_now())
@@ -200,3 +200,26 @@ def test_profile_show_says_whether_the_next_run_rescores_and_hub_score_all_force
     assert "skills: 4 removed" in capsys.readouterr().out
     assert main(["score", "--all"], store) == 0
     assert "every job again" in capsys.readouterr().out
+
+
+def test_the_skills_message_explains_what_to_do_in_plain_words(data: Path) -> None:
+    """CH-123: both sources, the duplicate rule, and the setting are named."""
+    fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[Python]"))
+    (message,) = [m for m in missing_items(None) if m.startswith("Skills:")]
+    for phrase in (
+        "1 of 5 needed",
+        "compares your skills with each job",
+        "skills: in profile.md",
+        "hub profile facts accept",
+        "counts once",
+        "profile_min_skills",
+        "0 turns this check off",
+    ):
+        assert phrase in message, phrase
+    assert "waits until it knows at least 5" in message
+
+
+def test_the_minimum_in_the_message_follows_the_setting(data: Path) -> None:
+    fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[Python]"))
+    assert any("1 of 3 needed" in m for m in missing_items(None, min_skills=3))
+    assert not any(m.startswith("Skills:") for m in missing_items(None, min_skills=0))

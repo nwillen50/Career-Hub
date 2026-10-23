@@ -40,7 +40,13 @@ from careerhub.modules.jobs import (
 )
 from careerhub.modules.jobs.adapters import ADAPTERS, BOARD_KINDS
 from careerhub.modules.jobs.find_boards import find_boards
-from careerhub.modules.jobs.manual import ManualJobError, add_job, classify, guess_from_link
+from careerhub.modules.jobs.manual import (
+    ManualJobError,
+    add_job,
+    classify,
+    guess_from_link,
+    set_manual_job_closed,
+)
 from careerhub.modules.jobs.scoring import profile_snapshot
 from careerhub.modules.jobs.targets import (
     TargetsError,
@@ -86,6 +92,7 @@ USAGE = """Usage:
   hub nightly                                (run the whole pipeline once)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
                                              are never requested; text can also come from stdin)
+  hub jobs close <id> | reopen <id>      (only for jobs you added by link; nothing is deleted)
   hub companies suggestions | merge <id> | skip <id>   (near-duplicate company names)
   hub targets find-boards | note <name> <ats> | import <file> | list | enable-matching
   hub targets enable <name>... | disable <name>...
@@ -94,7 +101,7 @@ USAGE = """Usage:
   hub models add <anthropic|openai|gemini --tier free|paid|local|preset>   (asks for the key)
   hub models remove <same names>
   hub models add-custom <name> <kind> <model> [--base-url U] [--input N] [--output N]
-                        [--trains-on-data]
+                        [--no-training]   (without it the model is assumed to train on your data)
   hub cache clear [--expired]               (delete saved model answers; prints how many)
   hub profile ready [--off]                 (check the profile, then switch scoring on or off)
   hub profile facts                         (what was read from your resume and transcript)
@@ -152,6 +159,13 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _nightly(store)
         if args[:1] == ["add-job"] and len(args) >= 2 and len(args) % 2 == 0:
             return _with_session(store, lambda s: _add_job(s, args[1], args[2:]))
+        if (
+            len(args) == 3
+            and args[0] == "jobs"
+            and args[1] in ("close", "reopen")
+            and args[2].isdigit()
+        ):
+            return _with_session(store, lambda s: _jobs_close(s, args[1] == "close", int(args[2])))
         if args[:1] == ["companies"]:
             return _with_session(store, lambda s: _companies(s, args[1:]))
         if args == ["targets", "find-boards"]:
@@ -406,13 +420,13 @@ def _add_job(
     text: str | None = None
     try:
         try:
-            result = add_job(session, url, company, title, None, client)
+            result = add_job(session, url, company, title, None, client, aliases=_aliases())
         except ManualJobError:
             if "--text-file" in flags:
                 text = Path(flags["--text-file"]).read_text(encoding="utf-8")
             elif not stdin.isatty():
                 text = stdin.read()
-            result = add_job(session, url, company, title, text, client)
+            result = add_job(session, url, company, title, text, client, aliases=_aliases())
     except (ManualJobError, OSError) as error:
         print(f"Couldn't add the job. {error}")
         return 1
@@ -505,12 +519,12 @@ def _flags(args: list[str]) -> tuple[list[str], dict[str, str | bool]] | None:
     flags: dict[str, str | bool] = {}
     i = 0
     while i < len(args):
-        if args[i] == "--trains-on-data":
-            flags["trains_on_data"] = True
+        if args[i] == "--no-training":
+            flags["no_training"] = True
         elif args[i].startswith("--"):
             name = args[i][2:].replace("-", "_")
-            # An unknown flag is an error: dropping a mistyped --trains-on-data would silently
-            # save the less restrictive value.
+            # An unknown flag is an error: dropping a mistyped flag would silently save a
+            # different value than the user meant.
             if name not in _MODEL_FLAGS or i + 1 >= len(args):
                 return None
             flags[name] = args[i + 1]
@@ -655,6 +669,26 @@ def _profile_facts(session: Session, args: list[str]) -> int:
     return 0
 
 
+def _jobs_close(
+    session: Session, close: bool, job_id: int, ask: Callable[[str], str] | None = None
+) -> int:
+    """`hub jobs close <id>` or `reopen <id>`: asks yes or no, then marks the job; never deletes."""
+    verb = "close" if close else "reopen"
+    if (ask or input)(f"{verb.capitalize()} job {job_id}? [y/N] ").strip().lower() not in (
+        "y",
+        "yes",
+    ):
+        print("Nothing changed.")
+        return 1
+    try:
+        job = set_manual_job_closed(session, job_id, close)
+    except ManualJobError as error:
+        print(error)
+        return 1
+    print(f"Job {job_id} ({job.title}) is now {job.status}.")
+    return 0
+
+
 def _aliases() -> dict[str, str]:
     """Return the user's company aliases from preferences.yaml (none if there is no file)."""
     preferences = load_preferences()
@@ -672,7 +706,7 @@ def _companies(session: Session, args: list[str]) -> int:
         return 0
     if len(args) == 2 and args[0] in ("merge", "skip") and args[1].isdigit():
         try:
-            print(decide_merge(session, int(args[1]), accept=args[0] == "merge"))
+            print(decide_merge(session, int(args[1]), args[0] == "merge", _aliases()))
         except LookupError as error:
             print(error)
             return 1
