@@ -40,7 +40,8 @@ class AlumniReport:
     tagged: int = 0  # already known; the alumni tag was added
     unchanged: int = 0
     skipped: int = 0  # rows missing a name or company
-    skipped_for: tuple[str, ...] = ()  # which of "name" and "company" the skipped rows lacked
+    skipped_for: tuple[str, ...] = ()  # which of "name", "company", "group" the skipped rows lacked
+    truncated: bool = False  # the file had more rows than are read; the rest were ignored
 
 
 @dataclass(frozen=True)
@@ -90,9 +91,15 @@ def import_alumni(
         name = table.person_name(row)
         company_name = table.get(row, "company")
         row_group = (table.get(row, "group") or (group or "")).strip()
+        if _placeholder(company_name):
+            company_name = ""  # "N/A" is not an employer; every such person would share one
         if not (name and company_name and row_group):
             skipped += 1
-            lacked.update(n for n, v in (("name", name), ("company", company_name)) if not v)
+            lacked.update(
+                n
+                for n, v in (("name", name), ("company", company_name), ("group", row_group))
+                if not v
+            )
             continue
         company = _company(session, company_name, aliases)
         email, url = _valid_email(table.get(row, "email")), _valid_url(table.get(row, "url"))
@@ -129,7 +136,7 @@ def import_alumni(
         session.flush()  # so a repeat of the same person later in the file is found
     if commit:
         session.commit()
-    return AlumniReport(created, tagged, unchanged, skipped, tuple(sorted(lacked)))
+    return AlumniReport(created, tagged, unchanged, skipped, tuple(sorted(lacked)), table.truncated)
 
 
 def preview_alumni(
@@ -169,6 +176,14 @@ def _company(session: Session, name: str, aliases: Mapping[str, str] | None = No
 
 _EMAIL_SHAPE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s.]+")
 _URL_SHAPE = re.compile(r"(?i)(?:https?://)?[\w-]+(?:\.[\w-]+)+(?:[/?#]\S*)?")
+
+
+_PLACEHOLDERS = frozenset({"n/a", "na", "none", "null", "unknown", "tbd", "-", "--", ".", "?"})
+
+
+def _placeholder(value: str) -> bool:
+    """Say whether a cell holds a stand-in for "nothing" ("N/A", "-", "unknown")."""
+    return value.strip().lower() in _PLACEHOLDERS
 
 
 def _valid_email(value: str) -> str:
