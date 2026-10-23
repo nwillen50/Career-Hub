@@ -48,6 +48,7 @@ from careerhub.modules.jobs.reactions import (
 )
 from careerhub.profile.files import ProfileFileError
 from careerhub.web.job_detail import gather_job
+from careerhub.web.plan_view import gather_plan
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
 
 #: A job id the database can hold (SQLite integers are 64-bit); anything else is a 422, not a 500.
@@ -220,7 +221,7 @@ def create_app(
         return render
 
     for path in PAGES:
-        if path != "/today":
+        if path not in ("/today", "/plan"):
             app.add_api_route(path, tab(path), methods=["GET"], response_class=HTMLResponse)
 
     @app.get("/today", response_class=HTMLResponse)
@@ -261,6 +262,28 @@ def create_app(
         if section in SECTIONS:  # remember the choice between visits
             response.set_cookie(SECTION_COOKIE, chosen, samesite="strict", path="/")
         return response
+
+    @app.get("/plan", response_class=HTMLResponse)
+    def plan_tab(request: Request) -> Response:
+        if open_session is None:
+            return tab("/plan")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/plan")(request)
+        with open_session() as session:
+            view = gather_plan(session)
+        return templates.TemplateResponse(
+            request,
+            "plan.html",
+            {
+                "tabs": TABS,
+                "current": "/plan",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": "Plan",
+                "heading": "Plan",
+                "plan": view,
+            },
+        )
 
     @app.get("/jobs/{job_id}", response_class=HTMLResponse)
     def job_page(request: Request, job_id: JobId) -> Response:

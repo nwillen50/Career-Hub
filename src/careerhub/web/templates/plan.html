@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="muted">Suggestions only: nothing is written to any calendar, and nothing is sent.</p>
+{% for problem in plan.problems %}
+<section class="card error" role="alert"><p>{{ problem }}</p></section>
+{% endfor %}
+<section aria-labelledby="budget-h"><h2 id="budget-h">Time this week</h2>
+  <p class="card"><strong>{{ plan.used }}</strong> of your weekly time budget.</p>
+  <p class="muted">Free time comes from: {{ plan.sources|join("; ") }}.</p>
+</section>
+<section aria-labelledby="blocks-h"><h2 id="blocks-h">Suggested blocks</h2>
+  {% for day in plan.days %}
+  <h3>{{ day.heading }}</h3>
+  <ul>
+    {% for block in day.blocks %}
+    <li>{{ block.start }} to {{ block.end }} ({{ block.minutes }} minutes): {{ block.title }}{% if block.due %} <span class="muted">(due {{ block.due }})</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="card muted">Nothing to plan yet. Blocks appear once jobs are ranked and there is free time in the next seven days.</p>
+  {% endfor %}
+</section>
+{% if plan.unplaced %}
+<section aria-labelledby="left-h"><h2 id="left-h">Did not fit</h2>
+  <ul>{% for item in plan.unplaced %}<li>{{ item }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+{% endblock %}
