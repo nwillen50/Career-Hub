@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,12 @@ from careerhub.llm.providers import ProviderError
 from careerhub.llm.setup import NoRoute
 from careerhub.modules.conversation import MAX_ANSWER_CHARS, ask, build_context
 from careerhub.web.app import create_app
+
+
+def reply(text: str, change: dict[str, Any] | None = None) -> str:
+    """A model answer in the format the conversation prompt asks for."""
+    return json.dumps({"answer": text, "change": change})
+
 
 TOKEN = "t"
 PORT = 8765
@@ -64,7 +71,7 @@ def post(c: TestClient, body: str) -> Any:
 
 def test_a_question_is_answered_from_the_stored_explanation_and_saved(session: Session) -> None:
     add_job(session, 1, 90)
-    fake = FakeProvider("m", replies=["It ranks first because the field matches well."])
+    fake = FakeProvider("m", replies=[reply("It ranks first because the field matches well.")])
     c = web(session, fake)
     response = post(c, "question=why+is+%231+ranked+first%3F")
     assert response.status_code == 303 and response.headers["location"] == "/conversation"
@@ -80,7 +87,7 @@ def test_the_request_is_personal_tier_not_essential_and_redacted(session: Sessio
     job = add_job(session, 1, 80)
     session.query(Job).one().structured_fields = {"fields": {"summary": "Email jane@example.com"}}
     session.commit()
-    fake = FakeProvider("m", replies=["ok"])
+    fake = FakeProvider("m", replies=[reply("ok")])
     router = Router([fake])
     context = build_context(session, None, "Jane Sample", [], job.id)
     ask(
@@ -100,7 +107,7 @@ def test_the_request_is_personal_tier_not_essential_and_redacted(session: Sessio
 
 def test_a_cloud_model_that_trains_on_data_never_sees_the_question(session: Session) -> None:
     add_job(session, 1, 80)
-    training = FakeProvider("free", Destination.CLOUD, trains_on_data=True, replies=["x"])
+    training = FakeProvider("free", Destination.CLOUD, trains_on_data=True, replies=[reply("x")])
     result = ask(session, Router([training]), ["free"], "why?", "ctx", "", [])
     assert not result.ok and "not allowed to see personal data" in result.text
     assert training.requests == [] and session.query(ConversationMessage).count() == 0
@@ -126,7 +133,7 @@ def test_the_budget_pause_and_a_failing_model_are_messages_not_errors(session: S
         def complete(self, request: Any) -> Any:
             raise ProviderError("down")
 
-    good = FakeProvider("backup", replies=["from the backup"])
+    good = FakeProvider("backup", replies=[reply("from the backup")])
     fallback = ask(
         session, Router([Failing("main"), good]), ["main", "backup"], "hi", "ctx", "", []
     )
@@ -136,7 +143,7 @@ def test_the_budget_pause_and_a_failing_model_are_messages_not_errors(session: S
 
 
 def test_empty_or_oversized_questions_and_answers_are_handled(session: Session) -> None:
-    fake = FakeProvider("m", replies=["x" * (MAX_ANSWER_CHARS + 500)])
+    fake = FakeProvider("m", replies=[reply("x" * (MAX_ANSWER_CHARS + 500))])
     router = Router([fake])
     assert ask(session, router, ["m"], "   ", "ctx", "", []).text == "Type a question first."
     result = ask(session, router, ["m"], "q " * 1000, "ctx", "", [])
@@ -146,7 +153,9 @@ def test_empty_or_oversized_questions_and_answers_are_handled(session: Session) 
 
 def test_hostile_text_is_escaped_and_the_form_needs_csrf(session: Session) -> None:
     add_job(session, 1, 80)
-    fake = FakeProvider("m", replies=["<script>alert(1)</script> and <img src=x onerror=alert(2)>"])
+    fake = FakeProvider(
+        "m", replies=[reply("<script>alert(1)</script> and <img src=x onerror=alert(2)>")]
+    )
     c = web(session, fake)
     post(c, "question=%3Cscript%3Ealert(3)%3C%2Fscript%3E")
     html = c.get("/conversation").text
@@ -160,7 +169,7 @@ def test_a_job_page_question_is_kept_with_that_job_and_the_page_is_accessible(
 ) -> None:
     job = add_job(session, 1, 80)
     add_job(session, 2, 70)
-    fake = FakeProvider("m", replies=["About job one."])
+    fake = FakeProvider("m", replies=[reply("About job one.")])
     c = web(session, fake)
     token = re.search(r'name="csrf" value="([^"]+)"', c.get(f"/conversation?job={job.id}").text)
     assert token
@@ -178,7 +187,7 @@ def test_a_job_page_question_is_kept_with_that_job_and_the_page_is_accessible(
 
 
 def test_a_huge_or_bad_job_number_is_ignored(session: Session) -> None:
-    fake = FakeProvider("m", replies=["ok"])
+    fake = FakeProvider("m", replies=[reply("ok")])
     c = web(session, fake)
     assert post(c, f"job={'9' * 30}&question=hi").status_code == 303
     assert post(c, "job=abc&question=hi").status_code == 303
