@@ -133,10 +133,10 @@ def mark_ghosted(session: Session, days: int, now: datetime | None = None) -> in
         last_contact = session.scalar(
             select(func.max(Interaction.occurred_at))
             .join(Person, Person.id == Interaction.person_id)
-            .where(Person.company_id == company_id)
-        )
-        if last_contact is not None and min(last_contact, now) >= cutoff:
-            continue  # (a contact dated in the future counts as "now", not as forever)
+            .where(Person.company_id == company_id, Interaction.occurred_at <= now)
+        )  # a contact dated in the future has not happened yet, so it protects nothing
+        if last_contact is not None and last_contact >= cutoff:
+            continue
         application.status = "ghosted"
         marked += 1
     if marked:
