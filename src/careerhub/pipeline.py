@@ -214,7 +214,11 @@ def _run(
 
 
 def _costs_nothing(settings: Settings, name: str) -> bool:
-    """Say whether provider `name` is local or has zero prices (so the refresh may use it)."""
+    """Say whether provider `name` is local or has zero prices (so the refresh may use it).
+
+    Extraction reads public job postings (PUBLIC tier), so a free tier that trains on data is
+    acceptable here; personal data never reaches it (the router refuses that).
+    """
     for provider in settings.providers:
         if provider.name == name:
             return provider.kind == "local" or (
