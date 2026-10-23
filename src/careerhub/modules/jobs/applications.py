@@ -114,7 +114,8 @@ def mark_ghosted(session: Session, days: int, now: datetime | None = None) -> in
 
     An application still "applied" is silent when nothing has happened for `days` days: it was
     applied for, edited or changed (`updated_at`), and nobody at the company was contacted
-    (an Interaction with someone who works there) in that time. Changing the status back makes it
+    (an Interaction with someone who works there) in that time. An application with a follow-up
+    date still ahead is not silent. Changing the status back makes it
     active again, and it counts as a change, so it is not re-marked until another `days` pass.
     """
     now = now or utcnow()
@@ -127,13 +128,15 @@ def mark_ghosted(session: Session, days: int, now: datetime | None = None) -> in
     ).all():
         if application.applied_at is not None and application.applied_at >= cutoff:
             continue
+        if application.follow_up_due is not None and application.follow_up_due >= now:
+            continue  # the user scheduled a follow-up: not silent
         last_contact = session.scalar(
             select(func.max(Interaction.occurred_at))
             .join(Person, Person.id == Interaction.person_id)
             .where(Person.company_id == company_id)
         )
-        if last_contact is not None and last_contact >= cutoff:
-            continue
+        if last_contact is not None and min(last_contact, now) >= cutoff:
+            continue  # (a contact dated in the future counts as "now", not as forever)
         application.status = "ghosted"
         marked += 1
     if marked:
