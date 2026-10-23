@@ -40,7 +40,10 @@ def log_interaction(
     occurred_at: datetime | None = None,
     follow_up_due: datetime | None = None,
 ) -> Interaction:
-    """Record a contact with a person, with an optional follow-up date."""
+    """Record a contact with a person, with an optional follow-up date.
+
+    A follow-up date of today (the start of the day) or earlier is allowed; it simply shows as due.
+    """
     if session.get(Person, person_id) is None:
         raise UnknownPerson(person_id)
     if channel not in dict(CHANNELS):
@@ -49,8 +52,6 @@ def log_interaction(
     if len(text) > MAX_SUMMARY:
         raise InteractionError(f"Keep the summary under {MAX_SUMMARY} characters.")
     when = occurred_at or utcnow()
-    if follow_up_due is not None and follow_up_due < when:
-        raise InteractionError("The follow-up date can't be before the contact itself.")
     interaction = Interaction(
         person_id=person_id,
         occurred_at=when,
