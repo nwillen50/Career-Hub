@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="muted">A log of who you contacted and when to follow up. Career Hub never sends anything: a follow-up is a reminder, and Done is you saying you dealt with it.</p>
+{% if note %}<section class="card error" role="alert"><p>{{ note }}</p></section>{% endif %}
+<section aria-labelledby="log-h" id="log"><h2 id="log-h">Log a contact</h2>
+{% if people %}
+<form method="post" action="/interactions" class="ask">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label for="person">Who</label>
+  <select id="person" name="person" required>
+    {% for pid, label in people %}<option value="{{ pid }}"{% if pid == person_id %} selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <label for="channel">How</label>
+  <select id="channel" name="channel">{% for key, label in channels %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select>
+  <label for="summary">What happened (optional)</label>
+  <input id="summary" type="text" name="summary" maxlength="1000">
+  <label for="follow_up">Follow up on (optional, YYYY-MM-DD)</label>
+  <input id="follow_up" type="date" name="follow_up">
+  <button type="submit">Save contact</button>
+</form>
+{% else %}<p class="card">Add contacts first: import your LinkedIn export or an alumni list from the terminal.</p>{% endif %}
+</section>
+<section aria-labelledby="hist-h"><h2 id="hist-h">History</h2>
+{% if interactions %}
+<table class="tracker">
+  <caption class="muted">Newest first.</caption>
+  <thead><tr><th scope="col">Date</th><th scope="col">Person</th><th scope="col">How</th><th scope="col">What happened</th><th scope="col">Follow-up</th></tr></thead>
+  <tbody>
+  {% for i in interactions %}
+  <tr{% if i.overdue %} class="overdue"{% endif %}>
+    <td>{{ i.when }}</td>
+    <td>{{ i.person }}{% if i.company %}<br><span class="muted">{{ i.company }}</span>{% endif %}</td>
+    <td>{{ i.channel }}</td>
+    <td>{{ i.summary or "—" }}</td>
+    <td>
+      {% if i.follow_up %}
+        {{ i.follow_up }}{% if i.overdue %} <span class="overdue-note">due</span>{% endif %}
+        <form method="post" action="/interactions/{{ i.id }}/done" class="inline-form">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="done" value="{{ "0" if i.done else "1" }}">
+          <button type="submit" aria-label="{{ "Reopen" if i.done else "Mark done" }}: follow up with {{ i.person }} on {{ i.follow_up }}">{{ "Reopen" if i.done else "Done" }}</button>
+        </form>
+        {% if i.done %}<span class="muted">done</span>{% endif %}
+      {% else %}—{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="card">Nothing logged yet.</p>{% endif %}
+</section>
+{% endblock %}
