@@ -38,10 +38,23 @@ from sqlalchemy.orm import Session
 from careerhub.core.migrate import migrate
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
 from careerhub.core.storage import StorageError, open_database, session_factory
+from careerhub.modules.jobs.reactions import UNDO_SECONDS, ReactionError, react, undo
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
 
 SESSION_COOKIE = "ch_session"
 SECTION_COOKIE = "ch_today_section"
+REACTION_LABELS = {
+    "interested": "interested",
+    "not_interested": "not interested",
+    "applied": "applied",
+}
+REASON_LABELS = (
+    ("level", "Wrong level"),
+    ("location", "Wrong location"),
+    ("field", "Wrong field"),
+    ("company", "Not this company"),
+    ("pay", "Pay"),
+)
 SECTION_LABELS = (
     ("all", "All"),
     ("top", "Top jobs"),
@@ -223,6 +236,7 @@ def create_app(
                 else None,
                 "last_error": shortlist.last_error,
                 "waiting_for": shortlist.waiting_for,
+                "reasons": REASON_LABELS,
                 "sections": SECTION_LABELS,
                 "section": chosen,
                 "jobs": job_cards(data.jobs),
@@ -234,6 +248,46 @@ def create_app(
         if section in SECTIONS:  # remember the choice between visits
             response.set_cookie(SECTION_COOKIE, chosen, samesite="strict", path="/")
         return response
+
+    def reaction_page(request: Request, name: str, **context: Any) -> Response:
+        """Answer a reaction: a small card fragment for HTMX, or back to Today for a plain form."""
+        csrf = sessions.get(request.cookies.get(SESSION_COOKIE, ""), "")
+        if request.headers.get("hx-request") != "true":
+            return RedirectResponse("/today", status_code=303)
+        return templates.TemplateResponse(request, name, {"csrf": csrf, **context})
+
+    @app.post("/jobs/{job_id}/react")
+    async def react_to_job(request: Request, job_id: int, reason: str | None = None) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data to react to.", status_code=404)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"))
+        reaction = form.get("reaction", [""])[0]
+        with open_session() as session:
+            try:
+                react(session, job_id, reaction, reason)
+            except ReactionError as error:
+                return reaction_page(request, "note.html", message=str(error))
+        return reaction_page(
+            request,
+            "reacted.html",
+            job_id=job_id,
+            label=REACTION_LABELS.get(reaction, reaction),
+            reason_label=dict(REASON_LABELS).get(reason or ""),
+            seconds=UNDO_SECONDS,
+        )
+
+    @app.post("/jobs/{job_id}/undo")
+    async def undo_reaction(request: Request, job_id: int) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data.", status_code=404)
+        with open_session() as session:
+            taken_back = undo(session, job_id)
+        message = (
+            "Reaction undone. The job is back on Today."
+            if taken_back
+            else ("It is too late to undo that.")
+        )
+        return reaction_page(request, "note.html", message=message)
 
     @app.post("/session/end")
     def end_session(request: Request) -> Response:

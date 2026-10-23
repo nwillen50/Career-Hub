@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from careerhub.core.models import Interaction, Person, utcnow
+from careerhub.modules.jobs.reactions import reacted_job_ids
 from careerhub.web.shortlist import (
     ShortlistData,
     ShortlistEntry,
@@ -91,7 +92,7 @@ def clean_section(value: str | None) -> str:
 def gather_today(session: Session, now: datetime | None = None) -> TodayData:
     """Collect the Today page's data as of `now`."""
     now = now or utcnow()
-    shortlist = gather_shortlist(session, MAX_TOP_JOBS, now)
+    shortlist = gather_shortlist(session, MAX_TOP_JOBS, now, hide=reacted_job_ids(session))
     return TodayData(now, shortlist, *_follow_ups(session, now), _deadlines(shortlist, now.date()))
 
 
