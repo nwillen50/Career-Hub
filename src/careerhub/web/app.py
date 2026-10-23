@@ -39,7 +39,13 @@ from careerhub.core.migrate import migrate
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
 from careerhub.core.settings import SettingsError
 from careerhub.core.storage import StorageError, open_database, session_factory
-from careerhub.modules.jobs.reactions import UNDO_SECONDS, ReactionError, react, undo
+from careerhub.modules.jobs.reactions import (
+    UNDO_SECONDS,
+    ReactionError,
+    react,
+    reacted_job_ids,
+    undo,
+)
 from careerhub.profile.files import ProfileFileError
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
 
@@ -266,13 +272,15 @@ def create_app(
         reaction = form.get("reaction", [""])[0]
         with open_session() as session:
             try:
-                react(session, job_id, reaction, reason)
+                saved = react(session, job_id, reaction, reason)
             except ReactionError as error:
                 return reaction_page(request, "note.html", message=str(error))
+            feedback_id = saved.id
         return reaction_page(
             request,
             "reacted.html",
             job_id=job_id,
+            feedback_id=feedback_id,
             label=REACTION_LABELS.get(reaction, reaction),
             reason_label=dict(REASON_LABELS).get(reason or ""),
             seconds=UNDO_SECONDS,
@@ -282,13 +290,18 @@ def create_app(
     async def undo_reaction(request: Request, job_id: int) -> Response:
         if open_session is None:
             return HTMLResponse("No data.", status_code=404)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"))
+        given = form.get("feedback_id", [""])[0]
+        feedback_id = int(given) if given.isdigit() else None
         with open_session() as session:
-            taken_back = undo(session, job_id)
-        message = (
-            "Reaction undone. The job is back on Today."
-            if taken_back
-            else ("It is too late to undo that.")
-        )
+            taken_back = undo(session, job_id, feedback_id)
+            still_hidden = job_id in reacted_job_ids(session)
+        if not taken_back:
+            message = "It is too late to undo that."
+        elif still_hidden:
+            message = "Reaction undone. An earlier reaction still keeps this job off Today."
+        else:
+            message = "Reaction undone. The job is back on Today after a reload."
         return reaction_page(request, "note.html", message=message)
 
     @app.post("/session/end")

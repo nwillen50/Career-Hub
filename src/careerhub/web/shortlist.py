@@ -101,6 +101,12 @@ def gather_shortlist(
     slug = load_settings().linkedin_school_slug
     schools = my_schools(session) if slug else []
     stale_days = adjustments["stale_after_days"]
+    wanted = min(limit, MAX_JOBS)
+    ranked = [
+        row
+        for row in ranked_jobs(session, wanted + len(hide), now=now, **adjustments)
+        if row[0].id not in hide
+    ][:wanted]
     entries = [
         ShortlistEntry(
             title=job.title,
@@ -120,11 +126,8 @@ def gather_shortlist(
             deadline=_deadline(job),
             job_id=job.id,
         )
-        for job, assessment in ranked_jobs(
-            session, min(limit, MAX_JOBS) + len(hide), now=now, **adjustments
-        )
-        if job.id not in hide
-    ][: min(limit, MAX_JOBS)]
+        for job, assessment in ranked
+    ]
     runs = list(
         session.scalars(
             select(RunLog)

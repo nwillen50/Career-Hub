@@ -172,3 +172,41 @@ def test_an_unknown_job_or_reaction_gets_a_friendly_note_not_an_error(session: S
     bad = post(c, "/jobs/1/react", "reaction=nonsense", htmx=True)
     assert "Unknown reaction" in bad.text
     assert session.query(Feedback).count() == 0 and session.query(Job).count() == 1
+
+
+def test_undo_takes_back_only_the_reaction_its_card_made(session: Session) -> None:
+    """Review: with two tabs, undo on one card removed the other tab's newer reaction."""
+    job = add_job(session, 1, 80)
+    first = react(session, job.id, "interested")
+    second = react(session, job.id, "applied")
+    assert undo(session, job.id, first.id)
+    assert current_reaction(session, job.id) == "applied"  # the newer one is untouched
+    assert undo(session, job.id, second.id) and current_reaction(session, job.id) is None
+    assert not undo(session, job.id, 999)
+
+
+def test_undo_says_when_an_earlier_reaction_still_hides_the_job(session: Session) -> None:
+    job = add_job(session, 1, 80)
+    c = web(session)
+    post(c, "/jobs/1/react", "reaction=interested", htmx=True)
+    again = post(c, "/jobs/1/react", "reaction=interested", htmx=True)
+    feedback_id = re.search(r'name="feedback_id" value="(\d+)"', again.text).group(1)  # type: ignore[union-attr]
+    undone = post(c, "/jobs/1/undo", f"feedback_id={feedback_id}", htmx=True)
+    assert "earlier reaction still keeps this job off Today" in undone.text
+    assert job.id in reacted_job_ids(session)
+
+
+def test_today_builds_cards_only_for_the_jobs_it_shows(session: Session) -> None:
+    """Review: 2,000 queries to show five jobs when many top jobs had been reacted to."""
+    from sqlalchemy import event
+
+    for n in range(1, 41):
+        add_job(session, n, 100 - n)
+    for n in range(1, 36):
+        react(session, n, "not_interested")
+    counted: list[str] = []
+    engine = session.get_bind()
+    event.listen(engine, "before_cursor_execute", lambda *a: counted.append(a[2]))
+    html = web(session).get("/today").text
+    assert "Top jobs (5)" in html and "Role 36" in html and "Role 35" not in html
+    assert len(counted) < 120

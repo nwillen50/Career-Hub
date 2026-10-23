@@ -2,6 +2,7 @@
   <p>Marked <strong>{{ label }}</strong>{% if reason_label %} ({{ reason_label }}){% endif %}.</p>
   <form method="post" action="/jobs/{{ job_id }}/undo" hx-post="/jobs/{{ job_id }}/undo" hx-target="closest article" hx-swap="outerHTML">
     <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="feedback_id" value="{{ feedback_id }}">
     <button type="submit">Undo (for {{ seconds }} seconds)</button>
   </form>
 </article>
