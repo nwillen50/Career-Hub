@@ -56,7 +56,8 @@ can do: make the decisions and have the human conversations.
 
 The first user is the builder: a college senior looking for full-time roles who wants an offer by
 early spring. **Nothing about that user is hard-coded.** Profile, constraints, timeline, providers,
-and schedule are all settings, so anyone can run it for themselves.
+and schedule are all settings, so anyone can run it for themselves. Jobs can be in any country:
+the user says where they can already work, and the app flags the rest.
 
 **Later users** clone it from GitHub and run it on their own machines. That includes other college
 students, grad students, and people early in their careers. High school students are a possible
@@ -131,8 +132,8 @@ MVP includes a basic version of most capabilities, and later phases deepen them.
 | Discover | Pulls postings from approved sources, removes duplicates, flags stale and ghost postings (reposted, or open unusually long) | Greenhouse, Lever, and Ashby feeds for a target company list (seeded from lists the user adds, such as The Engine's resident companies); The Muse as the broad source; jobs the user adds by pasting a link from anywhere, including LinkedIn and Handshake. Posting age is shown, and postings older than about three weeks rank slightly lower | More applicant-tracking systems (Workday, Rippling, Workable); job-alert emails from LinkedIn and Handshake once mail is connected; a second broad source (Adzuna) if needed |
 | Explore | Adds one exploration pick a day by default (up to two): an adjacent role or company outside stated preferences. Reactions update an interest model, and the agent states what it has inferred so the user can confirm or correct it | One pick a day by default; inferred interests shown for confirmation | Number of picks and the interest model learn from feedback |
 | Source discovery | Proposes new sources based on the user's interests, conversations, and reactions. In the MVP it can only propose new configurations of existing source types (another company's job board, a new saved search); a new type of source is a code ticket. Nothing is added without the user's approval | Yes | — |
-| Understand | Turns each posting into structured fields (level, requirements, location, visa, pay, deadline, degree required and preferred, degree fields, graduation window, work authorization, start date, required and preferred skills), a plain-English summary of what the job really is, and company context | Yes | Deeper company research |
-| Prioritize | Hard filters, then a fit score with a written explanation, then ranking by fit, odds, and urgency. Hard filters are only eligibility (a required degree level above the user's with no "or equivalent experience", a graduation window that excludes the user) and the user's explicit constraints. Scoring uses every job field plus the user's preferences, judges degree fields and skills generously (physics counts toward most engineering; recent grad equals new grad), and ignores preferred skills. Scoring starts once the profile is ready, and small profile edits don't trigger a re-score | Yes | Scoring tuned by feedback |
+| Understand | Turns each posting into structured fields (level, requirements, location as city, region, and country, visa sponsorship, whether the posting requires an existing right to work in its country, pay, deadline, degree required and preferred, degree fields, graduation window, work authorization, start date, required and preferred skills), a plain-English summary of what the job really is, and company context | Yes | Deeper company research |
+| Prioritize | Hard filters, then a fit score with a written explanation, then ranking by fit, odds, and urgency. Hard filters are only eligibility (a required degree level above the user's with no "or equivalent experience", a graduation window that excludes the user) and the user's explicit constraints. A job in a country where the user can't already work gets a work-visa flag stating the employer's sponsorship stance; it is hidden only if the user turns that on and the posting says it won't sponsor. Scoring uses every job field plus the user's preferences, judges degree fields and skills generously (physics counts toward most engineering; recent grad equals new grad), and ignores preferred skills. Scoring starts once the profile is ready, and small profile edits don't trigger a re-score | Yes | Scoring tuned by feedback |
 | Network | Who you know at each company, and the strongest warm path | From the LinkedIn connections export, plus alumni from lists the user provides (any layout) and connections the user tags. Anyone known to share the user's school is highlighted, and each company links to LinkedIn's alumni search for the user to open | Second-degree connections, past email contact, contacts no longer in the LinkedIn export flagged |
 | Tailor | Which experiences to lead with, which gaps to address, suggested resume changes, and the posting's preferred skills to highlight | Written tailoring notes | Generates resume variants in LaTeX (for LaTeX resumes) for the user to accept |
 | Outreach | Drafts messages to contacts, with etiquette limits on how often to contact a person or company | — | Yes |
@@ -482,6 +483,9 @@ Target dates are set once Nicholas confirms his weekly build hours.
 - **Interface:** local web app with Today, Plan, Tracker, Job detail, Conversation panel, and
   System status; menu-bar count and error state; morning notification; escalation email to self,
   off by default
+- **International jobs (Milestone B):** places stored as city, region, and country; an optional
+  grouping by country, then city, with ranked order as the default; work-visa flags for countries
+  the user can't already work in. Advice only: the app never says which visa someone qualifies for
 - **Quality:** the evaluation set and `hub eval`
 - **Repo:** public GitHub repo with CI, docs, and a setup guide
 
