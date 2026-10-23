@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 from careerhub.core.migrate import migrate
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
 from careerhub.core.storage import StorageError, open_database, session_factory
+from careerhub.web.plan_view import gather_plan
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
 
 SESSION_COOKIE = "ch_session"
@@ -194,7 +195,7 @@ def create_app(
         return render
 
     for path in PAGES:
-        if path != "/today":
+        if path not in ("/today", "/plan"):
             app.add_api_route(path, tab(path), methods=["GET"], response_class=HTMLResponse)
 
     @app.get("/today", response_class=HTMLResponse)
@@ -234,6 +235,28 @@ def create_app(
         if section in SECTIONS:  # remember the choice between visits
             response.set_cookie(SECTION_COOKIE, chosen, samesite="strict", path="/")
         return response
+
+    @app.get("/plan", response_class=HTMLResponse)
+    def plan_tab(request: Request) -> Response:
+        if open_session is None:
+            return tab("/plan")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/plan")(request)
+        with open_session() as session:
+            view = gather_plan(session)
+        return templates.TemplateResponse(
+            request,
+            "plan.html",
+            {
+                "tabs": TABS,
+                "current": "/plan",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": "Plan",
+                "heading": "Plan",
+                "plan": view,
+            },
+        )
 
     @app.post("/session/end")
     def end_session(request: Request) -> Response:
