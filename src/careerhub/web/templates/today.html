@@ -64,7 +64,7 @@
   <h2 id="follow-h">Follow-ups due ({{ follow_ups|length }})</h2>
   {% if more_overdue %}<p><a href="/tracker">+{{ more_overdue }} more overdue</a></p>{% endif %}
   {% for item in follow_ups %}
-  <p class="card">Follow up with {{ item.person }}{% if item.company %} at {{ item.company }}{% endif %}
+  <p class="card">{% if item.kind == "application" %}Follow up on your application: {{ item.person }}{% else %}Follow up with {{ item.person }}{% endif %}{% if item.company %} at {{ item.company }}{% endif %}
     ({% if item.overdue_days %}{{ item.overdue_days }} day{{ "s" if item.overdue_days != 1 }} overdue{% else %}due today{% endif %}){% if item.summary %}: {{ item.summary }}{% endif %}</p>
   {% else %}<p class="card muted">No follow-ups due.</p>{% endfor %}
 </section>

@@ -247,3 +247,20 @@ def test_a_deadline_shows_even_if_the_job_is_not_one_of_the_five_cards(session: 
     html = web(session).get("/today").text
     block = html.split("Deadlines this week", 1)[1]
     assert low.title in block and edge.title not in block  # a 7-day window: today to today+6
+
+
+def test_a_follow_up_date_set_in_the_tracker_shows_on_today_and_in_the_count(
+    session: Session,
+) -> None:
+    """Review: Tracker follow-ups and Today follow-ups were two lists that never met."""
+    from careerhub.modules.jobs.applications import set_follow_up, track
+
+    job = add_job(session, 1, 80, company="Globex")
+    application = track(session, job.id, "applied")
+    set_follow_up(session, application.id, utcnow() - timedelta(days=2))
+    data = gather_today(session)
+    assert [f.kind for f in data.follow_ups] == ["application"]
+    html = web(session).get("/today").text
+    assert "Follow up on your application: Role 1 at Globex" in html and "2 days overdue" in html
+    track(session, job.id, "rejected")  # a closed application stops asking
+    assert gather_today(session).follow_ups == []
