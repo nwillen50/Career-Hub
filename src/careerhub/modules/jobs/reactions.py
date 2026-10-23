@@ -71,6 +71,21 @@ def reacted_job_ids(session: Session) -> set[int]:
     return set(session.scalars(select(Feedback.job_id).distinct()))
 
 
+def settled_job_ids(session: Session) -> set[int]:
+    """Return the jobs whose newest reaction is "applied" or "not interested" (nothing left to plan).
+
+    A job marked only "interested" is not settled: the user may still want to apply.
+    """
+    newest = select(func.max(Feedback.id)).group_by(Feedback.job_id)
+    return set(
+        session.scalars(
+            select(Feedback.job_id).where(
+                Feedback.id.in_(newest), Feedback.reaction.in_(("applied", "not_interested"))
+            )
+        )
+    )
+
+
 def current_reaction(session: Session, job_id: int) -> str | None:
     """Return the newest reaction to a job, or None."""
     return session.scalars(
