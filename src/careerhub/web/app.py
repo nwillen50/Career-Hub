@@ -37,8 +37,10 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.migrate import migrate
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
+from careerhub.core.settings import SettingsError
 from careerhub.core.storage import StorageError, open_database, session_factory
 from careerhub.modules.jobs.reactions import UNDO_SECONDS, ReactionError, react, undo
+from careerhub.profile.files import ProfileFileError
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
 
 SESSION_COOKIE = "ch_session"
@@ -229,8 +231,8 @@ def create_app(
                 "current": "/today",
                 "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
                 "title": "Today",
-                "heading": f"Today, {data.now:%a %b %d}",
-                "built": f"{data.now:%a %b %d, %H:%M}",
+                "heading": f"Today, {data.local_now or data.now:%a %b %d}",
+                "built": f"{data.local_now or data.now:%a %b %d, %H:%M}",
                 "last_run": f"{shortlist.last_success:%a %b %d, %H:%M}"
                 if shortlist.last_success
                 else None,
@@ -302,6 +304,23 @@ def create_app(
         )
         response.delete_cookie(SESSION_COOKIE)
         return response
+
+    @app.exception_handler(SettingsError)
+    @app.exception_handler(ProfileFileError)
+    def settings_problem(request: Request, error: Exception) -> Response:
+        """Show a designed error page, not a stack trace, for a broken settings or profile file."""
+        return page(
+            request,
+            503,
+            title="A settings file has a problem",
+            heading="A settings file has a problem",
+            message=(
+                "Career Hub could not read settings.json, preferences.yaml, or profile.md. "
+                "Run `hub profile show` in the terminal to see which line to fix, then reload. "
+                "Nothing was changed."
+            ),
+            error=True,
+        )
 
     return app
 

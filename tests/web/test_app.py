@@ -232,3 +232,24 @@ def test_the_port_is_a_setting_with_safe_bounds() -> None:
     assert Settings().web_port == 8765
     with pytest.raises(ValueError):
         Settings(web_port=80)
+
+
+@pytest.mark.parametrize("error", ["settings", "profile"])
+def test_a_broken_settings_or_profile_file_is_a_designed_error_page(
+    error: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review: a malformed settings.json used to end in a 500 and a stack trace."""
+    from careerhub.core.settings import SettingsError
+    from careerhub.profile.files import ProfileFileError
+
+    def broken() -> bool:
+        raise SettingsError("secret detail") if error == "settings" else ProfileFileError("detail")
+
+    c = TestClient(
+        create_app(TOKEN, PORT, broken), base_url=f"http://127.0.0.1:{PORT}", follow_redirects=False
+    )
+    c.get(f"/?t={TOKEN}")
+    page = c.get("/today")
+    assert page.status_code == 503 and "A settings file has a problem" in page.text
+    assert "detail" not in page.text and "Traceback" not in page.text
+    assert check_page(page.text) == []
