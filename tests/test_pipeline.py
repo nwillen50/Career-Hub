@@ -178,6 +178,7 @@ def test_the_budget_pauses_model_work_but_not_the_run(env: Any) -> None:
                     "name": "cloud",
                     "kind": "openai",
                     "model": "m",
+                    "trains_on_data": False,
                     "input_per_mtok": 1,
                     "output_per_mtok": 1,
                 }

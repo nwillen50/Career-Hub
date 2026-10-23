@@ -62,6 +62,9 @@ class HardConstraints(_Strict):
     #: Other names for your places: {"New York, NY": ["the city", "Midtown"]}. Added to the
     #: built-in list (NYC, Manhattan, SF, Bay Area...). A name matches only as whole words.
     location_aliases: dict[str, list[str]] = Field(default_factory=dict)
+    #: Hide a job abroad only when its posting says it won't sponsor or requires an existing
+    #: right to work there. "Not stated" is never hidden (known facts only). Off by default.
+    hide_no_visa_abroad: bool = False
 
 
 class Timeline(_Strict):
@@ -164,10 +167,23 @@ class Preferences(_Strict):
     #: Your work authorization, if you want citizenship-required jobs checked. Unset: they are
     #: only marked uncertain.
     work_authorization: Literal["us_citizen", "work_authorized", "needs_sponsorship"] | None = None
+    #: Countries (two-letter codes such as "US") where you can already work. A job in any other
+    #: country gets a work-visa flag; unset, every country does (CH-122). Keep this file private.
+    work_rights: list[str] = Field(default_factory=list)
     #: Other names for a school, by its canonical name: {"Tufts University": ["Jumbo U"]}.
     school_aliases: dict[str, list[str]] = Field(default_factory=dict)
     #: Your own names for companies that Career Hub counts as one: {"Old Name": "Name Now"}.
     company_aliases: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("work_rights")
+    @classmethod
+    def _check_work_rights(cls, value: list[str]) -> list[str]:
+        """Accept two-letter country codes only, stored in capitals."""
+        codes = [item.strip().upper() for item in value]
+        bad = [c for c in codes if not (len(c) == 2 and c.isalpha())]
+        if bad:
+            raise ValueError("work_rights takes two-letter country codes such as US, CA, DE")
+        return codes
 
     @field_validator("company_aliases")
     @classmethod
