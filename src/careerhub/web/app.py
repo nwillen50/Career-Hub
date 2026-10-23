@@ -23,6 +23,7 @@ from __future__ import annotations
 import hmac
 import secrets
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from importlib import resources
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -31,12 +32,23 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
 
 from careerhub.core.migrate import migrate
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
-from careerhub.core.storage import StorageError, open_database
+from careerhub.core.storage import StorageError, open_database, session_factory
+from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
 
 SESSION_COOKIE = "ch_session"
+SECTION_COOKIE = "ch_today_section"
+SECTION_LABELS = (
+    ("all", "All"),
+    ("top", "Top jobs"),
+    ("exploration", "Exploration"),
+    ("followups", "Follow-ups"),
+    ("deadlines", "Deadlines"),
+)
 ALLOWED_HOSTS = ("127.0.0.1", "localhost")
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 MAX_FORM_BYTES = 64 * 1024
@@ -68,12 +80,32 @@ def database_opens(store: KeyStore | None = None) -> bool:
     return True
 
 
+def make_session_opener(store: KeyStore | None = None) -> Callable[[], Session]:
+    """Return a function that opens a database session, opening the encrypted database on first use.
+
+    The engine keeps one connection per thread, so a page served on any worker thread is safe.
+    """
+    holder: dict[str, Engine] = {}
+
+    def open_session() -> Session:
+        if "engine" not in holder:
+            holder["engine"] = open_database(store or KeychainKeyStore())
+        return session_factory(holder["engine"])()
+
+    return open_session
+
+
 def create_app(
     token: str,
     port: int,
     check_database: Callable[[], bool] = database_opens,
+    open_session: Callable[[], Session] | None = None,
 ) -> FastAPI:
-    """Build the app. `token` is this start's secret; `check_database` says if data is usable."""
+    """Build the app. `token` is this start's secret; `check_database` says if data is usable.
+
+    `open_session` gives a database session for the pages that read data (None: those pages show
+    their empty state, which is what the skeleton tests use).
+    """
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     templates = Jinja2Templates(
         directory=str(resources.files("careerhub.web").joinpath("templates"))
@@ -162,7 +194,46 @@ def create_app(
         return render
 
     for path in PAGES:
-        app.add_api_route(path, tab(path), methods=["GET"], response_class=HTMLResponse)
+        if path != "/today":
+            app.add_api_route(path, tab(path), methods=["GET"], response_class=HTMLResponse)
+
+    @app.get("/today", response_class=HTMLResponse)
+    def today(request: Request, section: str | None = None) -> Response:
+        if open_session is None:
+            return tab("/today")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/today")(request)
+        chosen = clean_section(section or request.cookies.get(SECTION_COOKIE))
+        with open_session() as session:
+            data = gather_today(session)
+        shortlist = data.shortlist
+        response = templates.TemplateResponse(
+            request,
+            "today.html",
+            {
+                "tabs": TABS,
+                "current": "/today",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": "Today",
+                "heading": f"Today, {data.now:%a %b %d}",
+                "built": f"{data.now:%a %b %d, %H:%M}",
+                "last_run": f"{shortlist.last_success:%a %b %d, %H:%M}"
+                if shortlist.last_success
+                else None,
+                "last_error": shortlist.last_error,
+                "waiting_for": shortlist.waiting_for,
+                "sections": SECTION_LABELS,
+                "section": chosen,
+                "jobs": job_cards(data.jobs),
+                "follow_ups": data.follow_ups,
+                "more_overdue": data.more_overdue,
+                "deadlines": data.deadlines,
+            },
+        )
+        if section in SECTIONS:  # remember the choice between visits
+            response.set_cookie(SECTION_COOKIE, chosen, samesite="strict", path="/")
+        return response
 
     @app.post("/session/end")
     def end_session(request: Request) -> Response:
@@ -179,6 +250,11 @@ def create_app(
         return response
 
     return app
+
+
+def _when(moment: datetime | None) -> str | None:
+    """Format a time for the page, or None."""
+    return f"{moment:%a %b %d, %H:%M}" if moment else None
 
 
 def _start_session(request: Request, token: str, sessions: dict[str, str]) -> Response:

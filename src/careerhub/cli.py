@@ -385,12 +385,17 @@ def _web(options: list[str]) -> int:
 
     import uvicorn
 
-    from careerhub.web.app import create_app
+    from careerhub.web.app import create_app, make_session_opener
 
     token = secrets.token_urlsafe(32)
     print(f"Career Hub is at http://127.0.0.1:{port}/?t={token}")
     print("Open that link; press Ctrl-C to stop.")
-    uvicorn.run(create_app(token, port), host="127.0.0.1", port=port, log_level="warning")
+    uvicorn.run(
+        create_app(token, port, open_session=make_session_opener()),
+        host="127.0.0.1",
+        port=port,
+        log_level="warning",
+    )
     return 0
 
 

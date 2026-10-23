@@ -1,44 +1,7 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<meta name="htmx-config" content='{"allowEval": false, "includeIndicatorStyles": false, "selfRequestsOnly": true}'>
-<title>{{ title }} · Career Hub</title>
-<link rel="stylesheet" href="/static/tokens.css">
-<link rel="stylesheet" href="/static/app.css">
-<script src="/static/htmx.min.js" defer></script>
-</head>
-<body hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
-<a class="skip" href="#main">Skip to content</a>
-<header class="bar">
-  <div class="brand">Career Hub</div>
-  {% if not plain %}
-  <nav aria-label="Main">
-    <ul class="tabs">
-    {% for path, label in tabs %}
-      <li><a href="{{ path }}"{% if path == current %} aria-current="page"{% endif %}>{{ label }}</a></li>
-    {% endfor %}
-    </ul>
-  </nav>
-  {% endif %}
-</header>
-<main id="main" tabindex="-1">
-  <h1>{{ heading }}</h1>
+{% extends "base.html" %}
+{% block content %}
   <section class="card{% if error %} error{% endif %}"{% if error %} role="alert"{% endif %}>
     <p>{{ message }}</p>
     {% if empty %}<p class="muted">Nothing to show yet.</p>{% endif %}
   </section>
-  <div id="status" class="loading htmx-request-note" role="status" aria-live="polite"></div>
-</main>
-<footer>
-  {% if csrf %}
-  <form method="post" action="/session/end">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <button type="submit">End this session</button>
-  </form>
-  {% endif %}
-</footer>
-</body>
-</html>
+{% endblock %}
