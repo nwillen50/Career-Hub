@@ -150,7 +150,9 @@ def run_icon() -> int:
     class App(rumps.App):  # type: ignore[misc]  # rumps has no type information
         def __init__(self) -> None:
             super().__init__("Career Hub", title="…", quit_button="Quit")
-            self.menu = ["Open Today"]
+            # A callback, not @rumps.clicked: that decorator is untyped, which strict mypy refuses
+            # on a Mac where rumps is installed (CH-205).
+            self.menu = [rumps.MenuItem("Open Today", callback=self.open_today)]
             self.timer = rumps.Timer(self.refresh, POLL_SECONDS)
             self.timer.start()
             self.refresh(None)
@@ -160,7 +162,6 @@ def run_icon() -> int:
             self.title = state.title
             self.tooltip = state.tooltip  # also says it in words: the "!" is never colour alone
 
-        @rumps.clicked("Open Today")
         def open_today(self, _: object) -> None:
             message = launcher.open_today()
             if message != "Opened Today.":  # never a silent click

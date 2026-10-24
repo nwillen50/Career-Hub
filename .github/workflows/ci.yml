@@ -30,6 +30,8 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
+      # Also type-check the Mac-only branches (sys.platform == "darwin"), which a Linux run skips (CH-205).
+      - run: uv run mypy --platform darwin
 
   tests:
     strategy:
