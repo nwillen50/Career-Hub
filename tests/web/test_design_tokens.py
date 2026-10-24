@@ -53,6 +53,7 @@ TEXT_PAIRS = [
     ("--accent", "--page"), ("--panel-text", "--panel"), ("--overdue", "--surface"),
     ("--overdue", "--page"), ("--brass-text", "--surface"), ("--brass-text", "--page"),
     ("--chip-selected-text", "--chip-selected"),
+    ("--tab-active", "--header"),  # the current tab in the top bar (bug CH-193)
 ]  # fmt: skip
 
 
