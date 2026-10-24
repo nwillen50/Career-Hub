@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from careerhub.catchup import catchup_note
 from careerhub.core.companies import pending_merges
 from careerhub.core.models import LLMUsage, RunLog, Source, utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
@@ -65,6 +66,8 @@ class StatusView:
     missing: list[str] = field(default_factory=list)
     proposed_sources: int = 0
     merge_suggestions: int = 0
+    #: Set when a night was skipped on battery: "Skipped on battery at ..., caught up at 6:40."
+    catchup_note: str | None = None
 
     @property
     def spend_text(self) -> str:
@@ -127,6 +130,7 @@ def gather_status(
         missing=list(readiness.missing),
         proposed_sources=sum(1 for s in sources if s.status == "proposed"),
         merge_suggestions=len(pending_merges(session)),
+        catchup_note=catchup_note(session, zone),
         models_on=models_on,
         routes=routes,
         models_problem=models_problem,

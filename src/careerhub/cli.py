@@ -6,7 +6,7 @@ import getpass
 import logging
 import sys
 from collections.abc import Callable
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import TextIO
 from urllib.parse import urlparse
@@ -15,6 +15,8 @@ from zoneinfo import ZoneInfo
 import httpx
 from sqlalchemy.orm import Session
 
+from careerhub.catchup import decide as decide_catch_up
+from careerhub.catchup import record_skip
 from careerhub.core.backup import RestoreError, list_backups, restore_backup
 from careerhub.core.companies import decide_merge, find_companies, pending_merges, suggest_merges
 from careerhub.core.migrate import migrate
@@ -94,7 +96,13 @@ from careerhub.profile.files import ProfileFileError, load_preferences, load_pro
 from careerhub.profile.models import PlanSettings, Preferences, ProfileDoc
 from careerhub.profile.profile import Profile, format_profile, load_profile
 from careerhub.profile.readiness import current_readiness, missing_items, set_scoring
-from careerhub.schedule import LABEL, REFRESH_LABEL, install_plist, launchctl_commands
+from careerhub.schedule import (
+    CATCHUP_LABEL,
+    LABEL,
+    REFRESH_LABEL,
+    install_plist,
+    launchctl_commands,
+)
 from careerhub.web.shortlist import write_shortlist
 
 USAGE = """Usage:
@@ -113,7 +121,9 @@ USAGE = """Usage:
                                              models; turn the schedule on with midday_refresh_on)
   hub backup list | restore <file> --to <new folder>
                           (restores into a NEW folder and checks it; never touches your live data)
-  hub nightly [--if-plugged-in]              (run the whole pipeline once; skip on battery)
+  hub nightly [--if-plugged-in | --catch-up]   (run the whole pipeline once; --if-plugged-in
+                                             skips on battery; --catch-up, run by its own launchd
+                                             job, runs a skipped night once the Mac is plugged in)
   hub attention [--json | --notify]          (menu-bar count; --notify: morning banner, once a day)
   hub web [--port N]                         (the local web app on 127.0.0.1; prints a link to open)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
@@ -191,8 +201,9 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _backup_list()
         if len(args) == 5 and args[:2] == ["backup", "restore"] and args[3] == "--to":
             return _backup_restore(store, Path(args[2]), Path(args[4]))
-        if args[:1] == ["nightly"] and args[1:] in ([], ["--if-plugged-in"]):
-            return _nightly(store, if_plugged_in=bool(args[1:]))
+        if args[:1] == ["nightly"] and args[1:] in ([], ["--if-plugged-in"], ["--catch-up"]):
+            return _nightly(store, if_plugged_in=args[1:] == ["--if-plugged-in"],
+                            catch_up=args[1:] == ["--catch-up"])  # fmt: skip
         if args[:1] == ["attention"] and args[1:] in ([], ["--json"], ["--notify"]):
             return _with_session(store, lambda s: _attention(s, args[1:]))
         if args[:1] == ["web"]:
@@ -434,6 +445,8 @@ def _schedule_install() -> int:
     jobs = [("nightly", settings.nightly_run_time, LABEL)]
     if settings.midday_refresh_on:
         jobs.append(("refresh", settings.midday_refresh_time, REFRESH_LABEL))
+    if settings.nightly_require_power:
+        jobs.append(("catchup", "00:00", CATCHUP_LABEL))  # looks every 30 minutes; a time is unused
     for command, run_time, label in jobs:
         require_power = command == "nightly" and settings.nightly_require_power
         path = install_plist(run_time, command=command, require_power=require_power)
@@ -479,19 +492,39 @@ def _nightly(
     light: bool = False,
     if_plugged_in: bool = False,
     power: Callable[[], str] = read_power_source,
+    catch_up: bool = False,
+    now: datetime | None = None,
 ) -> int:
     """Run the pipeline (the light midday version if `light`) once; exit 1 if it failed outright.
 
     With `if_plugged_in`, a Mac on battery skips the run (a skip is not a failure: exit 0, and no
     run is recorded, so the page keeps showing the last real run). An unreadable power source
     runs the job anyway.
+
+    With `catch_up` (the 30-minute catch-up job, CH-181), nothing happens unless tonight's run was
+    skipped for battery and the Mac is now plugged in before the cutoff; then the full nightly
+    runs once.
     """
     if if_plugged_in and power() == "battery":
         print("Skipped: the Mac is on battery power. The next scheduled run will try again.")
         logging.getLogger("careerhub.nightly").info("skipped: on battery")
+        try:  # remember the skip so the catch-up job can find it; a skip never fails
+            engine = open_database(store)
+            migrate(engine)
+            with session_factory(engine)() as session:
+                record_skip(session)
+        except (StorageError, SecretsError, OSError):
+            logging.getLogger("careerhub.nightly").warning("could not record the skip")
         return 0
     engine = open_database(store)
     migrate(engine)
+    if catch_up:
+        with session_factory(engine)() as session:
+            decision = decide_catch_up(session, now or utcnow(), power(), load_settings())
+        if not decision.run:
+            print(f"Catch-up: nothing to do ({decision.reason}).")
+            return 0
+        print(f"Catch-up: running tonight's skipped run ({decision.reason}).")
     report = (run_refresh if light else run_nightly)(engine, store)
     print(report.summary())
     return 1 if any(p.startswith("run failed") for p in report.problems) else 0
