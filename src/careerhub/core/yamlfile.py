@@ -13,7 +13,9 @@ so the change is never wrong, only less tidy.
 
 from __future__ import annotations
 
+import difflib
 import io
+import json
 import re
 from collections.abc import Mapping, MutableMapping
 from typing import Any
@@ -50,14 +52,39 @@ def _sync(old: Any, new: Any) -> None:
             elif key not in old or old[key] != value:
                 old[key] = value
     elif isinstance(old, list) and isinstance(new, list):
-        for index, value in enumerate(new):
-            if index >= len(old):
-                old.append(value)
-            elif _same_kind(old[index], value):
-                _sync(old[index], value)
-            elif old[index] != value:
-                old[index] = value
-        del old[len(new) :]
+        _sync_list(old, new)
+
+
+def _sync_list(old: list[Any], new: list[Any]) -> None:
+    """Edit a list by value, so each item keeps its own comment when others come and go.
+
+    Items are matched by equality: an unchanged item is left alone, a removed one is deleted with
+    its comment, an added one is inserted, and a changed mapping or list that sits where a
+    similar one was is edited in place (so a reweighed rubric criterion keeps its comment).
+    """
+    matcher = difflib.SequenceMatcher(
+        a=[json.dumps(x, sort_keys=True, default=str) for x in old],
+        b=[json.dumps(x, sort_keys=True, default=str) for x in new],
+        autojunk=False,
+    )
+    for tag, i1, i2, j1, j2 in reversed(matcher.get_opcodes()):
+        if tag == "delete":
+            del old[i1:i2]
+        elif tag == "insert":
+            for offset, value in enumerate(new[j1:j2]):
+                old.insert(i1 + offset, value)
+        elif tag == "replace":
+            for offset in range(min(i2 - i1, j2 - j1)):
+                value = new[j1 + offset]
+                if _same_kind(old[i1 + offset], value):
+                    _sync(old[i1 + offset], value)
+                else:
+                    old[i1 + offset] = value
+            if i2 - i1 > j2 - j1:
+                del old[i1 + (j2 - j1) : i2]
+            else:
+                for offset, value in enumerate(new[j1 + (i2 - i1) : j2]):
+                    old.insert(i2 + offset, value)
 
 
 def _same_kind(a: Any, b: Any) -> bool:
