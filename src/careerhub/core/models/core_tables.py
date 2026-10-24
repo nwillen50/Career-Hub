@@ -71,6 +71,8 @@ class Person(TimestampMixin, Base):
     full_name: Mapped[str] = mapped_column(String(200))
     title: Mapped[str | None] = mapped_column(String(200))
     email: Mapped[str | None] = mapped_column(String(320))
+    #: Sensitive: shown only on the local Contacts page, never sent to a model or logged (CH-196).
+    phone: Mapped[str | None] = mapped_column(String(40))
     profile_url: Mapped[str | None] = mapped_column(String(500))
     #: Where we learned about this person, e.g. "linkedin_export" or "alumni_list".
     origin: Mapped[str | None] = mapped_column(String(50))

@@ -65,6 +65,7 @@ from careerhub.modules.network.interactions import (
     CHANNELS,
     InteractionError,
     log_interaction,
+    set_contact_details,
     set_follow_up_done,
     set_own_words,
 )
@@ -728,7 +729,17 @@ def create_app(
         form = parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True)
         with open_session() as session:
             try:
-                set_own_words(session, person_id, form.get("how_known", [""])[0])
+                if (
+                    "email" in form or "phone" in form
+                ):  # checked first; nothing is saved until both pass
+                    set_contact_details(
+                        session, person_id,
+                        form["email"][0] if "email" in form else None,
+                        form["phone"][0] if "phone" in form else None,
+                        commit=False,
+                    )  # fmt: skip
+                set_own_words(session, person_id, form.get("how_known", [""])[0], commit=False)
+                session.commit()
             except UnknownPerson:
                 return contacts_page(request, session, note="That person is gone.")
             except InteractionError as problem:
