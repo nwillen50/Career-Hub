@@ -110,6 +110,7 @@ from careerhub.profile.readiness import current_readiness, missing_items, set_sc
 from careerhub.schedule import (
     CATCHUP_LABEL,
     LABEL,
+    MENUBAR_LABEL,
     REFRESH_LABEL,
     install_plist,
     launchctl_commands,
@@ -137,6 +138,8 @@ USAGE = """Usage:
                                              job, runs a skipped night once the Mac is plugged in)
   hub attention [--json | --notify]          (menu-bar count; --notify: morning banner, once a day)
   hub web [--port N]                         (the local web app on 127.0.0.1; prints a link to open)
+  hub menubar                                (the menu-bar icon with the count; Mac only; needs
+                                             `uv sync --extra menubar`; login agent: menubar_on)
   hub demo [--reset] [--port N]              (try the web app with made-up data in its own folder;
                                              never your real data)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
@@ -227,6 +230,10 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _with_session(store, lambda s: _attention(s, args[1:]))
         if args[:1] == ["web"]:
             return _web(args[1:])
+        if args == ["menubar"]:
+            from careerhub.menubar import run_icon
+
+            return run_icon()
         if args[:1] == ["demo"]:
             return _demo(args[1:])
         if args[:1] == ["add-job"] and len(args) >= 2 and len(args) % 2 == 0:
@@ -468,6 +475,8 @@ def _schedule_install() -> int:
     jobs = [("nightly", settings.nightly_run_time, LABEL)]
     if settings.midday_refresh_on:
         jobs.append(("refresh", settings.midday_refresh_time, REFRESH_LABEL))
+    if settings.menubar_on:
+        jobs.append(("menubar", "00:00", MENUBAR_LABEL))  # starts at login; a time is unused
     if settings.nightly_require_power:
         jobs.append(("catchup", "00:00", CATCHUP_LABEL))  # looks every 30 minutes; a time is unused
     for command, run_time, label in jobs:

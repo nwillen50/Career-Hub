@@ -34,6 +34,7 @@ INVOCATIONS: dict[str, list[str]] = {
     "backup list": ["backup", "list"],
     "attention": ["attention", "--json"],
     "web": ["web"],
+    "menubar": ["menubar"],
     "demo": ["demo"],
     "add-job": [
         "add-job",
@@ -81,6 +82,7 @@ COVERS = {
     "hub backup list": "backup list",
     "hub attention": "attention",
     "hub web": "web",
+    "hub menubar": "menubar",
     "hub demo": "demo",
     "hub add-job": "add-job",
     "hub jobs close": "jobs close",

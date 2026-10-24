@@ -28,6 +28,11 @@ dependencies = [
 [project.scripts]
 hub = "careerhub.cli:main"
 
+[project.optional-dependencies]
+menubar = [
+    "rumps>=0.4 ; sys_platform == 'darwin'",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8",
@@ -74,7 +79,7 @@ ignore_missing_imports = true
 
 # recurring-ical-events ships no type information; it's used in one module (modules/plan/ics.py).
 [[tool.mypy.overrides]]
-module = ["recurring_ical_events", "EventKit", "Foundation"]
+module = ["recurring_ical_events", "EventKit", "Foundation", "rumps"]
 ignore_missing_imports = true
 
 # pypdfium2 has no type stubs; it's used in one module (profile/documents.py).
