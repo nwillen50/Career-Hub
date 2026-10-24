@@ -107,3 +107,20 @@ def test_the_table_is_consistent() -> None:
         assert entry.system is None or norm(entry.system) in table.systems
     for choices in table.ambiguous.values():
         assert len(choices) >= 2
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["", "   ", "​", "🎓", "x" * 100_000, "Penn State", "PENN STATE", "a&b"],
+)
+def test_odd_school_text_never_raises_and_never_matches_by_accident(text: str) -> None:
+    """Hostile or empty school names (imports and typed tags) are handled quietly."""
+    assert same_school([text], ["Tufts University"]) is None
+    assert related_school([text], ["Tufts University"]) is None
+    assert tie_between(text, "UC Davis") is None or tie_between(text, "UC Davis").kind != "same"  # type: ignore[union-attr]
+    assert ambiguous_choices(text) in ([], ambiguous_choices(text))
+
+
+def test_a_non_breaking_space_and_capitals_still_match() -> None:
+    assert same_school(["Penn State"], ["Pennsylvania State University"]) == "Penn State"
+    assert same_school(["PENN STATE"], ["penn state"]) == "PENN STATE"
