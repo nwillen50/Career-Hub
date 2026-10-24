@@ -37,8 +37,9 @@ from careerhub.profile.models import Preferences
 
 KIND = "preference_change"
 SOURCE_KIND = "source_proposal"
+RUBRIC_KIND = "rubric_change"
 #: The kinds the conversation panel lists, accepts and rejects.
-PANEL_KINDS = (KIND, SOURCE_KIND)
+PANEL_KINDS = (KIND, SOURCE_KIND, RUBRIC_KIND)
 LIST_KEYS = ("excluded_title_words", "excluded_companies", "locations")
 MODE_KEYS = ("remote_ok", "hybrid_ok", "onsite_ok")
 MAX_VALUE_CHARS = 100
@@ -120,6 +121,42 @@ class SourceChange(BaseModel):
         return f"Follow {self.company} jobs ({self.kind} board {self.token!r})"
 
 
+class RubricChange(BaseModel):
+    """One change to the scoring rubric: add, remove, reweigh or reword a criterion."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["add", "remove", "reweigh", "reword"]
+    name: str = Field(min_length=1, max_length=60)
+    weight: float | None = Field(default=None, gt=0, le=100)
+    description: str | None = Field(default=None, min_length=1, max_length=400)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> RubricChange:
+        self.name = " ".join(self.name.split())
+        if self.description is not None:
+            self.description = " ".join(self.description.split())
+        needs = {
+            "add": (True, True),
+            "remove": (False, False),
+            "reweigh": (True, False),
+            "reword": (False, True),
+        }[self.action]
+        if (self.weight is not None, self.description is not None) != needs or not self.name:
+            raise ValueError(f"{self.action} needs exactly the fields it changes")
+        return self
+
+    def title(self) -> str:
+        """Describe the change in a sentence."""
+        verbs = {
+            "add": "Add",
+            "remove": "Remove",
+            "reweigh": "Change the weight of",
+            "reword": "Reword",
+        }
+        return f"{verbs[self.action]} the rubric criterion {self.name!r}"
+
+
 class ConversationProposal(BaseModel):
     """What the model may attach to an answer (the schema the conversation prompt asks for)."""
 
@@ -128,14 +165,20 @@ class ConversationProposal(BaseModel):
     answer: str = Field(min_length=1, max_length=6000)  # cut to 1,500 for display
     change: PreferenceChange | None = None
     source: SourceChange | None = None
+    rubric: RubricChange | None = None
 
-    @field_validator("change", "source", mode="before")
+    @field_validator("change", "source", "rubric", mode="before")
     @classmethod
     def _drop_a_bad_suggestion(cls, value: Any, info: Any) -> Any:
         """Keep the answer when the attached suggestion is malformed; only the suggestion goes."""
         if value is None:
             return None
-        model = PreferenceChange if info.field_name == "change" else SourceChange
+        models: dict[str, type[BaseModel]] = {
+            "change": PreferenceChange,
+            "source": SourceChange,
+            "rubric": RubricChange,
+        }
+        model = models[info.field_name]
         try:
             return model.model_validate(value)
         except ValidationError:
@@ -246,14 +289,14 @@ def _pending(session: Session, proposal_id: int) -> Proposal:
     return proposal
 
 
-def _write_whole(path: Path, text: str) -> None:
+def write_whole(path: Path, text: str) -> None:
     """Write `text` to `path` whole or not at all: a temporary file beside it, then a rename."""
     temporary = path.with_name(path.name + ".tmp")
     write_private(temporary, text)
     os.replace(temporary, path)
 
 
-def _free_backup_name(path: Path, when: datetime) -> Path:
+def free_backup_name(path: Path, when: datetime) -> Path:
     """Return an unused `.before-<time>` name beside `path` (a counter breaks ties)."""
     base = f"{path.name}.before-{when:%Y%m%d-%H%M%S-%f}"
     candidate = path.with_name(base)
@@ -275,6 +318,10 @@ def accept(session: Session, proposal_id: int, now: datetime | None = None) -> P
         from careerhub.modules.source_proposals import accept_source
 
         return accept_source(session, proposal, when)
+    if proposal.kind == RUBRIC_KIND:
+        from careerhub.modules.rubric_proposals import accept_rubric
+
+        return accept_rubric(session, proposal, when)
     change = PreferenceChange.model_validate_json(proposal.body or "{}")
     try:
         current = _current()
@@ -293,14 +340,14 @@ def accept(session: Session, proposal_id: int, now: datetime | None = None) -> P
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
-            backup = _free_backup_name(path, when)
+            backup = free_backup_name(path, when)
             with open(backup, "x", encoding="utf-8") as handle:
                 os.chmod(backup, 0o600)
                 handle.write(path.read_text(encoding="utf-8"))
         proposal.status = "accepted"
         proposal.decided_at = when
         session.flush()
-        _write_whole(path, yaml.safe_dump(new, sort_keys=False, allow_unicode=True))
+        write_whole(path, yaml.safe_dump(new, sort_keys=False, allow_unicode=True))
         session.commit()
     except OSError:
         session.rollback()
