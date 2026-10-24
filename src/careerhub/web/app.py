@@ -62,6 +62,7 @@ from careerhub.modules.network.interactions import (
     CHANNELS,
     InteractionError,
     log_interaction,
+    set_contact_details,
     set_follow_up_done,
     set_own_words,
 )
@@ -603,6 +604,10 @@ def create_app(
         form = parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True)
         with open_session() as session:
             try:
+                if "email" in form or "phone" in form:  # first: a bad value changes nothing
+                    set_contact_details(
+                        session, person_id, form.get("email", [""])[0], form.get("phone", [""])[0]
+                    )
                 set_own_words(session, person_id, form.get("how_known", [""])[0])
             except UnknownPerson:
                 return contacts_page(request, session, note="That person is gone.")

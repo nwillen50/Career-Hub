@@ -6,6 +6,7 @@ on a list, and "done" is the user saying so.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from sqlalchemy import select
@@ -106,5 +107,30 @@ def set_own_words(session: Session, person_id: int, text: str) -> Person:
     if len(combined) > MAX_HOW_KNOWN:
         raise InteractionError("That is too long. Keep it to a short phrase.")
     person.how_known = combined or None
+    session.commit()
+    return person
+
+
+#: What a typed email or phone number may look like (loose on purpose: people type many forms).
+_EMAIL = re.compile(r"[^@\s<>\"']+@[^@\s<>\"']+\.[^@\s<>\"']+")
+_PHONE = re.compile(r"\+?[0-9][0-9 ().\-]{4,38}[0-9]")
+
+
+def set_contact_details(session: Session, person_id: int, email: str, phone: str) -> Person:
+    """Set a person's email and phone as typed on the Contacts page (blank clears one).
+
+    Both are Sensitive: they are stored in the encrypted database and shown only on the local
+    page; nothing here logs them or sends them anywhere.
+    """
+    person = session.get(Person, person_id)
+    if person is None:
+        raise UnknownPerson(person_id)
+    mail, number = email.strip(), " ".join(phone.split())
+    if mail and (len(mail) > 320 or not _EMAIL.fullmatch(mail)):
+        raise InteractionError("That does not look like an email address.")
+    if number and not _PHONE.fullmatch(number):
+        raise InteractionError("A phone number may have digits, spaces, + ( ) . and -, up to 40.")
+    person.email = mail or None
+    person.phone = number or None
     session.commit()
     return person

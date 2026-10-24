@@ -163,3 +163,60 @@ def test_a_typed_wildcard_matches_itself_not_everyone(session: Session, ada: Per
     c = web(session)
     assert "1 person." in c.get("/contacts?q=%25").text
     assert "Nobody matches that." in c.get("/contacts?q=_").text
+
+
+def test_email_and_phone_show_edit_and_clear_in_place(session: Session, ada: Person) -> None:
+    """CH-196: editable columns; the email is a mailto link; nothing is sent by Career Hub."""
+    c = web(session)
+    reply = post(
+        c, f"/people/{ada.id}",
+        "how_known=" + quote("former manager") + "&email=" + quote("ada@example.org")
+        + "&phone=" + quote("+1 (617) 555-0100"),
+    )  # fmt: skip
+    assert reply.status_code == 303
+    session.expire_all()
+    person = session.get(Person, ada.id)
+    assert person is not None and (person.email, person.phone) == (
+        "ada@example.org", "+1 (617) 555-0100",
+    )  # fmt: skip
+    html = c.get("/contacts").text
+    assert 'value="ada@example.org"' in html and 'value="+1 (617) 555-0100"' in html
+    assert 'href="mailto:ada%40example.org"' in html and check_page(html) == []
+    post(c, f"/people/{ada.id}", "how_known=x&email=&phone=")
+    session.expire_all()
+    assert (person.email, person.phone) == (None, None)
+
+
+def test_bad_email_or_phone_is_refused_and_nothing_changes(session: Session, ada: Person) -> None:
+    c = web(session)
+    for body in (
+        "email=not-an-email",
+        "email=a%40b.c%22%3E%3Cscript%3E",
+        "phone=call+me",
+        "phone=1" * 1 + "2" * 60,
+    ):
+        reply = post(c, f"/people/{ada.id}", "how_known=changed&" + body)
+        assert reply.status_code == 200 and "alert" in reply.text
+    session.expire_all()
+    assert session.get(Person, ada.id).how_known == "former manager; alumni: Tufts Jumbos"  # type: ignore[union-attr]
+
+
+def test_hostile_email_text_is_escaped_in_the_page(session: Session) -> None:
+    session.add(Person(full_name="Eve", email='x"><script>alert(1)</script>@e.co'))
+    session.commit()
+    html = web(session).get("/contacts").text
+    assert "<script>alert" not in html
+
+
+def test_email_and_phone_never_reach_a_prompt_or_the_logs(
+    session: Session, ada: Person, caplog: pytest.LogCaptureFixture
+) -> None:
+    from careerhub.modules.conversation import build_context
+    from careerhub.modules.network.interactions import set_contact_details
+
+    caplog.set_level("DEBUG")
+    set_contact_details(session, ada.id, "ada@example.org", "617 555 0100")
+    context = build_context(session, None, "Nicholas", [], None)
+    web(session).get("/contacts")
+    assert "ada@example.org" not in context and "617 555 0100" not in context
+    assert "ada@example.org" not in caplog.text and "555 0100" not in caplog.text
