@@ -12,7 +12,7 @@ While the profile is being built, scores would change every night and cost money
 ## Decision
 
 1. A **readiness checklist** (`profile/readiness.py`): education with an expected graduation date;
-   at least `profile_min_skills` skills (setting, default 5; accepted resume facts count, pending ones
+   at least `profile_min_skills` skills (setting, default 5, changed to 1 by ADR 0044; accepted resume facts count, pending ones
    do not); interests or an About section; a resume that can be read; locations in
    `preferences.yaml` (work modes default to allowed); a rubric.
 2. **`hub profile ready`** runs the checklist and, only if it passes, switches scoring on by writing

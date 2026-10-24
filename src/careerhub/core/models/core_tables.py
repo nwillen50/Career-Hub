@@ -10,6 +10,7 @@ columns (`notes`, `summary`, `error_summary`) must never be copied into logs.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import JSON, Boolean, CheckConstraint, Float, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -52,6 +53,9 @@ class Company(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text)
     #: Keys of companies merged into this one, so their old names still find it (CH-154).
     merged_keys: Mapped[list[str] | None] = mapped_column(JSON)  # None until a merge
+    #: One entry per company merged into this one: its old row and the job and person ids that
+    #: moved, so `hub companies split` can undo exactly that merge (CH-174). None until a merge.
+    merge_log: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
 
     people: Mapped[list[Person]] = relationship(back_populates="company")
 

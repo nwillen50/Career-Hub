@@ -43,3 +43,11 @@ A `hub eval extract` command arrives with CH-64, which builds the router from se
 `sample.yaml`: made-up resumes and transcripts with the facts a good reading must find (GPA,
 skills, schools, organizations, course codes). `careerhub.profile.evals.run_profile_eval` reports
 the share of expected items found per field and lists the misses.
+
+### Paired ranking eval (CH-175)
+
+`ranking/pairs.yaml` holds made-up pairs of postings that differ in one way (`close`: scores within
+`points` of each other, for a skill the profile does not list; `a_higher`: `a` leads `b` by at
+least `points`, for pay). `careerhub.modules.jobs.rank_pairs.run_pair_eval` scores both sides in a
+scratch in-memory database and reports each gap. Run it with real models after any change to the
+scoring prompt or rubric.

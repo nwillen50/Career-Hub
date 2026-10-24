@@ -10,6 +10,7 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | `careers_page` | `track_company`: follow a company and find its board from its own careers page | CH-188 | Built (the web button is CH-198) |
 | `rank_evals` | `run_ranking_eval`: labeled postings through the whole pipeline | CH-68 | Built |
 | `tailoring` | `tailor_job`: what to lead with, gaps, resume edits (notes only) | CH-75 | Built |
+| `rank_pairs` | `run_pair_eval`: two postings that differ in one way (an unlisted skill, pay) and how their scores compare | CH-175 | Built |
 | `scoring` | `score_job`, `ranked_jobs`: rubric scores with explanations | CH-67 | Built |
 | `filters` | Hard filters (companies, title words, locations, salary) with reasons | CH-66 | Built |
 | `evals` | `run_extraction_eval`: per-field accuracy against hand-checked postings | CH-63 | Built |
@@ -155,7 +156,7 @@ and is never hidden. See [ADR-0036](../../../../docs/decisions/0036-posting-age.
 
 ## Scoring v2 (CH-114)
 
-Scoring (`score_job_v2.md`) sees every extracted fact except nice-to-have skills ("unknown" stays
+Scoring (`score_job_v3.md`) sees every extracted fact except nice-to-have skills ("unknown" stays
 unknown), your preferences (locations, remote, salary, start window), and your degree, expected
 graduation, and `also_qualified_fields`. It treats new grad, entry level, associate, and 0 to 2
 years as equal, counts adjacent fields, and scores internships like any job. Nice-to-have skills

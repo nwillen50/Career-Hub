@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import getpass
 import logging
+import os
 import sys
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
@@ -16,17 +17,24 @@ import httpx
 from sqlalchemy.orm import Session
 
 from careerhub.core.backup import RestoreError, list_backups, restore_backup
-from careerhub.core.companies import decide_merge, find_companies, pending_merges, suggest_merges
+from careerhub.core.companies import (
+    decide_merge,
+    find_companies,
+    list_merges,
+    pending_merges,
+    split_company,
+    suggest_merges,
+)
 from careerhub.core.migrate import migrate
-from careerhub.core.models import utcnow
-from careerhub.core.paths import database_path
+from careerhub.core.models import Company, utcnow
+from careerhub.core.paths import DATA_DIR_ENV, database_path
 from careerhub.core.secrets import (
     DATABASE_KEY_NAME,
     KeychainKeyStore,
     KeyStore,
     SecretsError,
 )
-from careerhub.core.settings import SettingsError, load_settings
+from careerhub.core.settings import Settings, SettingsError, load_settings
 from careerhub.core.storage import StorageError, WrongKeyError, open_database, session_factory
 from careerhub.llm.cache import ResponseCache
 from careerhub.llm.commands import (
@@ -117,10 +125,13 @@ USAGE = """Usage:
   hub nightly [--if-plugged-in]              (run the whole pipeline once; skip on battery)
   hub attention [--json | --notify]          (menu-bar count; --notify: morning banner, once a day)
   hub web [--port N]                         (the local web app on 127.0.0.1; prints a link to open)
+  hub demo [--reset] [--port N]              (try the web app with made-up data in its own folder;
+                                             never your real data)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
                                              are never requested; text can also come from stdin)
   hub jobs close <id> | reopen <id>      (only for jobs you added by link; nothing is deleted)
   hub companies suggestions | merge <id> | skip <id>   (near-duplicate company names)
+  hub companies merges | split <company> <name>   (list merges; undo one, with a yes/no question)
   hub targets find-boards | note <name> <ats> | import <file> | list | enable-matching
   hub targets add <name> [--careers-url URL]   (follow a company; looks for its board; fetches
                           that one page, honoring robots.txt, never LinkedIn or Handshake)
@@ -200,6 +211,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _with_session(store, lambda s: _attention(s, args[1:]))
         if args[:1] == ["web"]:
             return _web(args[1:])
+        if args[:1] == ["demo"]:
+            return _demo(args[1:])
         if args[:1] == ["add-job"] and len(args) >= 2 and len(args) % 2 == 0:
             return _with_session(store, lambda s: _add_job(s, args[1], args[2:]))
         if (
@@ -523,9 +536,9 @@ def _attention(session: Session, options: list[str]) -> int:
     return 0
 
 
-def _web(options: list[str]) -> int:
-    """`hub web [--port N]`: serve the web app on 127.0.0.1 only and print the link to open it."""
-    port = load_settings().web_port
+def _port_from(options: list[str], default: int) -> int | None:
+    """Read `--port N` from `options`; None (after printing the usage) for anything else."""
+    port = default
     words = list(options)
     while words:
         flag = words.pop(0)
@@ -533,26 +546,81 @@ def _web(options: list[str]) -> int:
             port = int(words.pop(0))
         elif flag == "--host":
             print("hub web only listens on 127.0.0.1; it cannot be told to use another address.")
-            return 2
+            return None
         else:
             print(USAGE)
-            return 2
+            return None
+    return port
+
+
+def _serve(port: int, app_for: Callable[[str], Any]) -> int:
+    """Print the one-time link and serve `app_for(token)` on 127.0.0.1 until Ctrl-C."""
     import secrets
 
     import uvicorn
 
-    from careerhub.web.app import create_app, make_session_opener
-
     token = secrets.token_urlsafe(32)
     print(f"Career Hub is at http://127.0.0.1:{port}/?t={token}")
     print("Open that link; press Ctrl-C to stop.")
-    uvicorn.run(
-        create_app(token, port, open_session=make_session_opener()),
-        host="127.0.0.1",
-        port=port,
-        log_level="warning",
-    )
+    uvicorn.run(app_for(token), host="127.0.0.1", port=port, log_level="warning")
     return 0
+
+
+def _web(options: list[str]) -> int:
+    """`hub web [--port N]`: serve the web app on 127.0.0.1 only and print the link to open it."""
+    port = _port_from(options, load_settings().web_port)
+    if port is None:
+        return 2
+    from careerhub.web.app import create_app, make_session_opener
+
+    return _serve(port, lambda token: create_app(token, port, open_session=make_session_opener()))
+
+
+def _demo(options: list[str]) -> int:
+    """`hub demo [--reset] [--port N]`: the web app on invented data in its own folder."""
+    from careerhub.demo import (
+        LABEL,
+        MARKER,
+        FileKeyStore,
+        build_demo,
+        check_folder,
+        demo_folder,
+        reset_folder,
+    )
+    from careerhub.web.app import create_app, database_opens, make_session_opener
+
+    reset = "--reset" in options
+    # Not load_settings(): that would read (and create) the real data folder.
+    port = _port_from([o for o in options if o != "--reset"], Settings().web_port)
+    if port is None:
+        return 2
+    folder = demo_folder()
+    try:
+        check_folder(folder)
+        if reset:
+            reset_folder(folder)
+        if not (folder / MARKER).exists():
+            build_demo(folder)
+            print(f"Made the demo folder {folder} with invented data.")
+        else:
+            os.environ[DATA_DIR_ENV] = str(folder)
+    except ValueError as error:
+        print(f"Couldn't start the demo. {error}")
+        return 1
+    keys = FileKeyStore(folder)
+    print("Demo data only: no model calls, no network, no Keychain. Your real data is untouched.")
+    return _serve(
+        port,
+        lambda token: create_app(
+            token,
+            port,
+            lambda: database_opens(keys),
+            make_session_opener(keys),
+            keys,
+            lambda: False,
+            banner=LABEL,
+        ),
+    )
 
 
 def _add_job(
@@ -917,8 +985,40 @@ def _companies(session: Session, args: list[str]) -> int:
             print(error)
             return 1
         return 0
-    print("Usage: hub companies suggestions | merge <id> | skip <id>")
+    if args == ["merges"]:
+        for company, entry in list_merges(session):
+            print(
+                f"  {entry['name']} was merged into {company.name} "
+                f"({len(entry['job_ids'])} job(s), {len(entry['person_ids'])} person/people)"
+            )
+        for company in session.query(Company).filter(Company.merged_keys.is_not(None)):
+            logged = {e["name_key"] for e in company.merge_log or []}
+            for key in company.merged_keys or []:
+                if key not in logged:
+                    print(f"  {key} was merged into {company.name} (before merges were logged)")
+        return 0
+    if len(args) == 3 and args[0] == "split":
+        return _split(session, args[1], args[2])
+    print("Usage: hub companies suggestions|merge <id>|skip <id>|merges|split <company> <name>")
     return 2
+
+
+def _split(session: Session, company_text: str, name: str) -> int:
+    """`hub companies split <company> <name>`: undo one merge, after a yes/no question."""
+    matches = find_companies(session, company_text, _aliases())
+    if len(matches) != 1:
+        print(f"{company_text!r} matches {len(matches)} companies; be more specific.")
+        return 1
+    answer = input(f"Separate {name!r} from {matches[0].name} again? [y/N] ").strip().lower()
+    if answer not in ("y", "yes"):
+        print("Nothing changed.")
+        return 0
+    try:
+        print(split_company(session, matches[0], name, _aliases()))
+    except LookupError as error:
+        print(error)
+        return 1
+    return 0
 
 
 def _shortlist_build(session: Session) -> int:
