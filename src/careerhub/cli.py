@@ -82,6 +82,8 @@ from careerhub.modules.network.mappings import (
     load_mapping,
     save_mapping,
 )
+from careerhub.modules.network.schools import my_schools
+from careerhub.modules.network.schools_table import ambiguous_choices
 from careerhub.modules.notify import MacNotifier, notify_once_a_day
 from careerhub.modules.plan import suggest_week
 from careerhub.modules.plan.ics import IcsError
@@ -153,6 +155,9 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             print(format_profile(_load_profile(store)))
             print(_readiness_summary())
             print(_rescore_summary(store))
+            note = _ambiguous_schools_note()
+            if note:
+                print(note)
             return 0
         if args == ["score", "--all"]:
             return _score_all()
@@ -767,6 +772,22 @@ def _score_all() -> int:
         return 0
     print("The next nightly run will score and tailor every job again (this can cost money).")
     return 0
+
+
+def _ambiguous_schools_note() -> str:
+    """Name any of your schools that is a short name for several (PSU), and how to settle it."""
+    lines = []
+    for school in my_schools(None):
+        choices = ambiguous_choices(school)
+        if choices:
+            lines.append(
+                f"  - {school!r} could mean: {'; '.join(choices)}. Under school_aliases in "
+                "preferences.yaml, give the one you mean, for example:\n"
+                f'      "{choices[0]}": ["{school}"]'
+            )
+    if not lines:
+        return ""
+    return "\nSchool names to settle (they match nothing until you do):\n" + "\n".join(lines)
 
 
 def _readiness_summary() -> str:
