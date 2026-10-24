@@ -34,7 +34,7 @@ piece of work is a ticket (`CH-1`, `CH-2`, ...) on the project board.
 
 ## What it does today
 
-`hub web` opens the local web app (Today, Job detail, Tracker, Contacts, Interactions, Plan, System
+`hub web` opens the local web app (Today, Job detail, Tracker, Contacts, Interactions, Plan, Profile, System
 status, and the Conversation panel). From the terminal, `hub` can:
 
 | Command | What it does |
@@ -54,6 +54,7 @@ status, and the Conversation panel). From the terminal, `hub` can:
 | `hub refresh` | A light midday run: new jobs and filters only, no paid models |
 | `hub score --all` | Score every job again on the next nightly run |
 | `hub web [--port N]` | The local web app on 127.0.0.1; prints a private link to open |
+| `hub demo [--reset] [--port N]` | The web app on made-up data in its own folder (`CareerHubDemo`, next to the real one); labeled "Demo data" on every page; no model calls, network, or Keychain; `--reset` rebuilds it |
 | `hub attention [--json \| --notify]` | What the menu-bar icon counts; `--notify` shows the morning notification once a day |
 | `hub backup list`, `restore <file> --to <new folder>` | List backups; restore one into a new folder and check it (your live data is never touched) |
 | `hub shortlist build` | Write the shortlist page to your data folder |

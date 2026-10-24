@@ -18,6 +18,7 @@ from html import escape
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -38,6 +39,7 @@ from careerhub.profile.files import load_preferences
 from careerhub.profile.readiness import current_readiness
 from careerhub.web.assets import copy_fonts, tokens_css
 from careerhub.web.grouping import group_by_place
+from careerhub.web.localtime import local_stamp
 
 #: Today shows at most this many ranked jobs (PRD).
 MAX_JOBS = 5
@@ -296,8 +298,9 @@ details { transition:var(--fade); }
 
 def render_shortlist(data: ShortlistData, now: datetime) -> str:
     """Render the page as a complete HTML document."""
+    zone = ZoneInfo(load_settings().timezone)
     ran = (
-        f"Last successful run: {data.last_success:%a %b %d, %H:%M} UTC."
+        f"Last successful run: {local_stamp(data.last_success, zone)}."
         if data.last_success
         else "No successful run yet."
     )
@@ -309,7 +312,7 @@ def render_shortlist(data: ShortlistData, now: datetime) -> str:
         '<header class="bar"><div><div class="brand">Career Hub</div>'
         f'<div class="status">{escape(ran)}</div></div></header><main>',
         "<h1>Today's shortlist</h1>",
-        f'<p class="meta">Page built {now:%a %b %d, %H:%M} UTC.</p>',
+        f'<p class="meta">Page built {local_stamp(now, zone)}.</p>',
     ]
     if data.last_error:
         parts.append(
@@ -380,7 +383,7 @@ def _render_entry(
         if link
         else title
     )
-    where = escape(" · ".join(filter(None, (entry.company, entry.location, entry.via))))
+    where = escape(" · ".join(filter(None, (entry.location, entry.via))))
     rows = "".join(
         f"<tr><td>{escape(str(c.get('name', '')))}</td>"
         f"<td>{escape(str(c.get('score', '')))}/10</td>"
@@ -395,11 +398,12 @@ def _render_entry(
         else ""
     )
     return (
-        f'<article class="card"><div class="head"><div><h{level}>{index}. {heading}</h{level}>'
+        f'<article class="card"><div class="head"><div>'
+        f"<h{level}>{index}. {heading} · {escape(entry.company)}</h{level}>"
         f'<p class="where">{where}</p></div>{_bubble(entry.score, high, mid)}</div>'
         f"<p>{escape(_first_sentence(entry.explanation))}</p>{_render_visa(entry.visa_flag)}"
         f"{_render_contacts(entry.contacts)}{_render_alumni_link(entry)}"
-        f"<details><summary>Full explanation</summary><p>{escape(entry.explanation)}</p>{table}"
+        f"<details><summary>Why it scored</summary><p>{escape(entry.explanation)}</p>{table}"
         f"</details>{_render_tailoring(entry.tailoring)}{_render_footnotes(entry.footnotes)}"
         "</article>"
     )
