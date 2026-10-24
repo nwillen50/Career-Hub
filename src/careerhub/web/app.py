@@ -27,6 +27,7 @@ from datetime import datetime
 from importlib import resources
 from typing import Annotated, Any
 from urllib.parse import parse_qs, urlsplit
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Path, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -69,12 +70,16 @@ from careerhub.modules.proposals import ProposalError, declined_proposals, pendi
 from careerhub.modules.proposals import accept as accept_proposal
 from careerhub.modules.proposals import reject as reject_proposal
 from careerhub.modules.proposals import reopen as reopen_proposal
+from careerhub.profile.facts import UnknownExtraction, decide
 from careerhub.profile.files import ProfileFileError, load_profile_doc
 from careerhub.profile.rubric import load_rubric
+from careerhub.web.browse_view import SORTS, BrowseQuery, gather_browse
 from careerhub.web.grouping import group_by_place
 from careerhub.web.job_detail import gather_job
+from careerhub.web.localtime import local_stamp
 from careerhub.web.people_view import gather_contacts, gather_interactions, people_choices
 from careerhub.web.plan_view import gather_plan
+from careerhub.web.profile_view import gather_profile
 from careerhub.web.status_view import gather_status
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
 from careerhub.web.tracker_view import (
@@ -120,18 +125,22 @@ CSP = (
 #: The tabs, in order: (path, label).
 TABS = (
     ("/today", "Today"),
+    ("/browse", "Browse"),
     ("/plan", "Plan"),
     ("/tracker", "Tracker"),
     ("/contacts", "Contacts"),
     ("/interactions", "Interactions"),
+    ("/profile", "Profile"),
     ("/status", "System status"),
 )
 PAGES = {
     "/today": ("Today", "Your top jobs, follow-ups, and deadlines will appear here."),
+    "/browse": ("Browse", "Every open job will appear here."),
     "/plan": ("Plan", "This week's suggested blocks will appear here."),
     "/tracker": ("Tracker", "Applications and their statuses will appear here."),
     "/contacts": ("Contacts", "The people you know will appear here."),
     "/interactions": ("Interactions", "Your contact log and follow-ups will appear here."),
+    "/profile": ("Profile", "What Career Hub knows about you will appear here."),
     "/status": ("System status", "Runs, sources, models, and spending will appear here."),
 }
 
@@ -188,6 +197,7 @@ def create_app(
     key_store: KeyStore | None = None,
     local_running: Callable[[], bool] = ollama_is_running,
     open_router: Callable[[], tuple[Router, list[str]]] | None = None,
+    banner: str | None = None,
 ) -> FastAPI:
     """Build the app. `token` is this start's secret; `check_database` says if data is usable.
 
@@ -198,6 +208,7 @@ def create_app(
     templates = Jinja2Templates(
         directory=str(resources.files("careerhub.web").joinpath("templates"))
     )
+    templates.env.globals["banner"] = banner  # shown on every page (the demo's "Demo data")
     sessions: dict[str, str] = {}  # session id -> CSRF token
     opened = {"ok": False}  # once the database has opened, it is not re-checked on every page
     static_dir = str(resources.files("careerhub.web").joinpath("static"))
@@ -282,7 +293,16 @@ def create_app(
         return render
 
     for path in PAGES:
-        if path not in ("/today", "/plan", "/status", "/tracker", "/contacts", "/interactions"):
+        if path not in (
+            "/today",
+            "/browse",
+            "/plan",
+            "/status",
+            "/tracker",
+            "/contacts",
+            "/interactions",
+            "/profile",
+        ):
             app.add_api_route(path, tab(path), methods=["GET"], response_class=HTMLResponse)
 
     @app.get("/today", response_class=HTMLResponse)
@@ -308,9 +328,7 @@ def create_app(
                 "title": "Today",
                 "heading": f"Today, {data.local_now or data.now:%a %b %d}",
                 "built": f"{data.local_now or data.now:%a %b %d, %H:%M}",
-                "last_run": f"{shortlist.last_success:%a %b %d, %H:%M}"
-                if shortlist.last_success
-                else None,
+                "last_run": local_stamp(shortlist.last_success, ZoneInfo(load_settings().timezone)),
                 "last_error": shortlist.last_error,
                 "waiting_for": shortlist.waiting_for,
                 "reasons": REASON_LABELS,
@@ -329,6 +347,40 @@ def create_app(
         if section in SECTIONS:  # remember the choice between visits
             response.set_cookie(SECTION_COOKIE, chosen, samesite="strict", path="/")
         return response
+
+    @app.get("/browse", response_class=HTMLResponse)
+    def browse_tab(
+        request: Request,
+        q: str | None = None,
+        sort: str | None = None,
+        page: str | None = None,
+        group: str | None = None,
+    ) -> Response:
+        if open_session is None:
+            return tab("/browse")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/browse")(request)
+        query = BrowseQuery.clean(q, sort, page, group)
+        with open_session() as session:
+            view = gather_browse(session, query)
+        return templates.TemplateResponse(
+            request,
+            "browse.html",
+            {
+                "tabs": TABS,
+                "current": "/browse",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": "Browse",
+                "heading": "Browse",
+                "view": view,
+                "sorts": SORTS,
+                "reasons": REASON_LABELS,
+                "place_groups": group_by_place([c.entry.location for c in view.cards])
+                if view.query.group
+                else [],
+            },
+        )
 
     @app.get("/plan", response_class=HTMLResponse)
     def plan_tab(request: Request) -> Response:
@@ -351,6 +403,39 @@ def create_app(
                 "plan": view,
             },
         )
+
+    @app.get("/profile", response_class=HTMLResponse)
+    def profile_tab(request: Request) -> Response:
+        if open_session is None:
+            return tab("/profile")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/profile")(request)
+        with open_session() as session:
+            view = gather_profile(session)
+        return templates.TemplateResponse(
+            request,
+            "profile.html",
+            {
+                "tabs": TABS,
+                "current": "/profile",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": "Profile",
+                "heading": "Profile",
+                "profile": view,
+            },
+        )
+
+    @app.post("/profile/facts/{extraction_id}/{decision}")
+    def decide_facts(request: Request, extraction_id: JobId, decision: str) -> Response:
+        if open_session is None or decision not in ("accept", "reject"):
+            return HTMLResponse("Not found.", status_code=404)
+        with open_session() as session:
+            try:
+                decide(session, extraction_id, decision == "accept")
+            except UnknownExtraction:
+                pass  # already decided in another tab; the page shows what is left
+        return RedirectResponse("/profile", status_code=303)
 
     @app.get("/status", response_class=HTMLResponse)
     def status_tab(request: Request) -> Response:
