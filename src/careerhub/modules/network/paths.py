@@ -27,7 +27,13 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.companies import find_companies
 from careerhub.core.models import Company, Person, utcnow
-from careerhub.modules.network.schools import my_school_aliases, my_schools, same_school
+from careerhub.modules.network.schools import (
+    my_school_aliases,
+    my_schools,
+    related_school,
+    same_school,
+)
+from careerhub.modules.network.schools_table import RANK
 
 RECENT = timedelta(days=365)
 _ALUMNI = "alumni:"
@@ -44,6 +50,11 @@ class WarmPath:
     reasons: list[str] = field(default_factory=list)
     #: The school this person shares with the user, if any (the page marks them "Same school").
     same_school: str | None = None
+    #: A weaker school tie when it is not the same school: "Branch campus: Penn State" or
+    #: "Same system: University of California" (CH-179).
+    school_tie: str | None = None
+    #: 2 for a branch campus, 1 for the same system, 0 for none; breaks ties between people.
+    tie_rank: int = 0
 
 
 def _score(
@@ -51,7 +62,7 @@ def _score(
     now: datetime,
     mine: Sequence[str] = (),
     aliases: dict[str, list[str]] | None = None,
-) -> tuple[int, list[str], str | None]:
+) -> tuple[int, list[str], str | None, str | None, int]:
     points = 0
     reasons: list[str] = []
     notes = [part.strip() for part in (person.how_known or "").split(";") if part.strip()]
@@ -61,9 +72,13 @@ def _score(
         points += 3
         reasons.append(f"you noted: {'; '.join(own_words)}")
     shared = same_school(person.schools or [], mine, aliases)
+    tie = None if shared else related_school(person.schools or [], mine, aliases)
     if shared:
         points += 2  # counts once even if an alumni list names the same school
         reasons.append(f"Same school: {shared}")
+    elif tie:
+        points += 1 if tie.kind == "branch" else 0  # a same-system tie only breaks ties
+        reasons.append(tie.label or "")
     if groups:
         points += 0 if shared else 2
         reasons.append(f"alumni: {', '.join(groups)}")
@@ -77,7 +92,8 @@ def _score(
     if "recruit" in title or "talent" in title:
         points += 1
         reasons.append("recruiter")
-    return points, reasons, shared
+    rank = 3 if shared else RANK[tie.kind] if tie else 0
+    return points, reasons, shared, tie.label if tie else None, rank
 
 
 def warm_paths(
@@ -96,10 +112,10 @@ def warm_paths(
     aliases = my_school_aliases() if mine else {}
     people = session.scalars(select(Person).where(Person.company_id == company_id))
     scored = [(person, *_score(person, now, mine, aliases)) for person in people]
-    scored.sort(key=lambda item: (-item[1], item[0].full_name.lower(), item[0].id))
+    scored.sort(key=lambda item: (-item[1], -item[5], item[0].full_name.lower(), item[0].id))
     return [
-        WarmPath(person.id, person.full_name, person.title, points, reasons, shared)
-        for person, points, reasons, shared in scored[:limit]
+        WarmPath(person.id, person.full_name, person.title, points, reasons, shared, label, rank)
+        for person, points, reasons, shared, label, rank in scored[:limit]
     ]
 
 

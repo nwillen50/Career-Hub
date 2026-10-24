@@ -142,3 +142,12 @@ def test_hostile_names_are_escaped_and_reading_changes_nothing(session: Session)
     html = c.get("/status").text
     assert "<script>alert" not in html and "&lt;script&gt;" in html
     assert session.query(Source).count() == 1 and html.count("<form") == 1
+
+
+def test_run_and_fetch_times_are_local_not_utc(session: Session) -> None:
+    """Bug CH-193: System status showed run and fetch times in UTC."""
+    save_settings(Settings(timezone="Asia/Tokyo"))
+    run = start_run(session, "fetch")
+    finish_run(session, run, "ok")
+    view = gather_status(session)
+    assert view.runs and "UTC" not in view.runs[0].started

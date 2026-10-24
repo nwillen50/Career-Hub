@@ -60,6 +60,14 @@ def starter_rubric() -> Rubric:
             Criterion(name="location", weight=2, description="Based where I can work."),
             Criterion(name="company stage", weight=1, description="Stage and size I'd thrive in."),
             Criterion(name="learning potential", weight=2, description="I'd grow quickly there."),
+            Criterion(
+                name="pay",
+                weight=2,
+                description=(
+                    "Stated pay meets what my preferences ask for. Neutral (5) when the posting "
+                    "does not state pay."
+                ),
+            ),
         ],
     )
 

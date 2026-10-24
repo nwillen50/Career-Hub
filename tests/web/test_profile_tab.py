@@ -126,3 +126,18 @@ def test_a_broken_preferences_file_shows_the_designed_error_page(session: Sessio
     (root / "profile" / "preferences.yaml").write_text("locatoins: [x]\n", encoding="utf-8")
     page = web(session).get("/profile")
     assert page.status_code == 503 and "settings file has a problem" in page.text
+
+
+def test_review_findings_facts_that_no_longer_fit_the_schema_do_not_crash_the_tab(
+    session: Session,
+) -> None:
+    write_files(session)
+    row = ProfileExtraction(
+        kind="resume", file_sha256="c" * 64, prompt_version=1, status="pending",
+        facts={"gpa": "not a number", "skills": 5},
+    )  # fmt: skip
+    session.add(row)
+    session.commit()
+    page = web(session).get("/profile")
+    assert page.status_code == 200 and "cannot be shown" in page.text
+    assert f"/profile/facts/{row.id}/reject" in page.text

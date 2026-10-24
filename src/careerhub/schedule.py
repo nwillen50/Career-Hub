@@ -22,7 +22,16 @@ from careerhub.core.paths import data_dir
 
 LABEL = "com.careerhub.nightly"
 REFRESH_LABEL = "com.careerhub.refresh"
-_JOBS = {"nightly": LABEL, "refresh": REFRESH_LABEL}
+CATCHUP_LABEL = "com.careerhub.catchup"
+MENUBAR_LABEL = "com.careerhub.menubar"
+#: How often the catch-up job looks (seconds). It does nothing unless a night was skipped.
+CATCHUP_INTERVAL_SECONDS = 1800
+_JOBS = {
+    "nightly": LABEL,
+    "refresh": REFRESH_LABEL,
+    "catchup": CATCHUP_LABEL,
+    "menubar": MENUBAR_LABEL,
+}
 _CLOCK = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 
@@ -54,11 +63,23 @@ def render_plist(
     `require_power` the nightly job passes `--if-plugged-in`, so on battery it skips that night.
     """
     if command not in _JOBS:
-        raise ValueError("command must be 'nightly' or 'refresh'")
+        raise ValueError("command must be 'nightly', 'refresh', 'catchup', or 'menubar'")
     if require_power and command != "nightly":
         raise ValueError("only the nightly job can require power")
-    hour, minute = parse_clock(run_time)
+    hour, minute = parse_clock(run_time) if command in ("nightly", "refresh") else (0, 0)
     logs = logs or logs_dir()
+    if command == "menubar":  # the login agent: starts at login, restarts only after a crash
+        return plistlib.dumps(
+            {
+                "Label": MENUBAR_LABEL,
+                "ProgramArguments": [python or sys.executable, "-m", "careerhub.cli", "menubar"],
+                "RunAtLoad": True,
+                "KeepAlive": {"Crashed": True},
+                "StandardOutPath": str(logs / "menubar.out.log"),
+                "StandardErrorPath": str(logs / "menubar.err.log"),
+                "ProcessType": "Interactive",
+            }
+        )
     job = {
         "Label": _JOBS[command],
         # The venv's own Python, so the job doesn't depend on the shell's PATH.
@@ -66,10 +87,15 @@ def render_plist(
             python or sys.executable,
             "-m",
             "careerhub.cli",
-            command,
+            *(["nightly", "--catch-up"] if command == "catchup" else [command]),
             *(["--if-plugged-in"] if require_power else []),
         ],
-        "StartCalendarInterval": {"Hour": hour, "Minute": minute},
+        # The catch-up job looks every 30 minutes; the others run once a day.
+        **(
+            {"StartInterval": CATCHUP_INTERVAL_SECONDS}
+            if command == "catchup"
+            else {"StartCalendarInterval": {"Hour": hour, "Minute": minute}}
+        ),
         "RunAtLoad": False,
         "StandardOutPath": str(logs / f"{command}.out.log"),
         "StandardErrorPath": str(logs / f"{command}.err.log"),

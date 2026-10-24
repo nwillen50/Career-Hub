@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from alembic import command
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
 from careerhub.core.companies import find_companies, get_or_create_company
@@ -125,7 +125,14 @@ def test_the_migration_recomputes_keys_and_merges_duplicates(tmp_path: Path) -> 
         other = Company(name="Metabase", name_key="metabase")
         session.add_all([first, second, other])
         session.flush()
-        session.add_all([Person(full_name="Ada", company_id=second.id), Person(full_name="Bo")])
+        # Core inserts name their columns: the old schema lacks later ones (person.phone).
+        now = utcnow()
+        for name, company_id in (("Ada", second.id), ("Bo", None)):
+            session.execute(
+                insert(Person.__table__).values(
+                    full_name=name, company_id=company_id, created_at=now, updated_at=now
+                )
+            )
         session.commit()
     migrate(engine)
     with session_factory(engine)() as session:

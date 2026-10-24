@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "macros.html" import job_card with context %}
 {% block content %}
-<p class="muted">Page built {{ built }}.{% if last_run %} Last successful run: {{ last_run }} UTC.{% else %} No successful run yet.{% endif %}</p>
+<p class="muted">Page built {{ built }}.{% if last_run %} Last successful run: {{ last_run }}.{% else %} No successful run yet.{% endif %}</p>
 <p><a href="/conversation">Ask a question about these jobs</a></p>
 <nav aria-label="Sections" class="chips">
   <ul>
