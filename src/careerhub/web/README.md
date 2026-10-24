@@ -14,6 +14,7 @@ ADR-0043).
 | `people_view` | Contacts and Interactions tabs | CH-171 | Built |
 | `plan_view` | Plan: the weekly plan's suggested blocks | CH-143 | Built |
 | `status_view` | System status: runs, sources, spending, models, readiness, what waits on you | CH-144 | Built |
+| `browse_view` | Browse tab: every open job, search, sort, paging, group by place (filters and the labeling view come next) | CH-187 | Part 1 built |
 | `profile_view` | Profile tab: what Career Hub knows about you, readiness, rubric, and facts waiting for Accept or Reject | CH-195 | Built |
 | `grouping` | Group by place (country, then city) on Today and the Tracker | CH-121, CH-170 | Built |
 | Conversation panel | Questions, and proposals for preferences, rubric, and sources (Accept or Reject) | CH-158 to CH-161 | Built |

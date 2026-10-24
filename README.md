@@ -34,7 +34,7 @@ piece of work is a ticket (`CH-1`, `CH-2`, ...) on the project board.
 
 ## What it does today
 
-`hub web` opens the local web app (Today, Job detail, Tracker, Contacts, Interactions, Plan, Profile, System
+`hub web` opens the local web app (Today, Browse, Job detail, Tracker, Contacts, Interactions, Plan, Profile, System
 status, and the Conversation panel). From the terminal, `hub` can:
 
 | Command | What it does |

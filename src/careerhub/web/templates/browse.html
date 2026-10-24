@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "macros.html" import job_card with context %}
+{% block content %}
+<form method="get" action="/browse" class="card" role="search">
+  <p>
+    <label for="q">Search title, company, place, or summary</label>
+    <input id="q" name="q" type="search" value="{{ view.query.text }}" maxlength="100">
+  </p>
+  <p>
+    <label for="sort">Sort by</label>
+    <select id="sort" name="sort">
+      {% for key, label in sorts.items() %}<option value="{{ key }}"{% if key == view.query.sort %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <label><input type="checkbox" name="group" value="place"{% if view.query.group %} checked{% endif %}> Group by place</label>
+    <button type="submit">Search</button>
+    {% if view.query.text %}<a href="/browse?{{ view.query.params(q="", page=1) }}">Clear search</a>{% endif %}
+  </p>
+</form>
+<p class="muted" role="status">{{ view.total }} open job{{ "s" if view.total != 1 }}{% if view.query.text %} match “{{ view.query.text }}”{% endif %}. Page {{ view.query.page }} of {{ view.pages }}.</p>
+<section aria-labelledby="jobs-h">
+  <h2 id="jobs-h">Jobs</h2>
+  {% if view.query.group %}
+    {% for country in place_groups %}
+    <h3>{{ country.name }} ({{ country.count }})</h3>
+    {% for city in country.cities %}
+      {% if city.name %}<h4>{{ city.name }} ({{ city.positions|length }})</h4>{% endif %}
+      {% for position in city.positions %}{{ job_card(view.cards[position], view.first_rank + position, csrf, 5 if city.name else 4) }}{% endfor %}
+    {% endfor %}
+    {% endfor %}
+  {% else %}
+    {% for card in view.cards %}{{ job_card(card, view.first_rank + loop.index0, csrf) }}{% endfor %}
+  {% endif %}
+  {% if not view.cards %}
+  <p class="card">{% if view.query.text %}No jobs match. <a href="/browse?{{ view.query.params(q="", page=1) }}">Clear the search</a>.{% else %}Nothing ranked yet. Check that a source is approved and the nightly run finished, in <a href="/status">System status</a>.{% endif %}</p>
+  {% endif %}
+</section>
+{% if view.pages > 1 %}
+<nav aria-label="Pages">
+  {% if view.has_previous %}<a href="/browse?{{ view.query.params(page=view.query.page - 1) }}" rel="prev">Previous page</a>{% endif %}
+  {% if view.has_next %}<a href="/browse?{{ view.query.params(page=view.query.page + 1) }}" rel="next">Next page</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}
