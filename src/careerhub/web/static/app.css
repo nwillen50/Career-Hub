@@ -39,3 +39,11 @@ th, td { text-align: left; padding: var(--space-2); border-bottom: 1px solid var
   border-color: var(--chip-selected-border); }
 .chips a { border: 1px solid var(--chip-border); border-radius: var(--radius-pill);
   padding: var(--space-1) var(--space-3); text-decoration: none; display: inline-block; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.filters { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: end; margin: var(--space-4) 0; }
+.filters fieldset { border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.inline { display: inline-block; margin-right: var(--space-2); }
+tr.overdue td { border-bottom-color: var(--overdue); }
+.overdue-note { color: var(--overdue); }
+input, select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); }

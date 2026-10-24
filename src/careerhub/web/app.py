@@ -28,7 +28,7 @@ from importlib import resources
 from typing import Annotated, Any
 from urllib.parse import parse_qs, urlsplit
 
-from fastapi import FastAPI, Path, Request, Response
+from fastapi import FastAPI, Path, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -36,10 +36,17 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from careerhub.core.migrate import migrate
+from careerhub.core.models import Application, utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
 from careerhub.core.settings import SettingsError
 from careerhub.core.storage import StorageError, open_database, session_factory
 from careerhub.llm.catalog import ollama_is_running
+from careerhub.modules.jobs.applications import (
+    TrackerError,
+    set_follow_up,
+    set_next_step,
+)
+from careerhub.modules.jobs.applications import track as change_status
 from careerhub.modules.jobs.reactions import (
     UNDO_SECONDS,
     ReactionError,
@@ -52,6 +59,15 @@ from careerhub.web.job_detail import gather_job
 from careerhub.web.plan_view import gather_plan
 from careerhub.web.status_view import gather_status
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
+from careerhub.web.tracker_view import (
+    STATUS_CHOICES,
+    VIEW_CHOICES,
+    TrackerQuery,
+    clean_query,
+    csv_for,
+    follow_up_from_text,
+    gather_tracker,
+)
 
 #: A job id the database can hold (SQLite integers are 64-bit); anything else is a 422, not a 500.
 JobId = Annotated[int, Path(ge=1, le=2**63 - 1)]
@@ -225,7 +241,7 @@ def create_app(
         return render
 
     for path in PAGES:
-        if path not in ("/today", "/plan", "/status"):
+        if path not in ("/today", "/plan", "/status", "/tracker"):
             app.add_api_route(path, tab(path), methods=["GET"], response_class=HTMLResponse)
 
     @app.get("/today", response_class=HTMLResponse)
@@ -388,6 +404,105 @@ def create_app(
         else:
             message = "Reaction undone. The job is back on Today after a reload."
         return reaction_page(request, "note.html", message=message)
+
+    def tracker_context(request: Request, **extra: Any) -> dict[str, Any]:
+        return {
+            "tabs": TABS,
+            "current": "/tracker",
+            "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+            "status_choices": STATUS_CHOICES,
+            **extra,
+        }
+
+    @app.get("/tracker", response_class=HTMLResponse)
+    def tracker_tab(
+        request: Request,
+        view: str | None = None,
+        q: str | None = None,
+        status: Annotated[list[str] | None, Query()] = None,
+        sort: str | None = None,
+        dir: str | None = None,  # noqa: A002  (the URL parameter is called dir)
+    ) -> Response:
+        if open_session is None:
+            return tab("/tracker")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/tracker")(request)
+        query = clean_query(view, q, status or [], sort, dir)
+        with open_session() as session:
+            rows = gather_tracker(session, query, utcnow())
+        return templates.TemplateResponse(
+            request,
+            "tracker.html",
+            tracker_context(
+                request,
+                title="Tracker",
+                heading="Tracker",
+                query=query,
+                rows=rows,
+                views=VIEW_CHOICES,
+                columns=(
+                    ("company", "Company"),
+                    ("title", "Role"),
+                    ("status", "Status"),
+                    ("applied", "Applied"),
+                    ("follow_up", "Follow-up"),
+                ),
+            ),
+        )
+
+    @app.get("/tracker.csv")
+    def tracker_csv(
+        request: Request,
+        view: str | None = None,
+        q: str | None = None,
+        status: Annotated[list[str] | None, Query()] = None,
+    ) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data.", status_code=404)
+        query = clean_query(view, q, status or [], None, None)
+        with open_session() as session:
+            text = csv_for(session, query, utcnow())
+        return Response(
+            text,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="applications.csv"'},
+        )
+
+    @app.post("/applications/{application_id}")
+    async def update_application(request: Request, application_id: JobId) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data.", status_code=404)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True)
+        error: str | None = None
+        with open_session() as session:
+            application = session.get(Application, application_id)
+            if application is None:
+                return reaction_page(request, "note.html", message="That application is gone.")
+            try:
+                # check every input first, so a bad date cannot leave the status half changed
+                due = follow_up_from_text(form["follow_up"][0]) if "follow_up" in form else None
+                if "status" in form and form["status"][0] not in dict(STATUS_CHOICES):
+                    raise TrackerError(f"Unknown status {form['status'][0]!r}.")
+                if "status" in form:
+                    change_status(session, application.job_id, form["status"][0])
+                if "follow_up" in form:
+                    set_follow_up(session, application_id, due)
+                if "next_step" in form:
+                    set_next_step(session, application_id, form["next_step"][0])
+            except TrackerError as problem:
+                session.rollback()
+                error = str(problem)
+            except ValueError:  # a date that is not YYYY-MM-DD
+                session.rollback()
+                error = "That date was not understood. Use YYYY-MM-DD."
+            rows = gather_tracker(session, TrackerQuery(), utcnow())
+            row = next((r for r in rows if r.application_id == application_id), None)
+        if request.headers.get("hx-request") != "true" or row is None:
+            return RedirectResponse("/tracker", status_code=303)
+        return templates.TemplateResponse(
+            request, "tracker_row.html", tracker_context(request, row=row, error=error)
+        )
 
     @app.post("/session/end")
     def end_session(request: Request) -> Response:
