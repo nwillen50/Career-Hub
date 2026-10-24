@@ -34,7 +34,7 @@
   --header: #3A2A1E;
   --header-text: #F4EDE1;
   --tab-inactive: #E2D5C0;
-  --tab-active: #4F3A2A;
+  --tab-active: #FBF8F2;
   --brass-rule: #9A7330;
   /* accent and the green panel */
   --accent: #2F5D45;
@@ -92,7 +92,7 @@
     --header: #14100C;
     --header-text: #EFE6D6;
     --tab-inactive: #BDAE97;
-    --tab-active: #271E17;
+    --tab-active: #FBF8F2;
     --brass-rule: #5A4630;
     --accent: #9CC8A9;
     --accent-hover: #C3E0CB;
