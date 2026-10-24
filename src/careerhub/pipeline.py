@@ -46,6 +46,7 @@ from careerhub.modules.jobs import (
     approved_sources,
 )
 from careerhub.modules.jobs.adapters import ADAPTERS
+from careerhub.modules.jobs.applications import mark_ghosted
 from careerhub.modules.jobs.extract import extract_and_save
 from careerhub.modules.jobs.filters import assess_filters
 from careerhub.modules.jobs.scoring import (
@@ -208,6 +209,12 @@ def _run(
         except (FetchError, SourceNotApproved) as caught:
             report.sources_failed += 1
             report.problems.append(f"source {source.id} failed: {type(caught).__name__}")
+    ghosted = mark_ghosted(session, settings.ghost_after_days)
+    if ghosted:
+        report.notes.append(
+            f"{ghosted} applications had no news for {settings.ghost_after_days} days and are "
+            "now marked Ghosted (change the status to undo)"
+        )
     jobs = list(
         session.scalars(
             only_visible_copies(select(Job).where(Job.status != "closed")).order_by(Job.id)
