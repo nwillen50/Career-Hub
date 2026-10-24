@@ -34,7 +34,7 @@ piece of work is a ticket (`CH-1`, `CH-2`, ...) on the project board.
 
 ## What it does today
 
-`hub web` opens the local web app (Today, Job detail, Tracker, Contacts, Interactions, Plan, System
+`hub web` opens the local web app (Today, Browse, Job detail, Tracker, Contacts, Interactions, Plan, Profile, System
 status, and the Conversation panel). From the terminal, `hub` can:
 
 | Command | What it does |
@@ -43,6 +43,7 @@ status, and the Conversation panel). From the terminal, `hub` can:
 | `hub profile ready`, `hub profile facts` | Check the profile and switch scoring on; review facts read from your resume and transcript (`accept`, `reject`) |
 | `hub sources add`, `list`, `approve`, `reject`, `disable` | Propose a job source and decide on it; nothing is fetched until you approve |
 | `hub ingest greenhouse`, `lever`, `ashby --company <board>` | Fetch one approved company's postings |
+| `hub targets add <name> [--careers-url URL]` | Follow a company; with its careers page, reads that one page once (robots.txt honored, never LinkedIn or Handshake) for an embedded Greenhouse, Lever, or Ashby board, or notes an unsupported system |
 | `hub targets find-boards`, `note`, `import`, `list`, `enable`, `disable`, `enable-matching` | Companies you follow, and finding each one's job board |
 | `hub add-job <url>` | Add a job from any link (LinkedIn and Handshake pages are never fetched; you give the company and title, or paste the text) |
 | `hub jobs close <id>`, `reopen <id>` | Close or reopen a job you added by link (asks first; nothing is deleted) |
@@ -50,10 +51,11 @@ status, and the Conversation panel). From the terminal, `hub` can:
 | `hub companies merges`, `split <company> <name>` | List merges; undo one exactly (asks first) |
 | `hub models list`, `add`, `remove`, `add-custom`, `routes` | See and switch on models (keys go to the Keychain), and which model each task uses |
 | `hub cache clear [--expired]` | Delete saved model answers |
-| `hub nightly [--if-plugged-in]` | Run the whole pipeline once: ingest, extract, filter, score, tailor, write the shortlist page (with warm paths), back up. With the flag, a Mac on battery skips the night |
+| `hub nightly [--if-plugged-in \| --catch-up]` | Run the whole pipeline once: ingest, extract, filter, score, tailor, write the shortlist page (with warm paths), back up. With `--if-plugged-in`, a Mac on battery skips the night (and records the skip). `--catch-up`, run every 30 minutes by its own launchd job, runs a skipped night once the Mac is plugged in, before `catchup_until` (default 08:00) |
 | `hub refresh` | A light midday run: new jobs and filters only, no paid models |
 | `hub score --all` | Score every job again on the next nightly run |
 | `hub web [--port N]` | The local web app on 127.0.0.1; prints a private link to open |
+| `hub demo [--reset] [--port N]` | The web app on made-up data in its own folder (`CareerHubDemo`, next to the real one); labeled "Demo data" on every page; no model calls, network, or Keychain; `--reset` rebuilds it |
 | `hub attention [--json \| --notify]` | What the menu-bar icon counts; `--notify` shows the morning notification once a day |
 | `hub backup list`, `restore <file> --to <new folder>` | List backups; restore one into a new folder and check it (your live data is never touched) |
 | `hub shortlist build` | Write the shortlist page to your data folder |
@@ -100,6 +102,7 @@ src/careerhub/        the application, one package per layer
   pipeline.py         hub nightly and hub refresh: run every stage once
   schedule.py         the launchd jobs for the nightly and midday runs
   power.py            reads whether the Mac is plugged in (step 10)
+  catchup.py          decides whether to run a night that was skipped on battery (CH-181)
 tests/                tests, mirroring src/
 evals/                evaluation sets and samples for hub eval
 spikes/               short experiments that answer one question before we commit to a design

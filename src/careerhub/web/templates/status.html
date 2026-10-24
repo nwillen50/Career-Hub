@@ -10,6 +10,7 @@
     <tbody>{% for run in status.runs %}<tr><td>{{ run.step }}</td><td>{{ run.status }}</td><td>{{ run.started }}</td><td>{{ run.items }}</td><td>{{ run.cost }}</td><td>{{ run.problem or "none" }}</td></tr>{% endfor %}</tbody>
   </table>
   {% else %}<p class="card muted">No runs yet. Run <code>hub nightly</code> or wait for the scheduled run.</p>{% endif %}
+  {% if status.catchup_note %}<p class="muted">{{ status.catchup_note }}</p>{% endif %}
 </section>
 
 <section aria-labelledby="src-h"><h2 id="src-h">Job sources</h2>

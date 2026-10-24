@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from careerhub.core.files import write_private
 from careerhub.core.models import Proposal, utcnow
 from careerhub.core.settings import load_settings
+from careerhub.core.yamlfile import edit_yaml_text
 from careerhub.modules.jobs.find_boards import BOARD_URLS
 from careerhub.profile.files import ProfileFileError, parse_yaml, preferences_path
 from careerhub.profile.models import Preferences
@@ -337,6 +338,7 @@ def accept(session: Session, proposal_id: int, now: datetime | None = None) -> P
             "Ask again to get a fresh suggestion."
         )
     path = preferences_path()
+    original_text = path.read_text(encoding="utf-8") if path.exists() else None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
@@ -347,7 +349,7 @@ def accept(session: Session, proposal_id: int, now: datetime | None = None) -> P
         proposal.status = "accepted"
         proposal.decided_at = when
         session.flush()
-        write_whole(path, yaml.safe_dump(new, sort_keys=False, allow_unicode=True))
+        write_whole(path, edit_yaml_text(original_text, new))
         session.commit()
     except OSError:
         session.rollback()

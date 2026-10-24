@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import getpass
 import logging
+import os
 import sys
 from collections.abc import Callable
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy.orm import Session
 
+from careerhub.catchup import decide as decide_catch_up
+from careerhub.catchup import record_skip
 from careerhub.core.backup import RestoreError, list_backups, restore_backup
 from careerhub.core.companies import (
     decide_merge,
@@ -26,14 +29,14 @@ from careerhub.core.companies import (
 )
 from careerhub.core.migrate import migrate
 from careerhub.core.models import Company, utcnow
-from careerhub.core.paths import database_path
+from careerhub.core.paths import DATA_DIR_ENV, database_path
 from careerhub.core.secrets import (
     DATABASE_KEY_NAME,
     KeychainKeyStore,
     KeyStore,
     SecretsError,
 )
-from careerhub.core.settings import SettingsError, load_settings
+from careerhub.core.settings import Settings, SettingsError, load_settings
 from careerhub.core.storage import StorageError, WrongKeyError, open_database, session_factory
 from careerhub.llm.cache import ResponseCache
 from careerhub.llm.commands import (
@@ -55,6 +58,7 @@ from careerhub.modules.jobs import (
     reject_source,
 )
 from careerhub.modules.jobs.adapters import ADAPTERS, BOARD_KINDS
+from careerhub.modules.jobs.careers_page import track_company
 from careerhub.modules.jobs.find_boards import find_boards
 from careerhub.modules.jobs.manual import (
     ManualJobError,
@@ -89,6 +93,8 @@ from careerhub.modules.network.mappings import (
     load_mapping,
     save_mapping,
 )
+from careerhub.modules.network.schools import my_schools
+from careerhub.modules.network.schools_table import ambiguous_choices
 from careerhub.modules.notify import MacNotifier, notify_once_a_day
 from careerhub.modules.plan import suggest_week
 from careerhub.modules.plan.ics import IcsError
@@ -101,7 +107,13 @@ from careerhub.profile.files import ProfileFileError, load_preferences, load_pro
 from careerhub.profile.models import PlanSettings, Preferences, ProfileDoc
 from careerhub.profile.profile import Profile, format_profile, load_profile
 from careerhub.profile.readiness import current_readiness, missing_items, set_scoring
-from careerhub.schedule import LABEL, REFRESH_LABEL, install_plist, launchctl_commands
+from careerhub.schedule import (
+    CATCHUP_LABEL,
+    LABEL,
+    REFRESH_LABEL,
+    install_plist,
+    launchctl_commands,
+)
 from careerhub.web.shortlist import write_shortlist
 
 USAGE = """Usage:
@@ -120,15 +132,21 @@ USAGE = """Usage:
                                              models; turn the schedule on with midday_refresh_on)
   hub backup list | restore <file> --to <new folder>
                           (restores into a NEW folder and checks it; never touches your live data)
-  hub nightly [--if-plugged-in]              (run the whole pipeline once; skip on battery)
+  hub nightly [--if-plugged-in | --catch-up]   (run the whole pipeline once; --if-plugged-in
+                                             skips on battery; --catch-up, run by its own launchd
+                                             job, runs a skipped night once the Mac is plugged in)
   hub attention [--json | --notify]          (menu-bar count; --notify: morning banner, once a day)
   hub web [--port N]                         (the local web app on 127.0.0.1; prints a link to open)
+  hub demo [--reset] [--port N]              (try the web app with made-up data in its own folder;
+                                             never your real data)
   hub add-job <url> [--company C] [--title T] [--text-file F]   (any link; LinkedIn and Handshake
                                              are never requested; text can also come from stdin)
   hub jobs close <id> | reopen <id>      (only for jobs you added by link; nothing is deleted)
   hub companies suggestions | merge <id> | skip <id>   (near-duplicate company names)
   hub companies merges | split <company> <name>   (list merges; undo one, with a yes/no question)
   hub targets find-boards | note <name> <ats> | import <file> | list | enable-matching
+  hub targets add <name> [--careers-url URL]   (follow a company; looks for its board; fetches
+                          that one page, honoring robots.txt, never LinkedIn or Handshake)
   hub targets enable <name>... | disable <name>...
                           (companies you follow; the Engine list is in docs/seeds)
   hub models list | routes
@@ -161,6 +179,9 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             print(format_profile(_load_profile(store)))
             print(_readiness_summary())
             print(_rescore_summary(store))
+            note = _ambiguous_schools_note()
+            if note:
+                print(note)
             return 0
         if args == ["score", "--all"]:
             return _score_all()
@@ -199,12 +220,15 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _backup_list()
         if len(args) == 5 and args[:2] == ["backup", "restore"] and args[3] == "--to":
             return _backup_restore(store, Path(args[2]), Path(args[4]))
-        if args[:1] == ["nightly"] and args[1:] in ([], ["--if-plugged-in"]):
-            return _nightly(store, if_plugged_in=bool(args[1:]))
+        if args[:1] == ["nightly"] and args[1:] in ([], ["--if-plugged-in"], ["--catch-up"]):
+            return _nightly(store, if_plugged_in=args[1:] == ["--if-plugged-in"],
+                            catch_up=args[1:] == ["--catch-up"])  # fmt: skip
         if args[:1] == ["attention"] and args[1:] in ([], ["--json"], ["--notify"]):
             return _with_session(store, lambda s: _attention(s, args[1:]))
         if args[:1] == ["web"]:
             return _web(args[1:])
+        if args[:1] == ["demo"]:
+            return _demo(args[1:])
         if args[:1] == ["add-job"] and len(args) >= 2 and len(args) % 2 == 0:
             return _with_session(store, lambda s: _add_job(s, args[1], args[2:]))
         if (
@@ -218,6 +242,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _with_session(store, lambda s: _companies(s, args[1:]))
         if args == ["targets", "find-boards"]:
             return _with_session(store, _find_boards)
+        if args[:2] == ["targets", "add"] and len(args) >= 3:
+            return _with_session(store, lambda s: _targets_add(s, args[2:]))
         if args[:1] == ["targets"] and len(args) >= 2:
             return _targets(args[1:])
         if args[:1] == ["models"] and len(args) >= 2:
@@ -442,6 +468,8 @@ def _schedule_install() -> int:
     jobs = [("nightly", settings.nightly_run_time, LABEL)]
     if settings.midday_refresh_on:
         jobs.append(("refresh", settings.midday_refresh_time, REFRESH_LABEL))
+    if settings.nightly_require_power:
+        jobs.append(("catchup", "00:00", CATCHUP_LABEL))  # looks every 30 minutes; a time is unused
     for command, run_time, label in jobs:
         require_power = command == "nightly" and settings.nightly_require_power
         path = install_plist(run_time, command=command, require_power=require_power)
@@ -487,19 +515,39 @@ def _nightly(
     light: bool = False,
     if_plugged_in: bool = False,
     power: Callable[[], str] = read_power_source,
+    catch_up: bool = False,
+    now: datetime | None = None,
 ) -> int:
     """Run the pipeline (the light midday version if `light`) once; exit 1 if it failed outright.
 
     With `if_plugged_in`, a Mac on battery skips the run (a skip is not a failure: exit 0, and no
     run is recorded, so the page keeps showing the last real run). An unreadable power source
     runs the job anyway.
+
+    With `catch_up` (the 30-minute catch-up job, CH-181), nothing happens unless tonight's run was
+    skipped for battery and the Mac is now plugged in before the cutoff; then the full nightly
+    runs once.
     """
     if if_plugged_in and power() == "battery":
         print("Skipped: the Mac is on battery power. The next scheduled run will try again.")
         logging.getLogger("careerhub.nightly").info("skipped: on battery")
+        try:  # remember the skip so the catch-up job can find it; a skip never fails
+            engine = open_database(store)
+            migrate(engine)
+            with session_factory(engine)() as session:
+                record_skip(session)
+        except (StorageError, SecretsError, OSError):
+            logging.getLogger("careerhub.nightly").warning("could not record the skip")
         return 0
     engine = open_database(store)
     migrate(engine)
+    if catch_up:
+        with session_factory(engine)() as session:
+            decision = decide_catch_up(session, now or utcnow(), power(), load_settings())
+        if not decision.run:
+            print(f"Catch-up: nothing to do ({decision.reason}).")
+            return 0
+        print(f"Catch-up: running tonight's skipped run ({decision.reason}).")
     report = (run_refresh if light else run_nightly)(engine, store)
     print(report.summary())
     return 1 if any(p.startswith("run failed") for p in report.problems) else 0
@@ -526,9 +574,9 @@ def _attention(session: Session, options: list[str]) -> int:
     return 0
 
 
-def _web(options: list[str]) -> int:
-    """`hub web [--port N]`: serve the web app on 127.0.0.1 only and print the link to open it."""
-    port = load_settings().web_port
+def _port_from(options: list[str], default: int) -> int | None:
+    """Read `--port N` from `options`; None (after printing the usage) for anything else."""
+    port = default
     words = list(options)
     while words:
         flag = words.pop(0)
@@ -536,26 +584,95 @@ def _web(options: list[str]) -> int:
             port = int(words.pop(0))
         elif flag == "--host":
             print("hub web only listens on 127.0.0.1; it cannot be told to use another address.")
-            return 2
+            return None
         else:
             print(USAGE)
-            return 2
+            return None
+    return port
+
+
+def _serve(port: int, app_for: Callable[[str], Any]) -> int:
+    """Print the one-time link and serve `app_for(token)` on 127.0.0.1 until Ctrl-C."""
     import secrets
 
     import uvicorn
 
-    from careerhub.web.app import create_app, make_session_opener
-
     token = secrets.token_urlsafe(32)
     print(f"Career Hub is at http://127.0.0.1:{port}/?t={token}")
     print("Open that link; press Ctrl-C to stop.")
-    uvicorn.run(
-        create_app(token, port, open_session=make_session_opener()),
-        host="127.0.0.1",
-        port=port,
-        log_level="warning",
-    )
+    uvicorn.run(app_for(token), host="127.0.0.1", port=port, log_level="warning")
     return 0
+
+
+def _web(options: list[str]) -> int:
+    """`hub web [--port N]`: serve the web app on 127.0.0.1 only and print the link to open it."""
+    port = _port_from(options, load_settings().web_port)
+    if port is None:
+        return 2
+    from careerhub.web.app import (
+        create_app,
+        make_eval_opener,
+        make_router_opener,
+        make_session_opener,
+    )
+
+    return _serve(
+        port,
+        lambda token: create_app(
+            token,
+            port,
+            open_session=make_session_opener(),
+            open_router=make_router_opener(),
+            open_eval=make_eval_opener(),
+        ),
+    )
+
+
+def _demo(options: list[str]) -> int:
+    """`hub demo [--reset] [--port N]`: the web app on invented data in its own folder."""
+    from careerhub.demo import (
+        LABEL,
+        MARKER,
+        FileKeyStore,
+        build_demo,
+        check_folder,
+        demo_folder,
+        reset_folder,
+    )
+    from careerhub.web.app import create_app, database_opens, make_session_opener
+
+    reset = "--reset" in options
+    # Not load_settings(): that would read (and create) the real data folder.
+    port = _port_from([o for o in options if o != "--reset"], Settings().web_port)
+    if port is None:
+        return 2
+    folder = demo_folder()
+    try:
+        check_folder(folder)
+        if reset:
+            reset_folder(folder)
+        if not (folder / MARKER).exists():
+            build_demo(folder)
+            print(f"Made the demo folder {folder} with invented data.")
+        else:
+            os.environ[DATA_DIR_ENV] = str(folder)
+    except ValueError as error:
+        print(f"Couldn't start the demo. {error}")
+        return 1
+    keys = FileKeyStore(folder)
+    print("Demo data only: no model calls, no network, no Keychain. Your real data is untouched.")
+    return _serve(
+        port,
+        lambda token: create_app(
+            token,
+            port,
+            lambda: database_opens(keys),
+            make_session_opener(keys),
+            keys,
+            lambda: False,
+            banner=LABEL,
+        ),
+    )
 
 
 def _add_job(
@@ -621,6 +738,31 @@ def _find_boards(session: Session, client: httpx.Client | None = None) -> int:
         print("No board found for: " + ", ".join(report.missed))
     if report.stopped:
         print(report.stopped)
+    return 0
+
+
+def _targets_add(session: Session, args: list[str], client: httpx.Client | None = None) -> int:
+    """`hub targets add <name> [--careers-url URL]`: follow a company and look for its board."""
+    url: str | None = None
+    words = list(args)
+    if "--careers-url" in words:
+        at = words.index("--careers-url")
+        if at + 1 >= len(words):
+            print(USAGE)
+            return 2
+        url = words[at + 1]
+        del words[at : at + 2]
+    if not words:
+        print(USAGE)
+        return 2
+    try:
+        targets = load_targets()
+        lines = track_company(session, targets, " ".join(words), url, client, _aliases())
+        save_targets(targets)
+    except TargetsError as error:
+        print(error)
+        return 1
+    print("\n".join(lines))
     return 0
 
 
@@ -775,6 +917,22 @@ def _score_all() -> int:
         return 0
     print("The next nightly run will score and tailor every job again (this can cost money).")
     return 0
+
+
+def _ambiguous_schools_note() -> str:
+    """Name any of your schools that is a short name for several (PSU), and how to settle it."""
+    lines = []
+    for school in my_schools(None):
+        choices = ambiguous_choices(school)
+        if choices:
+            lines.append(
+                f"  - {school!r} could mean: {'; '.join(choices)}. Under school_aliases in "
+                "preferences.yaml, give the one you mean, for example:\n"
+                f'      "{choices[0]}": ["{school}"]'
+            )
+    if not lines:
+        return ""
+    return "\nSchool names to settle (they match nothing until you do):\n" + "\n".join(lines)
 
 
 def _readiness_summary() -> str:

@@ -7,6 +7,7 @@ Discover postings and keep one row per job (build step 4, epic CH-21).
 | `store` | `NormalizedJob`, `store_jobs`: upsert, close missing, link duplicates | CH-59 | Built |
 | `sources` | Propose, approve, reject, disable sources; `require_approved` | CH-61 | Built |
 | `extract` | `JobFields` and `extract_and_save`: posting text into structured fields | CH-62 | Built |
+| `careers_page` | `track_company`: follow a company and find its board from its own careers page | CH-188 | Built (the web button is CH-198) |
 | `rank_evals` | `run_ranking_eval`: labeled postings through the whole pipeline | CH-68 | Built |
 | `tailoring` | `tailor_job`: what to lead with, gaps, resume edits (notes only) | CH-75 | Built |
 | `rank_pairs` | `run_pair_eval`: two postings that differ in one way (an unlisted skill, pay) and how their scores compare | CH-175 | Built |

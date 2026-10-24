@@ -51,6 +51,8 @@ that supersedes the old one.
 | [0043](0043-interface-stack.md) | Interface stack: FastAPI, Jinja2, bundled HTMX 2.0.11, strict CSP, and how pages are tested | Accepted |
 | [0044](0044-skills-are-a-light-signal.md) | Skills are a light, partial signal; pay is scored; one skill is enough to start | Accepted |
 | [0045](0045-splitting-merged-companies.md) | A company merge is logged so it can be undone exactly | Accepted |
+| [0046](0046-school-table-and-related-schools.md) | A reviewed school table; branch-campus and same-system ties; ambiguous abbreviations | Accepted |
+| [0047](0047-keep-yaml-comments.md) | Editing the user's YAML keeps comments and layout (ruamel.yaml, writing only) | Accepted |
 
 ## Template
 
