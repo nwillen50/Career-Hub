@@ -14,6 +14,7 @@ from urllib.parse import quote
 
 from sqlalchemy.orm import Session
 
+from careerhub.modules.network.schools_table import RANK, Tie, ambiguous_choices, tie_between
 from careerhub.profile.facts import accepted_facts
 from careerhub.profile.files import ProfileFileError, load_preferences, load_profile_doc
 
@@ -59,15 +60,55 @@ def school_key(name: str, aliases: dict[str, list[str]] | None = None) -> str:
     return BUILT_IN_ALIASES.get(key, key)
 
 
+def _user_name(name: str, aliases: dict[str, list[str]] | None) -> str:
+    """Return the user's chosen full name when `name` is one of their aliases, else `name`."""
+    for canonical, names in (aliases or {}).items():
+        if school_key(name) in {school_key(n) for n in [canonical, *names]}:
+            return canonical
+    return name
+
+
+def _is_same(a: str, b: str, aliases: dict[str, list[str]] | None) -> bool:
+    """Say whether two names are one school: the user's aliases win, then the table, then words."""
+    a, b = _user_name(a, aliases), _user_name(b, aliases)
+    key_a, key_b = school_key(a, aliases), school_key(b, aliases)
+    if key_a == key_b and school_key(a) != school_key(b):
+        return True  # equal only because of the user's own school alias
+    tie = tie_between(a, b)
+    if tie is not None:
+        return tie.kind == "same"
+    if ambiguous_choices(a) or ambiguous_choices(b):
+        return False  # "PSU" means several schools: it matches nothing, not even itself
+    return key_a == key_b
+
+
 def same_school(
     schools: Iterable[str], mine: Sequence[str], aliases: dict[str, list[str]] | None = None
 ) -> str | None:
     """Return the first of `schools` that is one of `mine` (as written by the person), else None."""
-    wanted = {school_key(s, aliases) for s in mine if school_key(s, aliases)}
     for school in schools:
-        if school_key(school, aliases) in wanted:
+        if any(school_key(m, aliases) and _is_same(school, m, aliases) for m in mine):
             return school
     return None
+
+
+def related_school(
+    schools: Iterable[str], mine: Sequence[str], aliases: dict[str, list[str]] | None = None
+) -> Tie | None:
+    """Return the strongest weaker tie (branch campus, then same system) between the two lists.
+
+    Only meaningful when `same_school` found nothing. The label reads "Branch campus: Penn State"
+    or "Same system: University of California".
+    """
+    best: Tie | None = None
+    for school in schools:
+        for m in mine:
+            if _is_same(school, m, aliases):
+                continue
+            tie = tie_between(_user_name(school, aliases), _user_name(m, aliases))
+            if tie and RANK[tie.kind] > RANK[best.kind if best else "none"]:
+                best = tie
+    return best if best and best.kind in ("branch", "system") else None
 
 
 def my_schools(session: Session | None) -> list[str]:

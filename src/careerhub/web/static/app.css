@@ -13,6 +13,8 @@ a:hover { color: var(--accent-hover); }
 .bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4);
   background: var(--header); color: var(--header-text); padding: var(--space-3) var(--space-5);
   border-bottom: 3px solid var(--brass-rule); }
+.demo-banner { margin: 0; padding: var(--space-2) var(--space-5); text-align: center; font-weight: 600;
+  background: var(--panel); color: var(--panel-text); border-bottom: 1px solid var(--panel-border); }
 .brand { font-family: var(--font-heading); font-weight: var(--heading-weight); }
 .tabs { display: flex; flex-wrap: wrap; gap: var(--space-3); list-style: none; margin: 0; padding: 0; }
 .tabs a { color: var(--tab-inactive); text-decoration: none; padding: var(--space-2) var(--space-3);

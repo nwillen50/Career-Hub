@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/conversation">&larr; Back to the conversation</a></p>
+<p class="muted">Rubric change: <strong>{{ proposal.title }}</strong>. This runs the ranking check on your own labeled postings with the rubric as it was and as it is now, so you can see whether the change helped.</p>
+{% if problem %}<section class="card error" role="alert"><p>{{ problem }}</p></section>{% endif %}
+{% if report %}
+<section aria-labelledby="res-h"><h2 id="res-h">Before and after ({{ report.postings }} labeled postings)</h2>
+  <table>
+    <caption class="muted">The ranking check, with the old rubric and the new one</caption>
+    <thead><tr><th scope="col">Measure</th><th scope="col">Before</th><th scope="col">After</th></tr></thead>
+    <tbody>{% for measure, before, after in rows %}<tr><td>{{ measure }}</td><td>{{ before }}</td><td>{{ after }}</td></tr>{% endfor %}</tbody>
+  </table>
+  <p class="muted">Nothing was changed. To go back, restore the <code>rubric.yaml.before-…</code> copy next to your rubric file.</p>
+</section>
+{% else %}
+<section aria-labelledby="run-h"><h2 id="run-h">Run the check</h2>
+  {% if warning %}<p class="card">{{ warning }}</p>{% endif %}
+  {% if old_missing %}<p class="card">The copy of the old rubric kept when you accepted this change is gone, so there is nothing to compare with.</p>{% endif %}
+  {% if can_run %}
+  <p>This reads {{ count }} labeled posting{{ "s" if count != 1 }} twice and scores them with each rubric. That is <strong>up to {{ calls }} model calls</strong> (fewer if saved answers are reused), and it can take a few minutes. It only runs when you press the button.</p>
+  <form method="post" action="/proposals/{{ proposal.id }}/effect">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">Run the check (up to {{ calls }} calls)</button>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

@@ -16,6 +16,17 @@
   {% endfor %}
 </section>
 {% endif %}
+{% if checkable %}
+<section aria-labelledby="chk-h"><h2 id="chk-h">Rubric changes you accepted</h2>
+  <p class="muted">See whether a change helped by running the ranking check on your labeled postings. It uses model calls, so it only runs when you ask.</p>
+  {% for item in checkable %}
+  <article class="card">
+    <h3>{{ item.title }}</h3>
+    <a href="/proposals/{{ item.id }}/effect">Check the effect</a>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
 {% if declined %}
 <section aria-labelledby="decl-h"><h2 id="decl-h">Declined</h2>
   <p class="muted">Suggestions you said no to in the last month. Reopen one to see it again; nothing is applied until you press Accept.</p>
