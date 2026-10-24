@@ -190,6 +190,7 @@ def create_app(
     key_store: KeyStore | None = None,
     local_running: Callable[[], bool] = ollama_is_running,
     open_router: Callable[[], tuple[Router, list[str]]] | None = None,
+    banner: str | None = None,
 ) -> FastAPI:
     """Build the app. `token` is this start's secret; `check_database` says if data is usable.
 
@@ -200,6 +201,7 @@ def create_app(
     templates = Jinja2Templates(
         directory=str(resources.files("careerhub.web").joinpath("templates"))
     )
+    templates.env.globals["banner"] = banner  # shown on every page (the demo's "Demo data")
     sessions: dict[str, str] = {}  # session id -> CSRF token
     opened = {"ok": False}  # once the database has opened, it is not re-checked on every page
     static_dir = str(resources.files("careerhub.web").joinpath("static"))

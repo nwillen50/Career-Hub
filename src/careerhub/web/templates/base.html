@@ -12,6 +12,7 @@
 </head>
 <body hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
 <a class="skip" href="#main">Skip to content</a>
+{% if banner %}<p class="demo-banner" role="note">{{ banner }}</p>{% endif %}
 <header class="bar">
   <div class="brand">Career Hub</div>
   {% if not plain %}
