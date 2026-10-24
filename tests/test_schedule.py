@@ -65,3 +65,15 @@ def test_hub_schedule_install_uses_the_setting_and_prints_instructions(
     plist = tmp_path / "Library" / "LaunchAgents" / f"{LABEL}.plist"
     assert "not running yet" in out and "launchctl bootstrap" in out and str(plist) in out
     assert plistlib.loads(plist.read_bytes())["StartCalendarInterval"] == {"Hour": 5, "Minute": 45}
+
+
+def test_the_nightly_job_can_require_power_and_the_refresh_job_cannot(tmp_path: Path) -> None:
+    """Merge of CH-163 and CH-165: --if-plugged-in goes only on the nightly job's arguments."""
+    nightly = plistlib.loads(
+        render_plist("03:30", python="/p", logs=tmp_path, command="nightly", require_power=True)
+    )
+    assert nightly["ProgramArguments"][-2:] == ["nightly", "--if-plugged-in"]
+    refresh = plistlib.loads(render_plist("12:30", python="/p", logs=tmp_path, command="refresh"))
+    assert refresh["ProgramArguments"][-1] == "refresh"
+    with pytest.raises(ValueError):
+        render_plist("12:30", python="/p", logs=tmp_path, command="refresh", require_power=True)

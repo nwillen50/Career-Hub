@@ -85,7 +85,7 @@ from careerhub.modules.network.mappings import (
 from careerhub.modules.notify import MacNotifier, notify_once_a_day
 from careerhub.modules.plan import suggest_week
 from careerhub.modules.plan.ics import IcsError
-from careerhub.pipeline import run_nightly
+from careerhub.pipeline import run_nightly, run_refresh
 from careerhub.power import read_power_source
 from careerhub.profile.changes import check, force_rescore
 from careerhub.profile.extract import ProfileFacts
@@ -94,7 +94,7 @@ from careerhub.profile.files import ProfileFileError, load_preferences, load_pro
 from careerhub.profile.models import PlanSettings, Preferences, ProfileDoc
 from careerhub.profile.profile import Profile, format_profile, load_profile
 from careerhub.profile.readiness import current_readiness, missing_items, set_scoring
-from careerhub.schedule import install_plist, launchctl_commands
+from careerhub.schedule import LABEL, REFRESH_LABEL, install_plist, launchctl_commands
 from careerhub.web.shortlist import write_shortlist
 
 USAGE = """Usage:
@@ -109,6 +109,8 @@ USAGE = """Usage:
                                              --map/--sheet/--group are remembered per file name)
   hub alumni mappings | forget <file>        (the remembered column mappings)
   hub schedule install                       (write the nightly launchd job; prints how to start it)
+  hub refresh                                (light midday run: new jobs and filters only, no paid
+                                             models; turn the schedule on with midday_refresh_on)
   hub backup list | restore <file> --to <new folder>
                           (restores into a NEW folder and checks it; never touches your live data)
   hub nightly [--if-plugged-in]              (run the whole pipeline once; skip on battery)
@@ -183,6 +185,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _alumni_forget(args[2])
         if args == ["schedule", "install"]:
             return _schedule_install()
+        if args == ["refresh"]:
+            return _nightly(store, light=True)
         if args == ["backup", "list"]:
             return _backup_list()
         if len(args) == 5 and args[:2] == ["backup", "restore"] and args[3] == "--to":
@@ -425,13 +429,19 @@ def _people_import(session: Session, path: Path, options: list[str] | None = Non
 
 
 def _schedule_install() -> int:
-    """Write the launchd job at the `nightly_run_time` setting; print how to start and stop it."""
+    """Write the launchd job(s); print how to start and stop each. Nothing is started here."""
     settings = load_settings()
-    path = install_plist(settings.nightly_run_time, require_power=settings.nightly_require_power)
-    start, stop = launchctl_commands(path)
-    print(
-        f"Wrote {path}. It is not running yet. To start it:\n  {start}\nTo stop it later:\n  {stop}"
-    )
+    jobs = [("nightly", settings.nightly_run_time, LABEL)]
+    if settings.midday_refresh_on:
+        jobs.append(("refresh", settings.midday_refresh_time, REFRESH_LABEL))
+    for command, run_time, label in jobs:
+        require_power = command == "nightly" and settings.nightly_require_power
+        path = install_plist(run_time, command=command, require_power=require_power)
+        start, stop = launchctl_commands(path, label)
+        print(
+            f"Wrote {path}. It is not running yet. To start it:\n  {start}\n"
+            f"To stop it later:\n  {stop}"
+        )
     return 0
 
 
@@ -465,9 +475,12 @@ def _backup_restore(store: KeyStore, backup: Path, folder: Path) -> int:
 
 
 def _nightly(
-    store: KeyStore, if_plugged_in: bool = False, power: Callable[[], str] = read_power_source
+    store: KeyStore,
+    light: bool = False,
+    if_plugged_in: bool = False,
+    power: Callable[[], str] = read_power_source,
 ) -> int:
-    """Run the pipeline once; exit code 1 if the run failed outright.
+    """Run the pipeline (the light midday version if `light`) once; exit 1 if it failed outright.
 
     With `if_plugged_in`, a Mac on battery skips the run (a skip is not a failure: exit 0, and no
     run is recorded, so the page keeps showing the last real run). An unreadable power source
@@ -479,7 +492,7 @@ def _nightly(
         return 0
     engine = open_database(store)
     migrate(engine)
-    report = run_nightly(engine, store)
+    report = (run_refresh if light else run_nightly)(engine, store)
     print(report.summary())
     return 1 if any(p.startswith("run failed") for p in report.problems) else 0
 

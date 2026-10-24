@@ -163,6 +163,10 @@ class Settings(BaseModel):
     model_routes: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     #: Local time (24-hour ``HH:MM``) the nightly run starts.
     nightly_run_time: str = "02:00"
+    #: Whether `hub schedule install` also writes the light midday refresh job (off until asked).
+    midday_refresh_on: bool = False
+    #: Local time (24-hour ``HH:MM``) the midday refresh starts.
+    midday_refresh_time: str = "12:30"
 
     @model_validator(mode="after")
     def _check_providers_and_routes(self) -> Settings:
@@ -190,7 +194,7 @@ class Settings(BaseModel):
             raise ValueError("must be an IANA timezone name like America/New_York") from None
         return value
 
-    @field_validator("nightly_run_time")
+    @field_validator("nightly_run_time", "midday_refresh_time")
     @classmethod
     def _check_clock_time(cls, value: str) -> str:
         """Require a 24-hour ``HH:MM`` time."""
