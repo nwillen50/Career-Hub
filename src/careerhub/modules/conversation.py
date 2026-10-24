@@ -18,13 +18,16 @@ from sqlalchemy.orm import Session
 from careerhub.core.models import Assessment, ConversationMessage, Job
 from careerhub.llm import BudgetExceeded, LLMRequest, PrivacyTier, PrivacyViolation, Router
 from careerhub.llm.providers import ProviderError
+from careerhub.llm.validated import ValidationFailed, complete_validated
 from careerhub.modules.jobs.scoring import current_rank_adjustments, ranked_jobs, rubric_text
+from careerhub.modules.proposals import ConversationProposal, ProposalError, propose
+from careerhub.profile.files import ProfileFileError
 from careerhub.profile.redact import personal_text
 from careerhub.profile.rubric import Rubric
 from careerhub.prompts import load_prompt, render
 
 PROMPT_NAME = "conversation"
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2
 MAX_QUESTION_CHARS = 600
 MAX_ANSWER_CHARS = 1500
 TOP_JOBS_IN_CONTEXT = 5
@@ -37,6 +40,8 @@ class Answer:
 
     ok: bool
     text: str
+    #: The id of the suggested preference change saved as a pending proposal, if there is one.
+    proposal_id: int | None = None
 
 
 def _job_block(job: Job, assessment: Assessment | None, rank: int | None) -> str:
@@ -120,22 +125,23 @@ def ask(
         max_tokens=400,
         essential=False,  # a chat answer may pause when the budget is used up
     )
-    reply: str | None = None
-    for provider in routes:
-        try:
-            reply = router.complete(request, provider).text.strip()
-            break
-        except BudgetExceeded:
-            return Answer(False, "The monthly model budget is used up, so questions are paused.")
-        except PrivacyViolation:
-            return Answer(
-                False, "That model is not allowed to see personal data. Check `hub models routes`."
-            )
-        except ProviderError:
-            continue  # try the next model on the route
-    if not reply:
+    try:
+        parsed = complete_validated(router, request, ConversationProposal, list(routes))
+    except BudgetExceeded:
+        return Answer(False, "The monthly model budget is used up, so questions are paused.")
+    except PrivacyViolation:
+        return Answer(
+            False, "That model is not allowed to see personal data. Check `hub models routes`."
+        )
+    except (ProviderError, ValidationFailed):
         return Answer(False, "No model could answer right now. Try again later.")
-    reply = reply[:MAX_ANSWER_CHARS]
+    reply = parsed.answer.strip()[:MAX_ANSWER_CHARS]
+    proposal_id: int | None = None
+    if parsed.change is not None:
+        try:
+            proposal_id = propose(session, parsed.change).id
+        except (ProposalError, ProfileFileError) as problem:
+            reply = f"{reply}\n\n(Not suggested: {problem})"
     session.add_all(
         [
             ConversationMessage(role="user", text=question, job_id=job_id),
@@ -143,4 +149,4 @@ def ask(
         ]
     )
     session.commit()
-    return Answer(True, reply)
+    return Answer(True, reply, proposal_id)

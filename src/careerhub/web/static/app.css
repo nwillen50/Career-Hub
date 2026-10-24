@@ -51,3 +51,4 @@ input, select { font: inherit; color: var(--text); background: var(--surface); b
 textarea { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: var(--space-2); }
 .answer { border-left: 4px solid var(--brass-rule); }
+.inline-form { display: inline-block; margin-right: var(--space-2); }
