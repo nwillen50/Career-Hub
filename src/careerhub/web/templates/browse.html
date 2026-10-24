@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "macros.html" import job_card with context %}
+{% block content %}
+<form method="get" action="/browse" class="card" role="search">
+  <p>
+    <label for="q">Search title, company, place, or summary</label>
+    <input id="q" name="q" type="search" value="{{ view.query.text }}" maxlength="100">
+    <label for="sort">Sort by</label>
+    <select id="sort" name="sort">
+      {% for key, label in sorts.items() %}<option value="{{ key }}"{% if key == view.query.sort %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <label><input type="checkbox" name="group" value="place"{% if view.query.group %} checked{% endif %}> Group by place</label>
+  </p>
+  <fieldset>
+    <legend>Filters</legend>
+    <p>
+      <label for="min_score">Score from</label>
+      <input id="min_score" name="min_score" type="number" min="0" max="100" value="{{ view.query.min_score if view.query.min_score is not none }}">
+      <label for="max_score">to</label>
+      <input id="max_score" name="max_score" type="number" min="0" max="100" value="{{ view.query.max_score if view.query.max_score is not none }}">
+      <label for="company">Company</label>
+      <input id="company" name="company" type="text" value="{{ view.query.company }}" maxlength="100">
+      <label for="place">Place</label>
+      <input id="place" name="place" type="text" value="{{ view.query.place }}" maxlength="100">
+    </p>
+    <p>
+      <label for="mode">Work mode</label>
+      <select id="mode" name="mode"><option value="">Any</option>{% for key, label in modes.items() %}<option value="{{ key }}"{% if key == view.query.mode %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <label for="age">Posted</label>
+      <select id="age" name="age"><option value="">Any time</option>{% for key, label in ages.items() %}<option value="{{ key }}"{% if key == view.query.age %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <label for="source">Source</label>
+      <select id="source" name="source"><option value="">Any</option>{% for id, name in view.sources %}<option value="{{ id }}"{% if id == view.query.source %} selected{% endif %}>{{ name }}</option>{% endfor %}</select>
+      <label for="reacted">Reactions</label>
+      <select id="reacted" name="reacted"><option value="">Show all (Today hides jobs you reacted to)</option>{% for key, label in reacted_options.items() %}<option value="{{ key }}"{% if key == view.query.reacted %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+    </p>
+    <p><label><input type="checkbox" name="filtered" value="1"{% if view.query.filtered %} checked{% endif %}> Show jobs your filters removed, with the reason</label></p>
+  </fieldset>
+  <p>
+    <button type="submit">Search</button>
+    {% if view.query.text or view.query.has_filters %}<a href="/browse">Clear search and filters</a>{% endif %}
+  </p>
+</form>
+<p class="muted" role="status">{{ view.total }} open job{{ "s" if view.total != 1 }}{% if view.query.text %} match “{{ view.query.text }}”{% endif %}{% if view.query.filtered %} (removed by your filters){% endif %}. Page {{ view.query.page }} of {{ view.pages }}.</p>
+<section aria-labelledby="jobs-h">
+  <h2 id="jobs-h">Jobs</h2>
+  {% if view.query.group %}
+    {% for country in place_groups %}
+    <h3>{{ country.name }} ({{ country.count }})</h3>
+    {% for city in country.cities %}
+      {% if city.name %}<h4>{{ city.name }} ({{ city.positions|length }})</h4>{% endif %}
+      {% for position in city.positions %}{{ job_card(view.cards[position], view.first_rank + position, csrf, 5 if city.name else 4) }}{% endfor %}
+    {% endfor %}
+    {% endfor %}
+  {% else %}
+    {% for card in view.cards %}{{ job_card(card, view.first_rank + loop.index0, csrf) }}{% endfor %}
+  {% endif %}
+  {% if view.filtered_rows %}
+  <p class="muted">These jobs were removed by your own rules, so they have no score and no buttons. If a rule is too strict, change it in preferences.yaml.</p>
+  <ul>
+    {% for row in view.filtered_rows %}<li><a href="/jobs/{{ row.job_id }}">{{ row.title }}</a> · {{ row.company }}{% if row.location %} · {{ row.location }}{% endif %}<br><span class="muted">Removed because: {{ row.reasons|join("; ") or "no reason saved" }}</span></li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% if not view.cards and not view.filtered_rows %}
+  <p class="card">{% if view.query.text or view.query.has_filters %}No jobs match. <a href="/browse">Clear the search and filters</a>.{% else %}Nothing ranked yet. Check that a source is approved and the nightly run finished, in <a href="/status">System status</a>.{% endif %}</p>
+  {% endif %}
+</section>
+{% if view.pages > 1 %}
+<nav aria-label="Pages">
+  {% if view.has_previous %}<a href="/browse?{{ view.query.params(page=view.query.page - 1) }}" rel="prev">Previous page</a>{% endif %}
+  {% if view.has_next %}<a href="/browse?{{ view.query.params(page=view.query.page + 1) }}" rel="next">Next page</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

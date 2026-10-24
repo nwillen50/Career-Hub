@@ -9,10 +9,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from careerhub.catchup import catchup_note
 from careerhub.core.companies import pending_merges
 from careerhub.core.models import LLMUsage, RunLog, Source, utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
@@ -20,6 +22,7 @@ from careerhub.core.settings import load_settings
 from careerhub.llm.catalog import PERSONAL_TASKS, PUBLIC_TASKS, ollama_is_running, with_catalog
 from careerhub.llm.cost import month_start
 from careerhub.profile.readiness import current_readiness
+from careerhub.web.localtime import local_stamp
 
 MAX_RUNS = 8
 
@@ -63,15 +66,13 @@ class StatusView:
     missing: list[str] = field(default_factory=list)
     proposed_sources: int = 0
     merge_suggestions: int = 0
+    #: Set when a night was skipped on battery: "Skipped on battery at ..., caught up at 6:40."
+    catchup_note: str | None = None
 
     @property
     def spend_text(self) -> str:
         """Describe spending against the monthly budget."""
         return f"${self.spent:,.2f} of ${self.budget:,.2f} this month"
-
-
-def _stamp(moment: datetime | None) -> str | None:
-    return f"{moment:%a %b %d, %H:%M} UTC" if moment else None
 
 
 def gather_status(
@@ -83,11 +84,12 @@ def gather_status(
     """Collect the status of the whole system as of `now`."""
     now = now or utcnow()
     settings = load_settings()
+    zone = ZoneInfo(settings.timezone)
     runs = [
         RunView(
             r.step,
             r.status,
-            _stamp(r.started_at) or "",
+            local_stamp(r.started_at, zone) or "",
             r.items_processed,
             f"${r.cost_usd:,.2f}",
             r.error_summary,
@@ -97,7 +99,7 @@ def gather_status(
         )
     ]
     sources = [
-        SourceView(s.name, s.kind, s.status, s.health, _stamp(s.last_fetched_at))
+        SourceView(s.name, s.kind, s.status, s.health, local_stamp(s.last_fetched_at, zone))
         for s in session.scalars(select(Source).order_by(Source.id))
         if s.kind != "manual"
     ]
@@ -128,6 +130,7 @@ def gather_status(
         missing=list(readiness.missing),
         proposed_sources=sum(1 for s in sources if s.status == "proposed"),
         merge_suggestions=len(pending_merges(session)),
+        catchup_note=catchup_note(session, zone),
         models_on=models_on,
         routes=routes,
         models_problem=models_problem,

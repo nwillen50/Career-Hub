@@ -14,6 +14,8 @@ ADR-0043).
 | `people_view` | Contacts and Interactions tabs | CH-171 | Built |
 | `plan_view` | Plan: the weekly plan's suggested blocks | CH-143 | Built |
 | `status_view` | System status: runs, sources, spending, models, readiness, what waits on you | CH-144 | Built |
+| `browse_view` | Browse tab: every open job, search, filters (score, company, place, mode, age, source, reactions, removed-by-filters), sort, paging, group by place (the labeling view is CH-201) | CH-187, CH-200 | Parts 1 and 2 built |
+| `profile_view` | Profile tab: what Career Hub knows about you, readiness, rubric, and facts waiting for Accept or Reject | CH-195 | Built |
 | `grouping` | Group by place (country, then city) on Today and the Tracker | CH-121, CH-170 | Built |
 | Conversation panel | Questions, and proposals for preferences, rubric, and sources (Accept or Reject) | CH-158 to CH-161 | Built |
 | Browse | Search and filter every open job | CH-187 | Planned |
@@ -41,3 +43,9 @@ Each job lists up to two people you know at the company (from `hub paths` rules,
 reasons, or says that you don't know anyone there yet. Names, titles, and reasons are escaped like
 all page text. Your own `how_known` notes appear in the reasons, so the page stays in the private
 data folder.
+
+## Demo mode
+
+`create_app(..., banner=text)` shows `text` in a strip above the top bar on every page. `hub demo`
+(see `careerhub/demo.py`) uses it to label invented data "Demo data". Nothing else in the web app
+knows about the demo: it reads the demo folder the same way it reads the real one.

@@ -27,6 +27,7 @@ from datetime import datetime
 from importlib import resources
 from typing import Annotated, Any
 from urllib.parse import parse_qs, urlsplit
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import FastAPI, Path, Query, Request, Response
@@ -37,12 +38,13 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from careerhub.core.migrate import migrate
-from careerhub.core.models import Application, Job, utcnow
+from careerhub.core.models import Application, Job, Proposal, utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
 from careerhub.core.settings import SettingsError, load_settings
 from careerhub.core.storage import StorageError, open_database, session_factory
-from careerhub.llm import Router
+from careerhub.llm import BudgetExceeded, PrivacyViolation, Router
 from careerhub.llm.catalog import ollama_is_running, with_catalog
+from careerhub.llm.providers import ProviderError
 from careerhub.llm.setup import NoRoute, build_router, routes_for
 from careerhub.modules.conversation import ask, build_context, recent_messages
 from careerhub.modules.jobs.applications import (
@@ -52,6 +54,7 @@ from careerhub.modules.jobs.applications import (
 )
 from careerhub.modules.jobs.applications import track as change_status
 from careerhub.modules.jobs.careers_page import new_client, track_company
+from careerhub.modules.jobs.evals import EvalError
 from careerhub.modules.jobs.reactions import (
     UNDO_SECONDS,
     ReactionError,
@@ -65,19 +68,46 @@ from careerhub.modules.network.interactions import (
     CHANNELS,
     InteractionError,
     log_interaction,
+    set_contact_details,
     set_follow_up_done,
     set_own_words,
 )
-from careerhub.modules.proposals import ProposalError, declined_proposals, pending_proposals
+from careerhub.modules.proposals import (
+    RUBRIC_KIND,
+    ProposalError,
+    declined_proposals,
+    pending_proposals,
+)
 from careerhub.modules.proposals import accept as accept_proposal
 from careerhub.modules.proposals import reject as reject_proposal
 from careerhub.modules.proposals import reopen as reopen_proposal
+from careerhub.modules.rubric_effect import (
+    MEANINGFUL_LABELS,
+    EffectReport,
+    accepted_rubric_changes,
+    check_effect,
+    estimate_calls,
+    load_labels,
+    rubric_before,
+)
+from careerhub.profile.facts import UnknownExtraction, decide
 from careerhub.profile.files import ProfileFileError, load_preferences, load_profile_doc
+from careerhub.profile.models import HardConstraints
 from careerhub.profile.rubric import load_rubric
+from careerhub.web.browse_view import (
+    AGES,
+    MODES,
+    REACTED,
+    SORTS,
+    BrowseQuery,
+    gather_browse,
+)
 from careerhub.web.grouping import group_by_place
 from careerhub.web.job_detail import gather_job
+from careerhub.web.localtime import local_stamp
 from careerhub.web.people_view import gather_contacts, gather_interactions, people_choices
 from careerhub.web.plan_view import gather_plan
+from careerhub.web.profile_view import gather_profile
 from careerhub.web.status_view import gather_status
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
 from careerhub.web.tracker_view import (
@@ -123,18 +153,22 @@ CSP = (
 #: The tabs, in order: (path, label).
 TABS = (
     ("/today", "Today"),
+    ("/browse", "Browse"),
     ("/plan", "Plan"),
     ("/tracker", "Tracker"),
     ("/contacts", "Contacts"),
     ("/interactions", "Interactions"),
+    ("/profile", "Profile"),
     ("/status", "System status"),
 )
 PAGES = {
     "/today": ("Today", "Your top jobs, follow-ups, and deadlines will appear here."),
+    "/browse": ("Browse", "Every open job will appear here."),
     "/plan": ("Plan", "This week's suggested blocks will appear here."),
     "/tracker": ("Tracker", "Applications and their statuses will appear here."),
     "/contacts": ("Contacts", "The people you know will appear here."),
     "/interactions": ("Interactions", "Your contact log and follow-ups will appear here."),
+    "/profile": ("Profile", "What Career Hub knows about you will appear here."),
     "/status": ("System status", "Runs, sources, models, and spending will appear here."),
 }
 
@@ -165,6 +199,28 @@ def make_session_opener(store: KeyStore | None = None) -> Callable[[], Session]:
     return open_session
 
 
+def make_eval_opener(
+    store: KeyStore | None = None,
+) -> Callable[[], tuple[Router, list[str], list[str]]]:
+    """Return a function that builds the router and the extract and score routes for evals.
+
+    Raises `NoRoute` when extraction or scoring has no usable model.
+    """
+
+    def open_eval() -> tuple[Router, list[str], list[str]]:
+        keys = store or KeychainKeyStore()
+        sessions = session_factory(open_database(keys, one_connection_per_use=True))
+        settings = with_catalog(load_settings(), keys, ollama_is_running).settings
+        setup = build_router(settings, keys, sessions)
+        return (
+            setup.router,
+            routes_for(settings, "extract", setup.built),
+            routes_for(settings, "score", setup.built),
+        )
+
+    return open_eval
+
+
 def make_router_opener(
     store: KeyStore | None = None,
 ) -> Callable[[], tuple[Router, list[str]]]:
@@ -192,6 +248,8 @@ def create_app(
     local_running: Callable[[], bool] = ollama_is_running,
     open_router: Callable[[], tuple[Router, list[str]]] | None = None,
     track_client: Callable[[], httpx.Client] = new_client,
+    banner: str | None = None,
+    open_eval: Callable[[], tuple[Router, list[str], list[str]]] | None = None,
 ) -> FastAPI:
     """Build the app. `token` is this start's secret; `check_database` says if data is usable.
 
@@ -202,6 +260,7 @@ def create_app(
     templates = Jinja2Templates(
         directory=str(resources.files("careerhub.web").joinpath("templates"))
     )
+    templates.env.globals["banner"] = banner  # shown on every page (the demo's "Demo data")
     sessions: dict[str, str] = {}  # session id -> CSRF token
     opened = {"ok": False}  # once the database has opened, it is not re-checked on every page
     static_dir = str(resources.files("careerhub.web").joinpath("static"))
@@ -286,7 +345,16 @@ def create_app(
         return render
 
     for path in PAGES:
-        if path not in ("/today", "/plan", "/status", "/tracker", "/contacts", "/interactions"):
+        if path not in (
+            "/today",
+            "/browse",
+            "/plan",
+            "/status",
+            "/tracker",
+            "/contacts",
+            "/interactions",
+            "/profile",
+        ):
             app.add_api_route(path, tab(path), methods=["GET"], response_class=HTMLResponse)
 
     @app.get("/today", response_class=HTMLResponse)
@@ -312,9 +380,7 @@ def create_app(
                 "title": "Today",
                 "heading": f"Today, {data.local_now or data.now:%a %b %d}",
                 "built": f"{data.local_now or data.now:%a %b %d, %H:%M}",
-                "last_run": f"{shortlist.last_success:%a %b %d, %H:%M}"
-                if shortlist.last_success
-                else None,
+                "last_run": local_stamp(shortlist.last_success, ZoneInfo(load_settings().timezone)),
                 "last_error": shortlist.last_error,
                 "waiting_for": shortlist.waiting_for,
                 "reasons": REASON_LABELS,
@@ -333,6 +399,37 @@ def create_app(
         if section in SECTIONS:  # remember the choice between visits
             response.set_cookie(SECTION_COOKIE, chosen, samesite="strict", path="/")
         return response
+
+    @app.get("/browse", response_class=HTMLResponse)
+    def browse_tab(request: Request) -> Response:
+        if open_session is None:
+            return tab("/browse")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/browse")(request)
+        query = BrowseQuery.clean(dict(request.query_params))
+        with open_session() as session:
+            view = gather_browse(session, query)
+        return templates.TemplateResponse(
+            request,
+            "browse.html",
+            {
+                "tabs": TABS,
+                "current": "/browse",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": "Browse",
+                "heading": "Browse",
+                "view": view,
+                "sorts": SORTS,
+                "modes": MODES,
+                "ages": AGES,
+                "reacted_options": REACTED,
+                "reasons": REASON_LABELS,
+                "place_groups": group_by_place([c.entry.location for c in view.cards])
+                if view.query.group
+                else [],
+            },
+        )
 
     @app.get("/plan", response_class=HTMLResponse)
     def plan_tab(request: Request) -> Response:
@@ -355,6 +452,39 @@ def create_app(
                 "plan": view,
             },
         )
+
+    @app.get("/profile", response_class=HTMLResponse)
+    def profile_tab(request: Request) -> Response:
+        if open_session is None:
+            return tab("/profile")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/profile")(request)
+        with open_session() as session:
+            view = gather_profile(session)
+        return templates.TemplateResponse(
+            request,
+            "profile.html",
+            {
+                "tabs": TABS,
+                "current": "/profile",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": "Profile",
+                "heading": "Profile",
+                "profile": view,
+            },
+        )
+
+    @app.post("/profile/facts/{extraction_id}/{decision}")
+    def decide_facts(request: Request, extraction_id: JobId, decision: str) -> Response:
+        if open_session is None or decision not in ("accept", "reject"):
+            return HTMLResponse("Not found.", status_code=404)
+        with open_session() as session:
+            try:
+                decide(session, extraction_id, decision == "accept")
+            except UnknownExtraction:
+                pass  # already decided in another tab; the page shows what is left
+        return RedirectResponse("/profile", status_code=303)
 
     @app.get("/status", response_class=HTMLResponse)
     def status_tab(request: Request) -> Response:
@@ -639,7 +769,17 @@ def create_app(
         form = parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True)
         with open_session() as session:
             try:
-                set_own_words(session, person_id, form.get("how_known", [""])[0])
+                if (
+                    "email" in form or "phone" in form
+                ):  # checked first; nothing is saved until both pass
+                    set_contact_details(
+                        session, person_id,
+                        form["email"][0] if "email" in form else None,
+                        form["phone"][0] if "phone" in form else None,
+                        commit=False,
+                    )  # fmt: skip
+                set_own_words(session, person_id, form.get("how_known", [""])[0], commit=False)
+                session.commit()
             except UnknownPerson:
                 return contacts_page(request, session, note="That person is gone.")
             except InteractionError as problem:
@@ -716,6 +856,7 @@ def create_app(
                 "ready": open_router is not None,
                 "proposals": pending_proposals(session),
                 "declined": declined_proposals(session),
+                "checkable": accepted_rubric_changes(session) if open_eval is not None else [],
             },
         )
 
@@ -758,6 +899,97 @@ def create_app(
                     "/conversation" + (f"?job={job_id}" if job_id else ""), status_code=303
                 )
             return conversation_page(request, session, job_id, answer.text)
+
+    def effect_page(
+        request: Request, session: Session, proposal_id: int, report: EffectReport | None = None,
+        problem: str | None = None,
+    ) -> Response:  # fmt: skip
+        proposal = session.get(Proposal, proposal_id)
+        if proposal is None or proposal.kind != RUBRIC_KIND or proposal.status != "accepted":
+            return HTMLResponse("Not found.", status_code=404)
+        labels, why = None, None
+        try:
+            labels = load_labels()
+        except EvalError as error:
+            why = str(error)
+        if labels is None and why is None:
+            why = (
+                "There are no labeled postings yet. Label about 30 postings great, okay, or no "
+                "in evals/ranking.yaml inside your Career Hub data folder (the format is in "
+                "evals/README.md) and come back."
+            )
+        elif labels is not None and len(labels) < MEANINGFUL_LABELS:
+            why = (
+                f"Only {len(labels)} labeled postings: about {MEANINGFUL_LABELS} "
+                "make this meaningful."
+            )
+        old = rubric_before(proposal)
+        return templates.TemplateResponse(
+            request,
+            "effect.html",
+            {
+                "tabs": TABS,
+                "current": "/today",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": "Check the effect",
+                "heading": "Check the effect of a rubric change",
+                "proposal": proposal,
+                "count": len(labels or []),
+                "calls": estimate_calls(len(labels or [])),
+                "can_run": bool(labels) and old is not None and open_eval is not None,
+                "old_missing": old is None,
+                "warning": why,
+                "report": report,
+                "rows": report.rows() if report else [],
+                "problem": problem,
+            },
+        )
+
+    @app.get("/proposals/{proposal_id}/effect", response_class=HTMLResponse)
+    def effect_form(request: Request, proposal_id: JobId) -> Response:
+        if open_session is None:
+            return HTMLResponse("Not found.", status_code=404)
+        with open_session() as session:
+            return effect_page(request, session, proposal_id)
+
+    @app.post("/proposals/{proposal_id}/effect")
+    def run_effect(request: Request, proposal_id: JobId) -> Response:
+        """Run the ranking eval twice. Spends model calls, so only this button starts it."""
+        if open_session is None:
+            return HTMLResponse("Not found.", status_code=404)
+        with open_session() as session:
+            proposal = session.get(Proposal, proposal_id)
+            if proposal is None or proposal.kind != RUBRIC_KIND or proposal.status != "accepted":
+                return HTMLResponse("Not found.", status_code=404)
+            old, new = rubric_before(proposal), load_rubric()
+            doc, preferences = load_profile_doc(), load_preferences()
+            try:
+                labels = load_labels()
+            except EvalError as error:  # the page shows the same message on a plain load
+                return effect_page(request, session, proposal_id, problem=str(error))
+            if open_eval is None or not labels or old is None or new is None or doc is None:
+                return effect_page(request, session, proposal_id)
+            try:
+                router, extract_routes, score_routes = open_eval()
+                report = check_effect(
+                    router, labels, doc, old, new,
+                    preferences.hard_constraints if preferences else HardConstraints(),
+                    extract_routes, score_routes,
+                )  # fmt: skip
+            except (NoRoute, EvalError) as error:
+                return effect_page(request, session, proposal_id, problem=str(error))
+            except BudgetExceeded:
+                return effect_page(
+                    request, session, proposal_id,
+                    problem="This month's model budget is used up, so the check was not run.",
+                )  # fmt: skip
+            except (ProviderError, PrivacyViolation):
+                return effect_page(
+                    request, session, proposal_id,
+                    problem="A model could not be reached or is not allowed to see this, so the "
+                    "check was not run. Nothing was changed.",
+                )  # fmt: skip
+            return effect_page(request, session, proposal_id, report=report)
 
     @app.post("/proposals/{proposal_id}/{decision}")
     async def decide_proposal(request: Request, proposal_id: JobId, decision: str) -> Response:

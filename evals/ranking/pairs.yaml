@@ -1,0 +1,35 @@
+# Made-up paired postings for the paired ranking eval (CH-175). Run with a profile that lists
+# Python but not R, and minimum pay 80000 in preferences.
+#
+# Each pair: id, expect (close | a_higher), points, reason, and two postings a and b.
+#   close:    the scores of a and b must differ by at most `points` (of 100).
+#   a_higher: a must score at least `points` above b.
+pairs:
+  - id: skill-r-vs-python
+    expect: close
+    points: 5
+    reason: Skills are a light, partial signal; R is likely for someone who lists Python.
+    a:
+      company: Northwind Labs
+      title: Data Analyst, New Grad
+      location: Boston, MA
+      text: "Analyze product data and build dashboards. Skills: R, SQL. Open to 2027 graduates."
+    b:
+      company: Northwind Labs
+      title: Data Analyst, New Grad
+      location: Boston, MA
+      text: "Analyze product data and build dashboards. Skills: Python, SQL. Open to 2027 graduates."
+  - id: pay-fits-vs-too-low
+    expect: a_higher
+    points: 3
+    reason: Same job; pay that fits should rank above pay at the bottom of what I would take.
+    a:
+      company: Contoso Analytics
+      title: Machine Learning Engineer, New Grad
+      location: Boston, MA
+      text: "Build machine learning systems in Python. Pay $140,000 to $160,000. 2027 graduates."
+    b:
+      company: Contoso Analytics
+      title: Machine Learning Engineer, New Grad
+      location: Boston, MA
+      text: "Build machine learning systems in Python. Pay $80,000 to $85,000. 2027 graduates."
