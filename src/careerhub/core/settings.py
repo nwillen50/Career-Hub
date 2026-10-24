@@ -165,6 +165,8 @@ class Settings(BaseModel):
     model_routes: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     #: Local time (24-hour ``HH:MM``) the nightly run starts.
     nightly_run_time: str = "02:00"
+    #: Local time (24-hour ``HH:MM``) after which a skipped night is no longer caught up (CH-181).
+    catchup_until: str = "08:00"
     #: Days of silence after which an Applied application becomes Ghosted on the nightly run.
     ghost_after_days: int = Field(default=30, ge=1)
     #: Whether `hub schedule install` also writes the light midday refresh job (off until asked).
@@ -198,7 +200,7 @@ class Settings(BaseModel):
             raise ValueError("must be an IANA timezone name like America/New_York") from None
         return value
 
-    @field_validator("nightly_run_time", "midday_refresh_time")
+    @field_validator("nightly_run_time", "midday_refresh_time", "catchup_until")
     @classmethod
     def _check_clock_time(cls, value: str) -> str:
         """Require a 24-hour ``HH:MM`` time."""
