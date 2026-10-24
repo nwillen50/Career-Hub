@@ -380,7 +380,7 @@ def _render_entry(
         if link
         else title
     )
-    where = escape(" · ".join(filter(None, (entry.company, entry.location, entry.via))))
+    where = escape(" · ".join(filter(None, (entry.location, entry.via))))
     rows = "".join(
         f"<tr><td>{escape(str(c.get('name', '')))}</td>"
         f"<td>{escape(str(c.get('score', '')))}/10</td>"
@@ -395,11 +395,12 @@ def _render_entry(
         else ""
     )
     return (
-        f'<article class="card"><div class="head"><div><h{level}>{index}. {heading}</h{level}>'
+        f'<article class="card"><div class="head"><div>'
+        f"<h{level}>{index}. {heading} · {escape(entry.company)}</h{level}>"
         f'<p class="where">{where}</p></div>{_bubble(entry.score, high, mid)}</div>'
         f"<p>{escape(_first_sentence(entry.explanation))}</p>{_render_visa(entry.visa_flag)}"
         f"{_render_contacts(entry.contacts)}{_render_alumni_link(entry)}"
-        f"<details><summary>Full explanation</summary><p>{escape(entry.explanation)}</p>{table}"
+        f"<details><summary>Why it scored</summary><p>{escape(entry.explanation)}</p>{table}"
         f"</details>{_render_tailoring(entry.tailoring)}{_render_footnotes(entry.footnotes)}"
         "</article>"
     )
