@@ -51,7 +51,7 @@ def test_a_job_shows_title_link_score_reason_and_criteria() -> None:
     html = render_shortlist(ShortlistData([entry()], NOW), NOW)
     assert 'href="https://example.com/jobs/1"' in html and 'rel="noopener noreferrer"' in html
     assert 'aria-label="Fit score 82 out of 100"' in html and "Strong match on field." in html
-    assert "<summary>Full explanation</summary>" in html and "Right field" in html
+    assert "<summary>Why it scored</summary>" in html and "Right field" in html
     assert html.startswith("<!doctype html>") and 'lang="en"' in html and "<h1>" in html
 
 
@@ -227,4 +227,4 @@ def test_jobs_from_the_muse_say_so_and_others_do_not(session: Session) -> None:
     entries = {e.title: e for e in gather_shortlist(session).entries}
     assert entries["Muse Job"].via == "via The Muse" and entries["Job 1"].via is None
     html = render_shortlist(ShortlistData([entries["Muse Job"]], NOW), NOW)
-    assert "Globex · NYC · via The Muse" in html
+    assert "Globex</h2>" in html and "NYC · via The Muse" in html

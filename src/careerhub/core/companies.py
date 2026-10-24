@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from typing import Any
 from urllib.parse import quote, unquote
 
 from sqlalchemy import select
@@ -77,11 +78,27 @@ def merge_companies(
     )  # core must not import jobs at load
 
     moved = list(session.scalars(select(Job).where(Job.company_id == drop.id)))
+    people = list(session.scalars(select(Person).where(Person.company_id == drop.id)))
+    entry: dict[str, Any] = {
+        "name": drop.name,
+        "name_key": drop.name_key,
+        "merged_keys": list(drop.merged_keys or []),
+        "domains": list(drop.domains),
+        "ats_board_ids": dict(drop.ats_board_ids),
+        "size": drop.size,
+        "industry": drop.industry,
+        "notes": drop.notes,
+        "job_ids": [job.id for job in moved],
+        "person_ids": [person.id for person in people],
+        #: What `drop` had itself absorbed, so splitting `drop` back out restores that too.
+        "carried": list(drop.merge_log or []),
+    }
+    keep.merge_log = [*(keep.merge_log or []), *entry["carried"], entry]
     for job in moved:
         job.company_id = keep.id
         job.dedupe_key = dedupe_key(keep.name, job.title, job.location, aliases)
     keep.merged_keys = sorted({*(keep.merged_keys or []), drop.name_key, *(drop.merged_keys or [])})
-    for person in session.scalars(select(Person).where(Person.company_id == drop.id)):
+    for person in people:
         person.company_id = keep.id
     keep.notes = "\n".join(t for t in (keep.notes, drop.notes) if t) or None
     keep.size = keep.size or drop.size
@@ -92,6 +109,108 @@ def merge_companies(
     session.delete(drop)
     session.flush()
     link_duplicates(session, [job.dedupe_key for job in moved])
+
+
+def _source_name(job: Job) -> str:
+    """Return the company name the source gave for `job` (empty when its record has none)."""
+    payload = job.raw_payload or {}
+    company = payload.get("company")
+    return str(
+        payload.get("company_name")
+        or (company.get("name") if isinstance(company, dict) else company)
+        or ""
+    )
+
+
+def list_merges(session: Session) -> list[tuple[Company, dict[str, Any]]]:
+    """Return every recorded merge as (company it went into, its log entry)."""
+    return [
+        (company, entry)
+        for company in session.scalars(select(Company).order_by(Company.id))
+        for entry in company.merge_log or []
+    ]
+
+
+def split_company(
+    session: Session, company: Company, name: str, aliases: Mapping[str, str] | None = None
+) -> str:
+    """Undo the merge of `name` into `company`; return a sentence saying what happened.
+
+    Restores `name` as its own company, takes its old name out of `merged_keys`, moves back the jobs
+    and people the merge moved (a job or person that has since moved elsewhere stays), recomputes
+    their duplicate keys and links, and records the pair as "never merge" so it is not suggested
+    again. A merge made before the log existed has no saved ids: jobs are matched on the company
+    name their source gave, and people stay where they are (the message says so).
+    Raises `LookupError` when `name` was not merged into `company`.
+    """
+    from careerhub.modules.jobs.store import dedupe_key, link_duplicates
+
+    key = company_key(name, aliases)
+    log = list(company.merge_log or [])
+    entry = next((e for e in log if e["name_key"] == key), None)
+    if entry is None and key not in (company.merged_keys or []):
+        raise LookupError(f"{name} was never merged into {company.name}.")
+    restored = Company(
+        name=entry["name"] if entry else " ".join(name.split()),
+        name_key=key,
+        domains=list(entry["domains"]) if entry else [],
+        ats_board_ids=dict(entry["ats_board_ids"]) if entry else {},
+        size=entry["size"] if entry else None,
+        industry=entry["industry"] if entry else None,
+        notes=entry["notes"] if entry else None,
+        merged_keys=(entry["merged_keys"] or None) if entry else None,
+        merge_log=(list(entry.get("carried") or []) or None) if entry else None,
+    )
+    session.add(restored)
+    session.flush()
+    own_jobs = list(session.scalars(select(Job).where(Job.company_id == company.id)))
+    if entry:
+        wanted = set(entry["job_ids"])
+        jobs = [job for job in own_jobs if job.id in wanted]
+        wanted_people = set(entry["person_ids"])
+    else:
+        jobs = [job for job in own_jobs if company_key(_source_name(job), aliases) == key]
+        wanted_people = set()
+    old_keys = [job.dedupe_key for job in jobs]
+    for job in jobs:
+        job.company_id = restored.id
+        job.duplicate_of_id = None
+        job.dedupe_key = dedupe_key(restored.name, job.title, job.location, aliases)
+    people = list(session.scalars(select(Person).where(Person.company_id == company.id)))
+    for person in people:
+        if person.id in wanted_people:
+            person.company_id = restored.id
+    gone = {key, *(entry["merged_keys"] if entry else [])}
+    company.merged_keys = [k for k in company.merged_keys or [] if k not in gone] or None
+    carried = {e["name_key"] for e in (entry.get("carried") or [])} if entry else set()
+    company.merge_log = [e for e in log if e["name_key"] not in {key, *carried}] or None
+    _never_merge(session, company, restored)
+    session.flush()
+    link_duplicates(session, [*old_keys, *(job.dedupe_key for job in jobs)])
+    # Jobs left behind that were linked to a moved original are their own originals again.
+    moved_ids = {job.id for job in jobs}
+    for job in own_jobs:
+        if job.duplicate_of_id in moved_ids:
+            job.duplicate_of_id = None
+    link_duplicates(session, [job.dedupe_key for job in own_jobs])
+    session.commit()
+    note = "" if entry else " This merge was made before merges were logged, so its people stayed."
+    return f"Split {restored.name} from {company.name}: {len(jobs)} job(s) moved back.{note}"
+
+
+def _never_merge(session: Session, first: Company, second: Company) -> None:
+    """Record a rejected merge suggestion for the pair, so `suggest_merges` leaves it alone."""
+    keep, drop = sorted((first, second), key=lambda c: len(c.name_key))
+    session.add(
+        Proposal(
+            kind=MERGE_KIND,
+            title=f"Merge {drop.name} into {keep.name}?",
+            body="never merge (split by hand)",
+            origin="agent",
+            status="rejected",
+            decided_at=utcnow(),
+        )
+    )
 
 
 def _same_keys(ids: Mapping[str, str], keep: Company, drop: Company) -> bool:
