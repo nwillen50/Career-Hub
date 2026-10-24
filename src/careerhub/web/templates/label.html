@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/browse">&larr; Back to Browse</a></p>
+<p class="muted">Label postings great, okay, or no. This is separate from your reactions: it only builds the labeled set the ranking checks use. Labeled so far: great {{ counts.great }}, okay {{ counts.okay }}, no {{ counts.no }}.</p>
+{% if note %}<section class="card error" role="alert"><p>{{ note }}</p></section>{% endif %}
+{% if job %}
+<article class="card job">
+  <h2>{{ job.title }} · {{ job.company.name }}</h2>
+  <p class="where">{{ job.location or "Place not stated" }}</p>
+  <details open>
+    <summary>The posting</summary>
+    <pre class="posting">{{ (job.raw_text or "No posting text was saved.")[:6000] }}</pre>
+  </details>
+  <form method="post" action="/browse/label">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="job" value="{{ job.id }}">
+    <p><label for="reason">Why (one line, optional)</label>
+    <input id="reason" name="reason" type="text" maxlength="300"></p>
+    <p>
+      <button type="submit" name="label" value="great">Great fit</button>
+      <button type="submit" name="label" value="okay">Okay</button>
+      <button type="submit" name="label" value="no">Not a fit</button>
+      <a href="/browse/label?skip={{ skip + 1 }}">Skip this one</a>
+    </p>
+  </form>
+</article>
+{% else %}
+<p class="card">No more postings to label: every open job has a reaction or a label, or none are ranked yet.</p>
+{% endif %}
+{% endblock %}
