@@ -10,7 +10,7 @@ from a11y import check_page
 from fastapi.testclient import TestClient
 
 from careerhub.core.models import Job
-from careerhub.core.paths import DATA_DIR_ENV
+from careerhub.core.paths import DATA_DIR_ENV, default_data_dir
 from careerhub.demo import (
     LABEL,
     MARKER,
@@ -64,13 +64,14 @@ def test_the_demo_has_about_thirty_jobs_and_uses_its_own_database(
     with make_session_opener(keys)() as session:
         assert session.query(Job).count() == 30
     assert (tmp_path / "CareerHubDemo" / MARKER).exists()
-    assert not (tmp_path / "xdg" / "careerhub").exists()  # the real folder was not created
+    assert not default_data_dir().exists()  # the real folder was not created
 
 
 def test_the_demo_refuses_the_real_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path))  # macOS: the real folder lives under HOME
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))  # Linux
     monkeypatch.delenv(DATA_DIR_ENV, raising=False)
-    real = tmp_path / "careerhub"
+    real = default_data_dir()
     assert demo_folder() != real
     for folder in (real, real / "inside"):
         with pytest.raises(ValueError, match="real Career Hub folder"):
