@@ -124,3 +124,25 @@ def test_odd_school_text_never_raises_and_never_matches_by_accident(text: str) -
 def test_a_non_breaking_space_and_capitals_still_match() -> None:
     assert same_school(["Penn State"], ["Pennsylvania State University"]) == "Penn State"
     assert same_school(["PENN STATE"], ["penn state"]) == "PENN STATE"
+
+
+@pytest.mark.parametrize("short", ["PSU", "USC", "UW", "UM", "WashU ", "wash u", "MSU", "UT"])
+def test_review_findings_an_ambiguous_abbreviation_matches_nothing_not_even_itself(
+    short: str,
+) -> None:
+    if short.strip().lower() == "washu":  # WashU is one school in the table, not ambiguous
+        return
+    assert same_school([short], [short]) is None
+
+
+def test_review_findings_branch_and_system_ties_survive_a_user_alias() -> None:
+    aliases = {"Pennsylvania State University": ["PSU"]}
+    tie = related_school(["Penn State Behrend"], ["PSU"], aliases)
+    assert tie is not None and tie.label == "Branch campus: Penn State"
+    tie = related_school(["PSU"], ["Penn State Behrend"], aliases)
+    assert tie is not None and tie.kind == "branch"
+
+
+def test_review_findings_a_bare_system_name_is_not_an_alias_of_one_campus() -> None:
+    assert same_school(["University of Massachusetts"], ["UMass Amherst"]) is None
+    assert same_school(["University of Minnesota"], ["University of Minnesota-Twin Cities"]) is None

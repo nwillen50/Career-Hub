@@ -26,6 +26,8 @@ ambiguous:
   uw: [University of Washington, University of Wisconsin-Madison]
   um: [University of Michigan, University of Minnesota, University of Maryland]
   wash u: [University of Washington, Washington University in St. Louis]
+  msu: [Michigan State University, Montana State University, Mississippi State University]
+  ut: [University of Texas at Austin, University of Tennessee]
 schools:
   # Pennsylvania
   - name: Pennsylvania State University
@@ -82,7 +84,7 @@ schools:
     aliases: [UM Flint, Michigan Flint]
     branch_of: University of Michigan-Ann Arbor
   - name: Michigan State University
-    aliases: [MSU, Michigan State]
+    aliases: [Michigan State]
   # Washington
   - name: University of Washington-Seattle Campus
     aliases: [University of Washington, UW Seattle, UDub]
@@ -162,7 +164,7 @@ schools:
     aliases: [Cornell]
   # Texas
   - name: University of Texas at Austin
-    aliases: [UT Austin, UT, UTAustin, Texas Austin]
+    aliases: [UT Austin, UTAustin, Texas Austin]
     system: University of Texas
   - name: University of Texas at Dallas
     aliases: [UT Dallas, UTD]
@@ -174,7 +176,7 @@ schools:
     aliases: [Texas A and M, TAMU, Texas A&M University-College Station]
   # Massachusetts
   - name: University of Massachusetts-Amherst
-    aliases: [UMass Amherst, UMass, University of Massachusetts]
+    aliases: [UMass Amherst, UMass]
     system: University of Massachusetts
   - name: University of Massachusetts-Boston
     aliases: [UMass Boston]
@@ -208,7 +210,7 @@ schools:
     aliases: [UW Milwaukee, UWM]
     system: University of Wisconsin
   - name: University of Minnesota-Twin Cities
-    aliases: [UMN, Minnesota, University of Minnesota]
+    aliases: [UMN, Minnesota]
     system: University of Minnesota
   - name: University of Minnesota-Duluth
     aliases: [UMD Minnesota, UMN Duluth]

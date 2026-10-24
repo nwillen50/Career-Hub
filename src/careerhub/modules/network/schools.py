@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 from sqlalchemy.orm import Session
 
-from careerhub.modules.network.schools_table import RANK, Tie, tie_between
+from careerhub.modules.network.schools_table import RANK, Tie, ambiguous_choices, tie_between
 from careerhub.profile.facts import accepted_facts
 from careerhub.profile.files import ProfileFileError, load_preferences, load_profile_doc
 
@@ -75,7 +75,11 @@ def _is_same(a: str, b: str, aliases: dict[str, list[str]] | None) -> bool:
     if key_a == key_b and school_key(a) != school_key(b):
         return True  # equal only because of the user's own school alias
     tie = tie_between(a, b)
-    return tie.kind == "same" if tie is not None else key_a == key_b
+    if tie is not None:
+        return tie.kind == "same"
+    if ambiguous_choices(a) or ambiguous_choices(b):
+        return False  # "PSU" means several schools: it matches nothing, not even itself
+    return key_a == key_b
 
 
 def same_school(
@@ -101,7 +105,7 @@ def related_school(
         for m in mine:
             if _is_same(school, m, aliases):
                 continue
-            tie = tie_between(school, m)
+            tie = tie_between(_user_name(school, aliases), _user_name(m, aliases))
             if tie and RANK[tie.kind] > RANK[best.kind if best else "none"]:
                 best = tie
     return best if best and best.kind in ("branch", "system") else None
