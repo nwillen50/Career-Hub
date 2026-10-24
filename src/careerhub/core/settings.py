@@ -169,6 +169,8 @@ class Settings(BaseModel):
     catchup_until: str = "08:00"
     #: Days of silence after which an Applied application becomes Ghosted on the nightly run.
     ghost_after_days: int = Field(default=30, ge=1)
+    #: Whether `hub schedule install` also writes the menu-bar helper's login agent (CH-191).
+    menubar_on: bool = False
     #: Whether `hub schedule install` also writes the light midday refresh job (off until asked).
     midday_refresh_on: bool = False
     #: Local time (24-hour ``HH:MM``) the midday refresh starts.

@@ -53,6 +53,7 @@ status, and the Conversation panel). From the terminal, `hub` can:
 | `hub nightly [--if-plugged-in \| --catch-up]` | Run the whole pipeline once: ingest, extract, filter, score, tailor, write the shortlist page (with warm paths), back up. With `--if-plugged-in`, a Mac on battery skips the night (and records the skip). `--catch-up`, run every 30 minutes by its own launchd job, runs a skipped night once the Mac is plugged in, before `catchup_until` (default 08:00) |
 | `hub refresh` | A light midday run: new jobs and filters only, no paid models |
 | `hub score --all` | Score every job again on the next nightly run |
+| `hub menubar` | The menu-bar icon with the count and an "Open Today" item (Mac only; `uv sync --extra menubar`; start at login with `menubar_on`) |
 | `hub web [--port N]` | The local web app on 127.0.0.1; prints a private link to open |
 | `hub attention [--json \| --notify]` | What the menu-bar icon counts; `--notify` shows the morning notification once a day |
 | `hub backup list`, `restore <file> --to <new folder>` | List backups; restore one into a new folder and check it (your live data is never touched) |

@@ -53,6 +53,7 @@ that supersedes the old one.
 | [0045](0045-splitting-merged-companies.md) | A company merge is logged so it can be undone exactly | Accepted |
 | [0046](0046-school-table-and-related-schools.md) | A reviewed school table; branch-campus and same-system ties; ambiguous abbreviations | Accepted |
 | [0047](0047-keep-yaml-comments.md) | Editing the user's YAML keeps comments and layout (ruamel.yaml, writing only) | Accepted |
+| [0048](0048-menubar-helper-with-rumps.md) | The menu-bar helper is a small Python program using rumps, reading `hub attention --json` | Accepted |
 
 ## Template
 
