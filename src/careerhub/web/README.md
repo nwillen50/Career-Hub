@@ -1,11 +1,22 @@
 # `careerhub.web`
 
-Pages Career Hub writes for the user to read.
+Pages Career Hub shows the user: the static nightly shortlist page, and the local web app
+(`hub web`, on 127.0.0.1 only, FastAPI with server-rendered pages and HTMX bundled as a file;
+ADR-0043).
 
 | Module | What it does | Ticket | Status |
 | --- | --- | --- | --- |
 | `shortlist` | The nightly shortlist page: top 5 jobs with explanations | CH-69 | Built |
-| Today, Tracker, Job detail | The local web app | step 9 | Planned |
+| `app` | The web app: routes, session link, Origin and CSRF checks, the tabs | CH-138 | Built |
+| `today` | Today: top jobs, follow-ups due, deadlines this week, last run | CH-139 | Built |
+| `job_detail` | One job: summary, score breakdown, people you know there | CH-141 | Built |
+| `tracker_view` | Tracker: applications, saved views, inline edits, CSV export | CH-142, CH-157 | Built |
+| `people_view` | Contacts and Interactions tabs | CH-171 | Built |
+| `plan_view` | Plan: the weekly plan's suggested blocks | CH-143 | Built |
+| `status_view` | System status: runs, sources, spending, models, readiness, what waits on you | CH-144 | Built |
+| `grouping` | Group by place (country, then city) on Today and the Tracker | CH-121, CH-170 | Built |
+| Conversation panel | Questions, and proposals for preferences, rubric, and sources (Accept or Reject) | CH-158 to CH-161 | Built |
+| Browse | Search and filter every open job | CH-187 | Planned |
 
 `hub shortlist build` writes `shortlist/index.html` in the data folder; bookmark it. The page is
 static (no scripts, no external requests), escapes everything from postings, and links only to

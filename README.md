@@ -7,10 +7,11 @@ week around the time you actually have.
 It runs on your Mac. Your data stays on your machine, encrypted. It drafts and advises, but it never
 sends, submits, or applies on your behalf.
 
-> **Status (Oct 21, 2026):** steps 1 to 8 are built and merged, so the code for Milestone A (a ranked
-> nightly shortlist) exists. Nothing has run on real data or a real Mac yet. Next: the follow-ups
-> from the Oct 21 review (more job sources, eligibility and job summaries, a built-in model set,
-> Apple Calendar), then step 9, the interface. The live status is on the project board.
+> **Status (Oct 23, 2026):** steps 1 to 9 are built and merged, and most of step 10. That covers
+> Milestone A (a ranked nightly shortlist) and the local web app. Nothing has run on real data or a
+> real Mac yet; the Mac checks are in [`docs/mac-session.md`](docs/mac-session.md). Next: lighter
+> skill matching and pay in scoring, a Browse page, tracking a company from its careers page, school
+> name matching, and the rest of step 10. The live status is on the project board.
 
 ## How this project is built
 
@@ -28,12 +29,13 @@ piece of work is a ticket (`CH-1`, `CH-2`, ...) on the project board.
 | 6 | Prioritize: filters, scoring, explanations, nightly shortlist | **A: ranked shortlist** | Built |
 | 7 | Network: who you know at each company | B | Built |
 | 8 | Advise and plan: tailoring notes, calendar, weekly plan | B | Built |
-| 9 | Interface: local web app and menu-bar icon | B | Wireframes agreed |
-| 10 | Schedule: hardened nightly runs | **B: full MVP** | Not started (a basic launchd job exists) |
+| 9 | Interface: local web app, menu-bar icon, morning notification | B | Web app built; menu-bar count and notification logic built, the menu-bar helper itself still to build on a Mac |
+| 10 | Schedule: hardened nightly runs | **B: full MVP** | Mostly built (plugged-in only, retries, midday refresh, restore, failure alert); five real nights to go |
 
 ## What it does today
 
-From the terminal (the web app comes in step 9), `hub` can:
+`hub web` opens the local web app (Today, Job detail, Tracker, Contacts, Interactions, Plan, System
+status, and the Conversation panel). From the terminal, `hub` can:
 
 | Command | What it does |
 | --- | --- |
@@ -43,15 +45,22 @@ From the terminal (the web app comes in step 9), `hub` can:
 | `hub ingest greenhouse`, `lever`, `ashby --company <board>` | Fetch one approved company's postings |
 | `hub targets find-boards`, `note`, `import`, `list`, `enable`, `disable`, `enable-matching` | Companies you follow, and finding each one's job board |
 | `hub add-job <url>` | Add a job from any link (LinkedIn and Handshake pages are never fetched; you give the company and title, or paste the text) |
+| `hub jobs close <id>`, `reopen <id>` | Close or reopen a job you added by link (asks first; nothing is deleted) |
 | `hub companies suggestions`, `merge`, `skip` | Answer suggestions about near-duplicate company names |
 | `hub models list`, `add`, `remove`, `add-custom`, `routes` | See and switch on models (keys go to the Keychain), and which model each task uses |
 | `hub cache clear [--expired]` | Delete saved model answers |
-| `hub nightly` | Run the whole pipeline once: ingest, extract, filter, score, tailor, write the shortlist page (with warm paths), back up |
+| `hub nightly [--if-plugged-in]` | Run the whole pipeline once: ingest, extract, filter, score, tailor, write the shortlist page (with warm paths), back up. With the flag, a Mac on battery skips the night |
+| `hub refresh` | A light midday run: new jobs and filters only, no paid models |
+| `hub score --all` | Score every job again on the next nightly run |
+| `hub web [--port N]` | The local web app on 127.0.0.1; prints a private link to open |
+| `hub attention [--json \| --notify]` | What the menu-bar icon counts; `--notify` shows the morning notification once a day |
+| `hub backup list`, `restore <file> --to <new folder>` | List backups; restore one into a new folder and check it (your live data is never touched) |
 | `hub shortlist build` | Write the shortlist page to your data folder |
 | `hub paths <company>` | Who you know at a company, strongest first, with reasons |
 | `hub people find`, `tag`, `import-alumni` (also `hub alumni import`) | Find people, record how you know them, import an alumni list in any common layout |
+| `hub alumni mappings`, `forget <file>` | The column mappings remembered per alumni file name |
 | `hub plan` | Suggested blocks for the next 7 days from your free time and time budget |
-| `hub schedule install` | Write the nightly launchd job and print the command that starts it |
+| `hub schedule install` | Write the nightly launchd job (and the midday one if `midday_refresh_on`) and print the commands that start them |
 
 Checks that need your real Mac (Keychain, launchd, calendar) are listed in
 [`docs/mac-session.md`](docs/mac-session.md).
@@ -86,9 +95,10 @@ src/careerhub/        the application, one package per layer
   modules/network/    alumni import, people tags, warm paths (step 7)
   modules/plan/       free time from calendars, the weekly plan (step 8)
   prompts/            versioned prompt files, one per model task
-  web/                pages for the user: the nightly shortlist now, the web app later (step 9)
-  pipeline.py         hub nightly: runs every stage once
-  schedule.py         the launchd job for the nightly run
+  web/                the nightly shortlist page and the local web app (step 9)
+  pipeline.py         hub nightly and hub refresh: run every stage once
+  schedule.py         the launchd jobs for the nightly and midday runs
+  power.py            reads whether the Mac is plugged in (step 10)
 tests/                tests, mirroring src/
 evals/                evaluation sets and samples for hub eval
 spikes/               short experiments that answer one question before we commit to a design
@@ -98,7 +108,7 @@ docs/design/          wireframes for the interface
 CLAUDE.md             instructions every Claude session follows: team, workflow, rules
 ```
 
-Packages for later steps (`menubar/`, the web app) are added when their step starts, not before.
+Packages for later steps (such as the menu-bar helper) are added when their ticket starts, not before.
 
 ## Development
 

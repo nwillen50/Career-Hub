@@ -62,12 +62,12 @@ Record each result on the matching ticket or ADR. Tick the box when it passes.
   `uv run hub ingest greenhouse --company <board>`.
 - [ ] `uv run hub nightly`, then open the shortlist page. Check explanations, warm paths, and the
   weekly plan make sense.
-- [ ] After the nightly run, `uv run hub backup list` shows a backup. Then (once CH-166 is merged)
+- [ ] After the nightly run, `uv run hub backup list` shows a backup. Then
   `uv run hub backup restore <that file> --to ~/Desktop/ch-restore-test`. Success: it says the
   integrity check passed and the row counts match, and your live data is untouched. Delete the
   test folder afterwards. This is the once-per-release restore test in CONTRIBUTING.md.
 
-## 6. The local web app and attention (CH-138 to CH-147, once their PRs are merged)
+## 6. The local web app and attention (CH-138 to CH-147)
 
 - [ ] `uv run hub web` prints a link like `http://127.0.0.1:8765/?t=...`. Open it in your browser.
   Success: Today opens with your real top jobs; Plan, Tracker and System status open; a page
@@ -83,7 +83,7 @@ Record each result on the matching ticket or ADR. Tick the box when it passes.
 - [ ] The menu-bar helper (CH-146's Mac half): an icon with the count, a red dot after a failed
   run, and one menu item, "Open Today".
 
-## 7. Schedule and the later web tabs (once their PRs are merged)
+## 7. Schedule and the later web tabs
 
 - [ ] CH-165: set `"midday_refresh_on": true` in settings.json, run `uv run hub schedule install`,
   and check it wrote both `com.careerhub.nightly.plist` and `com.careerhub.refresh.plist` and
