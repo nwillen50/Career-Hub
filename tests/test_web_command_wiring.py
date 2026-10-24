@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -10,7 +11,10 @@ from careerhub.cli import main
 from careerhub.core.secrets import InMemoryKeyStore
 
 
-def test_hub_web_passes_the_router_and_eval_openers(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_hub_web_passes_the_router_and_eval_openers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CAREERHUB_DATA_DIR", str(tmp_path))  # never read the real data folder
     seen: dict[str, Any] = {}
 
     def fake_create_app(*args: Any, **kwargs: Any) -> str:
