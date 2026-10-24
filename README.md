@@ -47,6 +47,7 @@ status, and the Conversation panel). From the terminal, `hub` can:
 | `hub add-job <url>` | Add a job from any link (LinkedIn and Handshake pages are never fetched; you give the company and title, or paste the text) |
 | `hub jobs close <id>`, `reopen <id>` | Close or reopen a job you added by link (asks first; nothing is deleted) |
 | `hub companies suggestions`, `merge`, `skip` | Answer suggestions about near-duplicate company names |
+| `hub companies merges`, `split <company> <name>` | List merges; undo one exactly (asks first) |
 | `hub models list`, `add`, `remove`, `add-custom`, `routes` | See and switch on models (keys go to the Keychain), and which model each task uses |
 | `hub cache clear [--expired]` | Delete saved model answers |
 | `hub nightly [--if-plugged-in]` | Run the whole pipeline once: ingest, extract, filter, score, tailor, write the shortlist page (with warm paths), back up. With the flag, a Mac on battery skips the night |
