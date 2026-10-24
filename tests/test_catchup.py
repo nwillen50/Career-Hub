@@ -154,3 +154,26 @@ def test_on_battery_the_command_records_the_skip_and_the_catch_up_command_acts_o
     # Plugged in: the full nightly runs once.
     cli._nightly(store, catch_up=True, power=lambda: "ac", now=at(6, 30))
     assert ran == ["ran"] and "running tonight's skipped run" in capsys.readouterr().out
+
+
+def test_review_findings_a_live_run_that_started_before_the_skip_blocks_a_catch_up(
+    session: Session,
+) -> None:
+    run_row(session, at(1, 50), "running")  # a manual run, alive when the 02:00 job skipped
+    record_skip(session, SKIPPED_AT)
+    assert decide(session, at(6, 30), "ac", SETTINGS).reason == "a run is in progress"
+
+
+def test_review_findings_an_evening_run_time_can_be_caught_up_after_midnight(
+    session: Session,
+) -> None:
+    evening = datetime(2026, 10, 24, 23, 0, tzinfo=NEW_YORK).astimezone(UTC)
+    record_skip(session, evening)
+    after_midnight = datetime(2026, 10, 25, 0, 30, tzinfo=NEW_YORK).astimezone(UTC)
+    assert decide(session, after_midnight, "ac", SETTINGS).run
+    same_evening = datetime(2026, 10, 24, 23, 40, tzinfo=NEW_YORK).astimezone(UTC)
+    assert decide(session, same_evening, "ac", SETTINGS).run
+    next_noon = datetime(2026, 10, 25, 12, 0, tzinfo=NEW_YORK).astimezone(UTC)
+    assert not decide(session, next_noon, "ac", SETTINGS).run  # past the next morning's cutoff
+    next_evening = datetime(2026, 10, 25, 22, 0, tzinfo=NEW_YORK).astimezone(UTC)
+    assert not decide(session, next_evening, "ac", SETTINGS).run  # a day-old skip is closed

@@ -65,15 +65,28 @@ def decide(session: Session, now: datetime, power: str, settings: Settings) -> C
     zone = ZoneInfo(settings.timezone)
     local = now.astimezone(zone)
     skip = _latest(session, SKIP_STEP)
-    if skip is None or skip.started_at.astimezone(zone).date() != local.date():
+    if skip is None:
         return CatchUpDecision(False, "tonight's run was not skipped for battery")
+    # The window runs from the skip to the next time the clock reads the cutoff after it, so a
+    # skip at 23:00 can still be caught up at 00:30, and yesterday's skip is long closed.
     hour, minute = parse_clock(settings.catchup_until)
-    if local.time() >= local.time().replace(hour=hour, minute=minute, second=0, microsecond=0):
-        return CatchUpDecision(False, f"it is past the cutoff ({settings.catchup_until})")
+    skipped = skip.started_at.astimezone(zone)
+    closes = skipped.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if closes <= skipped:
+        closes += timedelta(days=1)
+    if local >= closes:
+        past = f"it is past the cutoff ({settings.catchup_until})"
+        return CatchUpDecision(False, past if local.date() == closes.date() else
+                               "tonight's run was not skipped for battery")  # fmt: skip
+    # A run that is alive blocks a catch-up whenever it started, even before the skip was recorded
+    # (`close_interrupted_runs` would otherwise mark it failed).
+    live = session.scalars(
+        select(RunLog).where(RunLog.step == NIGHTLY_STEP, RunLog.status == "running")
+    ).all()
+    if any(now - run.started_at < STALE_RUNNING for run in live):
+        return CatchUpDecision(False, "a run is in progress")
     last = _latest(session, NIGHTLY_STEP)
     if last is not None and last.started_at >= skip.started_at:
-        if last.status == "running" and now - last.started_at < STALE_RUNNING:
-            return CatchUpDecision(False, "a run is in progress")
         return CatchUpDecision(False, "a run has already happened since the skip")
     if power != "ac":
         return CatchUpDecision(False, "the Mac is not plugged in" if power == "battery" else
