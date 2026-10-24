@@ -16,9 +16,16 @@ import httpx
 from sqlalchemy.orm import Session
 
 from careerhub.core.backup import RestoreError, list_backups, restore_backup
-from careerhub.core.companies import decide_merge, find_companies, pending_merges, suggest_merges
+from careerhub.core.companies import (
+    decide_merge,
+    find_companies,
+    list_merges,
+    pending_merges,
+    split_company,
+    suggest_merges,
+)
 from careerhub.core.migrate import migrate
-from careerhub.core.models import utcnow
+from careerhub.core.models import Company, utcnow
 from careerhub.core.paths import database_path
 from careerhub.core.secrets import (
     DATABASE_KEY_NAME,
@@ -82,6 +89,8 @@ from careerhub.modules.network.mappings import (
     load_mapping,
     save_mapping,
 )
+from careerhub.modules.network.schools import my_schools
+from careerhub.modules.network.schools_table import ambiguous_choices
 from careerhub.modules.notify import MacNotifier, notify_once_a_day
 from careerhub.modules.plan import suggest_week
 from careerhub.modules.plan.ics import IcsError
@@ -120,6 +129,7 @@ USAGE = """Usage:
                                              are never requested; text can also come from stdin)
   hub jobs close <id> | reopen <id>      (only for jobs you added by link; nothing is deleted)
   hub companies suggestions | merge <id> | skip <id>   (near-duplicate company names)
+  hub companies merges | split <company> <name>   (list merges; undo one, with a yes/no question)
   hub targets find-boards | note <name> <ats> | import <file> | list | enable-matching
   hub targets enable <name>... | disable <name>...
                           (companies you follow; the Engine list is in docs/seeds)
@@ -153,6 +163,9 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             print(format_profile(_load_profile(store)))
             print(_readiness_summary())
             print(_rescore_summary(store))
+            note = _ambiguous_schools_note()
+            if note:
+                print(note)
             return 0
         if args == ["score", "--all"]:
             return _score_all()
@@ -769,6 +782,22 @@ def _score_all() -> int:
     return 0
 
 
+def _ambiguous_schools_note() -> str:
+    """Name any of your schools that is a short name for several (PSU), and how to settle it."""
+    lines = []
+    for school in my_schools(None):
+        choices = ambiguous_choices(school)
+        if choices:
+            lines.append(
+                f"  - {school!r} could mean: {'; '.join(choices)}. Under school_aliases in "
+                "preferences.yaml, give the one you mean, for example:\n"
+                f'      "{choices[0]}": ["{school}"]'
+            )
+    if not lines:
+        return ""
+    return "\nSchool names to settle (they match nothing until you do):\n" + "\n".join(lines)
+
+
 def _readiness_summary() -> str:
     """Describe whether scoring is on and, if not, what the profile still needs."""
     readiness = current_readiness(None, load_settings().profile_min_skills)
@@ -887,8 +916,40 @@ def _companies(session: Session, args: list[str]) -> int:
             print(error)
             return 1
         return 0
-    print("Usage: hub companies suggestions | merge <id> | skip <id>")
+    if args == ["merges"]:
+        for company, entry in list_merges(session):
+            print(
+                f"  {entry['name']} was merged into {company.name} "
+                f"({len(entry['job_ids'])} job(s), {len(entry['person_ids'])} person/people)"
+            )
+        for company in session.query(Company).filter(Company.merged_keys.is_not(None)):
+            logged = {e["name_key"] for e in company.merge_log or []}
+            for key in company.merged_keys or []:
+                if key not in logged:
+                    print(f"  {key} was merged into {company.name} (before merges were logged)")
+        return 0
+    if len(args) == 3 and args[0] == "split":
+        return _split(session, args[1], args[2])
+    print("Usage: hub companies suggestions|merge <id>|skip <id>|merges|split <company> <name>")
     return 2
+
+
+def _split(session: Session, company_text: str, name: str) -> int:
+    """`hub companies split <company> <name>`: undo one merge, after a yes/no question."""
+    matches = find_companies(session, company_text, _aliases())
+    if len(matches) != 1:
+        print(f"{company_text!r} matches {len(matches)} companies; be more specific.")
+        return 1
+    answer = input(f"Separate {name!r} from {matches[0].name} again? [y/N] ").strip().lower()
+    if answer not in ("y", "yes"):
+        print("Nothing changed.")
+        return 0
+    try:
+        print(split_company(session, matches[0], name, _aliases()))
+    except LookupError as error:
+        print(error)
+        return 1
+    return 0
 
 
 def _shortlist_build(session: Session) -> int:
