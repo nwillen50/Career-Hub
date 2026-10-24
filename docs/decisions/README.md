@@ -49,6 +49,11 @@ that supersedes the old one.
 | [0041](0041-company-aliases-and-suggestions.md) | Company aliases are the user's, set in preferences; near-duplicate names are suggestions, never automatic merges | Accepted |
 | [0042](0042-merged-companies-stay-merged.md) | A merged company's old name keeps finding the company (`merged_keys`) | Accepted |
 | [0043](0043-interface-stack.md) | Interface stack: FastAPI, Jinja2, bundled HTMX 2.0.11, strict CSP, and how pages are tested | Accepted |
+| [0044](0044-skills-are-a-light-signal.md) | Skills are a light, partial signal; pay is scored; one skill is enough to start | Accepted |
+| [0045](0045-splitting-merged-companies.md) | A company merge is logged so it can be undone exactly | Accepted |
+| [0046](0046-school-table-and-related-schools.md) | A reviewed school table; branch-campus and same-system ties; ambiguous abbreviations | Accepted |
+| [0047](0047-keep-yaml-comments.md) | Editing the user's YAML keeps comments and layout (ruamel.yaml, writing only) | Accepted |
+| [0048](0048-menubar-helper-with-rumps.md) | The menu-bar helper is a small Python program using rumps, reading `hub attention --json` | Accepted |
 
 ## Template
 

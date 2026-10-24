@@ -96,7 +96,7 @@ def test_the_diff_shows_the_criterion_and_the_version_bump(session: Session) -> 
         "- location: weight 2, Based where I can work.\n"
         "+ location: weight 5, Based where I can work.\n"
         "Jobs are scored again on the next nightly run.\n"
-        "Saving rewrites rubric.yaml without its comments; a copy of the old file is kept."
+        "Saving keeps your comments and layout, and a copy of the old file is kept."
     )
     assert rubric_path().read_text(encoding="utf-8") == RUBRIC  # nothing changed yet
 
@@ -246,3 +246,18 @@ def test_a_malformed_rubric_suggestion_keeps_the_answer(session: Session) -> Non
     c = web(session, answer)
     assert post(c, "/conversation", "question=more+location").status_code == 303
     assert "Noted." in c.get("/conversation").text
+
+
+def test_accepting_a_rubric_change_keeps_the_users_comments_and_layout(session: Session) -> None:
+    """CH-180: only the version and the one criterion's weight differ."""
+    commented = (
+        "# my rubric\nversion: 3   # bump on change\ncriteria:\n"
+        "  # most important\n  - {name: field, weight: 3, description: Work matches my fields.}\n"
+        "\n  - {name: location, weight: 2, description: Based where I can work.}  # city\n"
+    )
+    rubric_path().write_text(commented, encoding="utf-8")
+    accept(session, propose_rubric_change(session, REWEIGH).id)
+    text = rubric_path().read_text(encoding="utf-8")
+    assert "# most important" in text and "# city" in text and "# bump on change" in text
+    # ruamel.yaml drops a blank line that follows a one-line {...} list item (ADR 0047).
+    assert "weight: 5" in text and "version: 4" in text

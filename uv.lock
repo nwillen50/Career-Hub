@@ -133,9 +133,15 @@ dependencies = [
     { name = "python-docx" },
     { name = "pyyaml" },
     { name = "recurring-ical-events" },
+    { name = "ruamel-yaml" },
     { name = "sqlalchemy" },
     { name = "sqlcipher3-wheels" },
     { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+menubar = [
+    { name = "rumps", marker = "sys_platform == 'darwin'" },
 ]
 
 [package.dev-dependencies]
@@ -164,10 +170,13 @@ requires-dist = [
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "pyyaml", specifier = ">=6,<7" },
     { name = "recurring-ical-events", specifier = ">=3,<4" },
+    { name = "ruamel-yaml", specifier = ">=0.19.1" },
+    { name = "rumps", marker = "sys_platform == 'darwin' and extra == 'menubar'", specifier = ">=0.4" },
     { name = "sqlalchemy", specifier = ">=2.0,<2.2" },
     { name = "sqlcipher3-wheels", specifier = ">=0.5.7,<0.6" },
     { name = "uvicorn", specifier = ">=0.30,<1" },
 ]
+provides-extras = ["menubar"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1389,6 +1398,15 @@ wheels = [
 ]
 
 [[package]]
+name = "ruamel-yaml"
+version = "0.19.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/3b/ebda527b56beb90cb7652cb1c7e4f91f48649fbcd8d2eb2fb6e77cd3329b/ruamel_yaml-0.19.1.tar.gz", hash = "sha256:53eb66cd27849eff968ebf8f0bf61f46cdac2da1d1f3576dd4ccee9b25c31993", size = 142709, upload-time = "2026-01-02T16:50:31.84Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b8/0c/51f6841f1d84f404f92463fc2b1ba0da357ca1e3db6b7fbda26956c3b82a/ruamel_yaml-0.19.1-py3-none-any.whl", hash = "sha256:27592957fedf6e0b62f281e96effd28043345e0e66001f97683aa9a40c667c93", size = 118102, upload-time = "2026-01-02T16:50:29.201Z" },
+]
+
+[[package]]
 name = "ruff"
 version = "0.17.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1412,6 +1430,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/6a/2e/da3d9589bae8e8b58f3a48bd5bc0b980232fb14a83bf02c3be7660f87c1b/ruff-0.17.1-py3-none-win_amd64.whl", hash = "sha256:5df76f16580fab58d0f6c98a3ac254a4abceb7b2489b8b678335869cff77b3d7", size = 10097955, upload-time = "2026-10-15T15:23:13.309Z" },
     { url = "https://files.pythonhosted.org/packages/df/c9/0f2a4dea06a5e12c1191ee3d96b1e1233797d0d5e18f97a2b909a95a9836/ruff-0.17.1-py3-none-win_arm64.whl", hash = "sha256:42400b9a6ff8515ff27796f07f92e0195be011c86e81e381606f58ea5502fef4", size = 9853542, upload-time = "2026-10-15T15:23:16.05Z" },
 ]
+
+[[package]]
+name = "rumps"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyobjc-framework-cocoa" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b2/e2/2e6a47951290bd1a2831dcc50aec4b25d104c0cf00e8b7868cbd29cf3bfe/rumps-0.4.0.tar.gz", hash = "sha256:17fb33c21b54b1e25db0d71d1d793dc19dc3c0b7d8c79dc6d833d0cffc8b1596", size = 39257, upload-time = "2022-10-15T05:15:10.386Z" }
 
 [[package]]
 name = "secretstorage"

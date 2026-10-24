@@ -51,6 +51,14 @@ yours with `school_aliases` in `preferences.yaml`). Put `linkedin_school_slug` (
 that company. Career Hub only builds the link; it never visits it. See
 [ADR-0039](../../../../docs/decisions/0039-same-school.md).
 
+### Email and phone (CH-196)
+
+The Contacts tab has Email and Phone columns, edited in place (blank clears one). Both are Sensitive: stored in the encrypted database, shown only on the local page, never sent to a model, never logged. The email gets a "Write" link (`mailto:`) that opens your own mail app; Career Hub sends nothing. Alumni imports already fill the email; a phone column in an import is not read yet.
+
+### Similar school names (CH-179)
+
+`schools_table.py` reads `schools.yaml`, a reviewed seed table (about 70 schools; the full IPEDS import is CH-199) of official names, aliases, branch campuses, and systems of separate universities. Matching tries it first, then the word rules, and your `school_aliases` win over both. A branch campus of your school (Penn State Behrend for Penn State) shows "Branch campus: Penn State" and gets 1 point; a separate university in the same system (UC Davis for UCLA) shows "Same system: University of California", 0 points, and ranks above no tie. A bare "University of California" matches no campus. An ambiguous short name such as PSU matches nothing until you settle it; `hub profile show` says which of your schools need that. See [ADR-0046](../../../../docs/decisions/0046-school-table-and-related-schools.md).
+
 ## Remembered column mappings (CH-116)
 
 `mappings.py` saves the `--map`, `--sheet`, and `--group` given to `hub alumni import` per file name in `alumni-mappings.json` (private, header and field names only). A later import of a file with the same name uses them; flags given again win and update them; `hub alumni mappings` lists them and `hub alumni forget <file>` removes one. A header that no longer exists is a clear error, not a guess.

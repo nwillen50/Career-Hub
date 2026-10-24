@@ -128,7 +128,7 @@ class Settings(BaseModel):
     #: Days a saved model answer is kept after it was last used (using it resets the clock).
     cache_ttl_days: int = Field(default=30, ge=1, le=3650)
     #: Skills the profile needs before scoring can be switched on (CH-102).
-    profile_min_skills: int = Field(default=5, ge=0, le=100)
+    profile_min_skills: int = Field(default=1, ge=0, le=100)
     #: A posting older than this many days is ranked slightly lower (never hidden) (CH-81).
     stale_after_days: int = Field(default=21, ge=1, le=365)
     #: How many fit-score points (of 100) an old posting loses in the ordering. 0 turns it off.
@@ -165,8 +165,12 @@ class Settings(BaseModel):
     model_routes: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     #: Local time (24-hour ``HH:MM``) the nightly run starts.
     nightly_run_time: str = "02:00"
+    #: Local time (24-hour ``HH:MM``) after which a skipped night is no longer caught up (CH-181).
+    catchup_until: str = "08:00"
     #: Days of silence after which an Applied application becomes Ghosted on the nightly run.
     ghost_after_days: int = Field(default=30, ge=1)
+    #: Whether `hub schedule install` also writes the menu-bar helper's login agent (CH-191).
+    menubar_on: bool = False
     #: Whether `hub schedule install` also writes the light midday refresh job (off until asked).
     midday_refresh_on: bool = False
     #: Local time (24-hour ``HH:MM``) the midday refresh starts.
@@ -198,7 +202,7 @@ class Settings(BaseModel):
             raise ValueError("must be an IANA timezone name like America/New_York") from None
         return value
 
-    @field_validator("nightly_run_time", "midday_refresh_time")
+    @field_validator("nightly_run_time", "midday_refresh_time", "catchup_until")
     @classmethod
     def _check_clock_time(cls, value: str) -> str:
         """Require a 24-hour ``HH:MM`` time."""
