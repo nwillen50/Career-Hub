@@ -24,7 +24,7 @@ from careerhub.profile.inputs import find_resume
 from careerhub.profile.rubric import load_rubric
 
 READY_FILENAME = "ready.json"
-DEFAULT_MIN_SKILLS = 5
+DEFAULT_MIN_SKILLS = 1
 
 
 @dataclass(frozen=True)
@@ -80,11 +80,11 @@ def missing_items(session: Session | None, min_skills: int = DEFAULT_MIN_SKILLS)
         )
     if len(skills) < min_skills:
         missing.append(
-            f"Skills: {len(skills)} of {min_skills} needed. Scoring compares your skills with each "
-            f"job, so it waits until it knows at least {min_skills}. Add them under skills: in "
-            "profile.md, or accept the skills read from your resume with `hub profile facts "
-            "accept`. Both places count and a skill listed twice counts once. The number is the "
-            "profile_min_skills setting (0 turns this check off)"
+            f"Skills: {len(skills)} of {min_skills} needed. Scoring uses your skills as a rough "
+            f"guide, so list at least {min_skills}. Add them under skills: in profile.md, or "
+            "accept the skills read from your resume with `hub profile facts accept`. Both places "
+            "count and a skill listed twice counts once. The number is the profile_min_skills "
+            "setting (0 turns this check off)"
         )
     if not (doc.interests or doc.about.strip()):
         missing.append(

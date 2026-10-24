@@ -1,0 +1,228 @@
+# A reviewed seed table of schools whose names are easy to confuse (CH-179, ADR 0046).
+#
+# It is NOT the full IPEDS list: the cloud sandbox cannot reach nces.ed.gov. Importing IPEDS into
+# this same format is ticket CH-199. Names not in this table still use the word rules in schools.py.
+#
+# Each school:
+#   name:      the official name
+#   aliases:   other ways it is written (case, punctuation, "the", and hyphens do not matter)
+#   branch_of: the university this is a branch campus of (a weaker tie to that university)
+#   system:    a system of separate universities this belongs to (a weaker tie still)
+# `systems` lists the system names themselves: a bare "University of California" matches no campus.
+# `ambiguous` lists short names that mean several schools; they match nothing until the user picks
+# one with a school alias in preferences.yaml.
+systems:
+  - University of California
+  - California State University
+  - State University of New York
+  - University of Texas
+  - University of Massachusetts
+  - University of Illinois
+  - University of Wisconsin
+  - University of Minnesota
+ambiguous:
+  psu: [Pennsylvania State University, Portland State University, Plymouth State University]
+  usc: [University of Southern California, University of South Carolina]
+  uw: [University of Washington, University of Wisconsin-Madison]
+  um: [University of Michigan, University of Minnesota, University of Maryland]
+  wash u: [University of Washington, Washington University in St. Louis]
+schools:
+  # Pennsylvania
+  - name: Pennsylvania State University
+    aliases: [Penn State, Penn State University, Pennsylvania State Univ, Penn State University Park]
+  - name: Pennsylvania State University-Behrend
+    aliases: [Penn State Behrend, Penn State Erie]
+    branch_of: Pennsylvania State University
+  - name: Pennsylvania State University-Altoona
+    aliases: [Penn State Altoona]
+    branch_of: Pennsylvania State University
+  - name: Pennsylvania State University-Harrisburg
+    aliases: [Penn State Harrisburg]
+    branch_of: Pennsylvania State University
+  - name: University of Pennsylvania
+    aliases: [UPenn, U Penn, Penn, Penn University]
+  - name: University of Pittsburgh
+    aliases: [Pitt, Pitt Pittsburgh]
+  - name: University of Pittsburgh-Johnstown
+    aliases: [Pitt Johnstown, Pitt-Johnstown]
+    branch_of: University of Pittsburgh
+  - name: University of Pittsburgh-Bradford
+    aliases: [Pitt Bradford]
+    branch_of: University of Pittsburgh
+  - name: Carnegie Mellon University
+    aliases: [CMU, Carnegie Mellon]
+  # New Jersey
+  - name: Rutgers University-New Brunswick
+    aliases: [Rutgers, Rutgers University, Rutgers New Brunswick]
+  - name: Rutgers University-Newark
+    aliases: [Rutgers Newark, Rutgers-Newark]
+    branch_of: Rutgers University-New Brunswick
+  - name: Rutgers University-Camden
+    aliases: [Rutgers Camden]
+    branch_of: Rutgers University-New Brunswick
+  # Ohio
+  - name: Ohio State University-Main Campus
+    aliases: [Ohio State, OSU Columbus, The Ohio State University]
+  - name: Ohio State University-Newark
+    aliases: [Ohio State Newark]
+    branch_of: Ohio State University-Main Campus
+  - name: Ohio University
+    aliases: [OU Athens, Ohio U]
+  - name: Miami University
+    aliases: [Miami of Ohio, Miami Ohio, Miami University Oxford]
+  - name: University of Miami
+    aliases: [UM Miami, Miami Florida, The U]
+  # Michigan
+  - name: University of Michigan-Ann Arbor
+    aliases: [University of Michigan, UMich, Michigan, U of M Ann Arbor]
+  - name: University of Michigan-Dearborn
+    aliases: [UM Dearborn, Michigan Dearborn]
+    branch_of: University of Michigan-Ann Arbor
+  - name: University of Michigan-Flint
+    aliases: [UM Flint, Michigan Flint]
+    branch_of: University of Michigan-Ann Arbor
+  - name: Michigan State University
+    aliases: [MSU, Michigan State]
+  # Washington
+  - name: University of Washington-Seattle Campus
+    aliases: [University of Washington, UW Seattle, UDub]
+  - name: University of Washington-Bothell Campus
+    aliases: [UW Bothell]
+    branch_of: University of Washington-Seattle Campus
+  - name: University of Washington-Tacoma Campus
+    aliases: [UW Tacoma]
+    branch_of: University of Washington-Seattle Campus
+  - name: Washington University in St Louis
+    aliases: [WashU, Washington University, Washington University St Louis, WUSTL]
+  - name: Washington State University
+    aliases: [WSU, Wazzu]
+  # California (separate universities in one system)
+  - name: University of California-Berkeley
+    aliases: [UC Berkeley, Berkeley, UCB, Cal]
+    system: University of California
+  - name: University of California-Davis
+    aliases: [UC Davis, UCD]
+    system: University of California
+  - name: University of California-Irvine
+    aliases: [UC Irvine, UCI]
+    system: University of California
+  - name: University of California-Los Angeles
+    aliases: [UCLA]
+    system: University of California
+  - name: University of California-San Diego
+    aliases: [UCSD, UC San Diego]
+    system: University of California
+  - name: University of California-Santa Barbara
+    aliases: [UCSB, UC Santa Barbara]
+    system: University of California
+  - name: University of California-Santa Cruz
+    aliases: [UCSC, UC Santa Cruz]
+    system: University of California
+  - name: University of California-Riverside
+    aliases: [UCR, UC Riverside]
+    system: University of California
+  - name: University of California-Merced
+    aliases: [UC Merced]
+    system: University of California
+  - name: University of Southern California
+    aliases: [Southern California]
+  - name: California Polytechnic State University-San Luis Obispo
+    aliases: [Cal Poly, Cal Poly SLO, Cal Poly San Luis Obispo]
+    system: California State University
+  - name: San Diego State University
+    aliases: [SDSU]
+    system: California State University
+  - name: San Jose State University
+    aliases: [SJSU]
+    system: California State University
+  - name: California State University-Long Beach
+    aliases: [CSULB, Cal State Long Beach]
+    system: California State University
+  - name: California State University-Fullerton
+    aliases: [CSUF, Cal State Fullerton]
+    system: California State University
+  # New York
+  - name: Stony Brook University
+    aliases: [SUNY Stony Brook, Stony Brook]
+    system: State University of New York
+  - name: Binghamton University
+    aliases: [SUNY Binghamton, Binghamton]
+    system: State University of New York
+  - name: University at Buffalo
+    aliases: [SUNY Buffalo, UB Buffalo, University of Buffalo]
+    system: State University of New York
+  - name: University at Albany
+    aliases: [SUNY Albany, Albany]
+    system: State University of New York
+  - name: New York University
+    aliases: [NYU]
+  - name: Columbia University
+    aliases: [Columbia, Columbia University in the City of New York]
+  - name: Cornell University
+    aliases: [Cornell]
+  # Texas
+  - name: University of Texas at Austin
+    aliases: [UT Austin, UT, UTAustin, Texas Austin]
+    system: University of Texas
+  - name: University of Texas at Dallas
+    aliases: [UT Dallas, UTD]
+    system: University of Texas
+  - name: University of Texas at Arlington
+    aliases: [UT Arlington, UTA]
+    system: University of Texas
+  - name: Texas A&M University
+    aliases: [Texas A and M, TAMU, Texas A&M University-College Station]
+  # Massachusetts
+  - name: University of Massachusetts-Amherst
+    aliases: [UMass Amherst, UMass, University of Massachusetts]
+    system: University of Massachusetts
+  - name: University of Massachusetts-Boston
+    aliases: [UMass Boston]
+    system: University of Massachusetts
+  - name: University of Massachusetts-Lowell
+    aliases: [UMass Lowell]
+    system: University of Massachusetts
+  - name: Massachusetts Institute of Technology
+    aliases: [MIT]
+  - name: Boston University
+    aliases: [BU]
+  - name: Boston College
+    aliases: [BC]
+  - name: Tufts University
+    aliases: [Tufts]
+  - name: Northeastern University
+    aliases: [Northeastern, NEU]
+  - name: Harvard University
+    aliases: [Harvard]
+  # Illinois, Wisconsin, Minnesota
+  - name: University of Illinois Urbana-Champaign
+    aliases: [UIUC, Illinois, University of Illinois at Urbana-Champaign]
+    system: University of Illinois
+  - name: University of Illinois Chicago
+    aliases: [UIC, University of Illinois at Chicago]
+    system: University of Illinois
+  - name: University of Wisconsin-Madison
+    aliases: [UW Madison, Wisconsin, UW-Madison]
+    system: University of Wisconsin
+  - name: University of Wisconsin-Milwaukee
+    aliases: [UW Milwaukee, UWM]
+    system: University of Wisconsin
+  - name: University of Minnesota-Twin Cities
+    aliases: [UMN, Minnesota, University of Minnesota]
+    system: University of Minnesota
+  - name: University of Minnesota-Duluth
+    aliases: [UMD Minnesota, UMN Duluth]
+    system: University of Minnesota
+  # Others that are easy to confuse
+  - name: Georgia Institute of Technology-Main Campus
+    aliases: [Georgia Tech, GT, GaTech]
+  - name: Purdue University-Main Campus
+    aliases: [Purdue]
+  - name: Indiana University-Bloomington
+    aliases: [Indiana University, IU Bloomington, IU]
+  - name: Portland State University
+    aliases: [Portland State]
+  - name: Plymouth State University
+    aliases: [Plymouth State]
+  - name: University of South Carolina-Columbia
+    aliases: [University of South Carolina, South Carolina]

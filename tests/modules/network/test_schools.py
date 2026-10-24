@@ -206,3 +206,43 @@ def test_the_page_marks_same_school_people_and_offers_the_link(
         "Find Tufts University alumni at Acme on LinkedIn" in html
         and "Career Hub doesn't visit it" in html
     )
+
+
+def test_branch_campus_and_system_contacts_rank_below_the_same_school(session: Session) -> None:
+    """CH-179: same school, then branch campus (weaker), then same system (weaker still)."""
+    company = make_company(session)
+    session.add_all(
+        [
+            Person(full_name="A System", company=company, schools=["UC Davis"]),
+            Person(full_name="B Branch", company=company, schools=["Penn State Behrend"]),
+            Person(full_name="C Same", company=company, schools=["Pennsylvania State University"]),
+            Person(full_name="D Other", company=company, schools=["Brown University"]),
+        ]
+    )
+    session.commit()
+    mine = ["Penn State", "UCLA"]
+    paths = warm_paths(session, company.id, limit=5, schools=mine)
+    assert [p.name for p in paths] == ["C Same", "B Branch", "A System", "D Other"]
+    by_name = {p.name: p for p in paths}
+    assert by_name["C Same"].strength == 2 and by_name["C Same"].school_tie is None
+    assert by_name["B Branch"].strength == 1
+    assert by_name["B Branch"].school_tie == "Branch campus: Penn State"
+    assert by_name["B Branch"].same_school is None
+    assert by_name["A System"].strength == 0
+    assert by_name["A System"].reasons == ["Same system: University of California"]
+    assert by_name["D Other"].school_tie is None
+
+
+def test_profile_show_lists_an_ambiguous_school_and_how_to_settle_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from careerhub.cli import _ambiguous_schools_note
+
+    monkeypatch.setenv("CAREERHUB_DATA_DIR", str(tmp_path))
+    (tmp_path / "profile").mkdir()
+    (tmp_path / "profile" / "profile.md").write_text(
+        "---\nname: Jane\neducation:\n  - {school: PSU, degree: BS}\n---\n", encoding="utf-8"
+    )
+    note = _ambiguous_schools_note()
+    assert "'PSU' could mean" in note and "Portland State University" in note
+    assert "school_aliases" in note
