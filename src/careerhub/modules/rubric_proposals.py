@@ -13,13 +13,13 @@ import os
 from datetime import datetime, timedelta
 from typing import Any
 
-import yaml
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from careerhub.core.models import Proposal, utcnow
 from careerhub.core.settings import load_settings
+from careerhub.core.yamlfile import edit_yaml_text
 from careerhub.modules.proposals import (
     RUBRIC_KIND,
     ProposalError,
@@ -165,6 +165,7 @@ def accept_rubric(session: Session, proposal: Proposal, when: datetime) -> Propo
             "Ask again to get a fresh suggestion."
         )
     path = rubric_path()
+    original_text = path.read_text(encoding="utf-8")
     try:
         backup = free_backup_name(path, when)
         with open(backup, "x", encoding="utf-8") as handle:
@@ -173,7 +174,7 @@ def accept_rubric(session: Session, proposal: Proposal, when: datetime) -> Propo
         proposal.status = "accepted"
         proposal.decided_at = when
         session.flush()
-        write_whole(path, yaml.safe_dump(new, sort_keys=False, allow_unicode=True))
+        write_whole(path, edit_yaml_text(original_text, new))
         session.commit()
     except OSError:
         session.rollback()
