@@ -99,6 +99,15 @@ def _plan_rows(preferences: Preferences) -> list[tuple[str, str]]:
     ]
 
 
+def _fact_lines(facts: object, doc: ProfileDoc | None) -> list[str]:
+    """Describe one set of stored facts; a set that no longer fits the schema says so."""
+    try:
+        shown = facts_text(ProfileFacts.model_validate(facts), doc or ProfileDoc(name=""))
+    except ValueError:
+        return ["These facts were saved by an older version and cannot be shown. Reject them."]
+    return (shown or "(nothing found)").splitlines()
+
+
 def gather_profile(session: Session) -> ProfileView:
     """Read the profile files and the pending facts. Raises `ProfileFileError` on a broken file."""
     doc, preferences, rubric = load_profile_doc(), load_preferences(), load_rubric()
@@ -130,14 +139,6 @@ def gather_profile(session: Session) -> ProfileView:
         ],
         fact_counts=counts(session),
         pending=[
-            PendingFacts(
-                row.id,
-                row.kind,
-                (
-                    facts_text(ProfileFacts.model_validate(row.facts), doc or ProfileDoc(name=""))
-                    or "(nothing found)"
-                ).splitlines(),
-            )
-            for row in pending(session)
+            PendingFacts(row.id, row.kind, _fact_lines(row.facts, doc)) for row in pending(session)
         ],
     )
