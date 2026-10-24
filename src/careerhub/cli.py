@@ -56,6 +56,7 @@ from careerhub.modules.jobs import (
     reject_source,
 )
 from careerhub.modules.jobs.adapters import ADAPTERS, BOARD_KINDS
+from careerhub.modules.jobs.careers_page import track_company
 from careerhub.modules.jobs.find_boards import find_boards
 from careerhub.modules.jobs.manual import (
     ManualJobError,
@@ -132,6 +133,8 @@ USAGE = """Usage:
   hub companies suggestions | merge <id> | skip <id>   (near-duplicate company names)
   hub companies merges | split <company> <name>   (list merges; undo one, with a yes/no question)
   hub targets find-boards | note <name> <ats> | import <file> | list | enable-matching
+  hub targets add <name> [--careers-url URL]   (follow a company; looks for its board; fetches
+                          that one page, honoring robots.txt, never LinkedIn or Handshake)
   hub targets enable <name>... | disable <name>...
                           (companies you follow; the Engine list is in docs/seeds)
   hub models list | routes
@@ -223,6 +226,8 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _with_session(store, lambda s: _companies(s, args[1:]))
         if args == ["targets", "find-boards"]:
             return _with_session(store, _find_boards)
+        if args[:2] == ["targets", "add"] and len(args) >= 3:
+            return _with_session(store, lambda s: _targets_add(s, args[2:]))
         if args[:1] == ["targets"] and len(args) >= 2:
             return _targets(args[1:])
         if args[:1] == ["models"] and len(args) >= 2:
@@ -681,6 +686,31 @@ def _find_boards(session: Session, client: httpx.Client | None = None) -> int:
         print("No board found for: " + ", ".join(report.missed))
     if report.stopped:
         print(report.stopped)
+    return 0
+
+
+def _targets_add(session: Session, args: list[str], client: httpx.Client | None = None) -> int:
+    """`hub targets add <name> [--careers-url URL]`: follow a company and look for its board."""
+    url: str | None = None
+    words = list(args)
+    if "--careers-url" in words:
+        at = words.index("--careers-url")
+        if at + 1 >= len(words):
+            print(USAGE)
+            return 2
+        url = words[at + 1]
+        del words[at : at + 2]
+    if not words:
+        print(USAGE)
+        return 2
+    try:
+        targets = load_targets()
+        lines = track_company(session, targets, " ".join(words), url, client, _aliases())
+        save_targets(targets)
+    except TargetsError as error:
+        print(error)
+        return 1
+    print("\n".join(lines))
     return 0
 
 

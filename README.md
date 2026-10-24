@@ -43,6 +43,7 @@ status, and the Conversation panel). From the terminal, `hub` can:
 | `hub profile ready`, `hub profile facts` | Check the profile and switch scoring on; review facts read from your resume and transcript (`accept`, `reject`) |
 | `hub sources add`, `list`, `approve`, `reject`, `disable` | Propose a job source and decide on it; nothing is fetched until you approve |
 | `hub ingest greenhouse`, `lever`, `ashby --company <board>` | Fetch one approved company's postings |
+| `hub targets add <name> [--careers-url URL]` | Follow a company; with its careers page, reads that one page once (robots.txt honored, never LinkedIn or Handshake) for an embedded Greenhouse, Lever, or Ashby board, or notes an unsupported system |
 | `hub targets find-boards`, `note`, `import`, `list`, `enable`, `disable`, `enable-matching` | Companies you follow, and finding each one's job board |
 | `hub add-job <url>` | Add a job from any link (LinkedIn and Handshake pages are never fetched; you give the company and title, or paste the text) |
 | `hub jobs close <id>`, `reopen <id>` | Close or reopen a job you added by link (asks first; nothing is deleted) |
