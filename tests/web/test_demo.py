@@ -96,3 +96,53 @@ def test_reset_removes_only_a_marked_demo_folder(
     folder = build_demo(tmp_path / "CareerHubDemo", NOW)
     reset_folder(folder)
     assert not folder.exists()
+
+
+def test_reset_never_deletes_a_real_folder_inside_the_demo_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review finding: a real folder nested in the demo folder must stop --reset."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    folder = build_demo(tmp_path / "CareerHubDemo", NOW)
+    mine = folder / "mine"
+    mine.mkdir()
+    (mine / "careerhub.db").write_text("real")
+    monkeypatch.setenv(DATA_DIR_ENV, str(mine))
+    with pytest.raises(ValueError, match="real Career Hub folder"):
+        reset_folder(folder)
+    assert (mine / "careerhub.db").exists()
+
+
+def test_a_folder_that_is_not_a_demo_is_never_built_into(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    other = tmp_path / "CareerHubDemo"
+    (other / "profile").mkdir(parents=True)
+    (other / "profile" / "profile.md").write_text("mine")
+    with pytest.raises(ValueError, match="not made by"):
+        build_demo(other, NOW)
+    assert (other / "profile" / "profile.md").read_text() == "mine"
+
+
+def test_a_failed_build_leaves_nothing_that_looks_finished(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import careerhub.demo as demo
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
+    monkeypatch.delenv(DATA_DIR_ENV, raising=False)
+
+    def boom(*args: object, **kwargs: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(demo, "_seed_jobs", boom)
+    with pytest.raises(OSError):
+        build_demo(tmp_path / "CareerHubDemo", NOW)
+    assert not (tmp_path / "CareerHubDemo").exists()
+    import os
+
+    assert DATA_DIR_ENV not in os.environ
