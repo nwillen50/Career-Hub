@@ -117,6 +117,10 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         raise OSError("network is off in tests")
 
     monkeypatch.setattr("uvicorn.run", lambda *args, **kwargs: None)  # `hub web` must not serve
+    # `hub menubar` must not start the real menu-bar app: on a Mac with rumps installed it ran, and
+    # its refresh started `hub attention` in a child process with this fake HOME, which made macOS
+    # ask for a keychain again and again (CH-207).
+    monkeypatch.setattr("careerhub.menubar.run_icon", lambda: 0)
     monkeypatch.setattr("builtins.input", lambda *args: "n")  # any yes/no question gets "no"
     monkeypatch.setattr(socket, "create_connection", no_network)
     monkeypatch.setattr(socket.socket, "connect", no_network)
