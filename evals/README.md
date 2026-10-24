@@ -43,3 +43,11 @@ A `hub eval extract` command arrives with CH-64, which builds the router from se
 `sample.yaml`: made-up resumes and transcripts with the facts a good reading must find (GPA,
 skills, schools, organizations, course codes). `careerhub.profile.evals.run_profile_eval` reports
 the share of expected items found per field and lists the misses.
+
+### Your own labeled postings and "Check the effect" (CH-172)
+
+Put your labeled postings (the `ranking/sample.yaml` format) in `evals/ranking.yaml` inside your
+data folder. After you accept a rubric change in the Conversation panel, "Check the effect" runs
+the ranking eval with the old and the new rubric on them and shows the filter eval, the top-10
+eval, and the ordering share side by side. It says roughly how many model calls first, and only
+runs when you press the button. About 30 labeled postings make the numbers mean something.

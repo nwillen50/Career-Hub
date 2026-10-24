@@ -37,12 +37,13 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from careerhub.core.migrate import migrate
-from careerhub.core.models import Application, Job, utcnow
+from careerhub.core.models import Application, Job, Proposal, utcnow
 from careerhub.core.secrets import KeychainKeyStore, KeyStore
 from careerhub.core.settings import SettingsError, load_settings
 from careerhub.core.storage import StorageError, open_database, session_factory
-from careerhub.llm import Router
+from careerhub.llm import BudgetExceeded, PrivacyViolation, Router
 from careerhub.llm.catalog import ollama_is_running, with_catalog
+from careerhub.llm.providers import ProviderError
 from careerhub.llm.setup import NoRoute, build_router, routes_for
 from careerhub.modules.conversation import ask, build_context, recent_messages
 from careerhub.modules.jobs.applications import (
@@ -51,6 +52,7 @@ from careerhub.modules.jobs.applications import (
     set_next_step,
 )
 from careerhub.modules.jobs.applications import track as change_status
+from careerhub.modules.jobs.evals import EvalError
 from careerhub.modules.jobs.reactions import (
     UNDO_SECONDS,
     ReactionError,
@@ -66,11 +68,26 @@ from careerhub.modules.network.interactions import (
     set_follow_up_done,
     set_own_words,
 )
-from careerhub.modules.proposals import ProposalError, declined_proposals, pending_proposals
+from careerhub.modules.proposals import (
+    RUBRIC_KIND,
+    ProposalError,
+    declined_proposals,
+    pending_proposals,
+)
 from careerhub.modules.proposals import accept as accept_proposal
 from careerhub.modules.proposals import reject as reject_proposal
 from careerhub.modules.proposals import reopen as reopen_proposal
-from careerhub.profile.files import ProfileFileError, load_profile_doc
+from careerhub.modules.rubric_effect import (
+    MEANINGFUL_LABELS,
+    EffectReport,
+    accepted_rubric_changes,
+    check_effect,
+    estimate_calls,
+    load_labels,
+    rubric_before,
+)
+from careerhub.profile.files import ProfileFileError, load_preferences, load_profile_doc
+from careerhub.profile.models import HardConstraints
 from careerhub.profile.rubric import load_rubric
 from careerhub.web.grouping import group_by_place
 from careerhub.web.job_detail import gather_job
@@ -164,6 +181,28 @@ def make_session_opener(store: KeyStore | None = None) -> Callable[[], Session]:
     return open_session
 
 
+def make_eval_opener(
+    store: KeyStore | None = None,
+) -> Callable[[], tuple[Router, list[str], list[str]]]:
+    """Return a function that builds the router and the extract and score routes for evals.
+
+    Raises `NoRoute` when extraction or scoring has no usable model.
+    """
+
+    def open_eval() -> tuple[Router, list[str], list[str]]:
+        keys = store or KeychainKeyStore()
+        sessions = session_factory(open_database(keys, one_connection_per_use=True))
+        settings = with_catalog(load_settings(), keys, ollama_is_running).settings
+        setup = build_router(settings, keys, sessions)
+        return (
+            setup.router,
+            routes_for(settings, "extract", setup.built),
+            routes_for(settings, "score", setup.built),
+        )
+
+    return open_eval
+
+
 def make_router_opener(
     store: KeyStore | None = None,
 ) -> Callable[[], tuple[Router, list[str]]]:
@@ -191,6 +230,7 @@ def create_app(
     local_running: Callable[[], bool] = ollama_is_running,
     open_router: Callable[[], tuple[Router, list[str]]] | None = None,
     banner: str | None = None,
+    open_eval: Callable[[], tuple[Router, list[str], list[str]]] | None = None,
 ) -> FastAPI:
     """Build the app. `token` is this start's secret; `check_database` says if data is usable.
 
@@ -682,6 +722,7 @@ def create_app(
                 "ready": open_router is not None,
                 "proposals": pending_proposals(session),
                 "declined": declined_proposals(session),
+                "checkable": accepted_rubric_changes(session) if open_eval is not None else [],
             },
         )
 
@@ -724,6 +765,97 @@ def create_app(
                     "/conversation" + (f"?job={job_id}" if job_id else ""), status_code=303
                 )
             return conversation_page(request, session, job_id, answer.text)
+
+    def effect_page(
+        request: Request, session: Session, proposal_id: int, report: EffectReport | None = None,
+        problem: str | None = None,
+    ) -> Response:  # fmt: skip
+        proposal = session.get(Proposal, proposal_id)
+        if proposal is None or proposal.kind != RUBRIC_KIND or proposal.status != "accepted":
+            return HTMLResponse("Not found.", status_code=404)
+        labels, why = None, None
+        try:
+            labels = load_labels()
+        except EvalError as error:
+            why = str(error)
+        if labels is None and why is None:
+            why = (
+                "There are no labeled postings yet. Label about 30 postings great, okay, or no "
+                "in evals/ranking.yaml inside your Career Hub data folder (the format is in "
+                "evals/README.md) and come back."
+            )
+        elif labels is not None and len(labels) < MEANINGFUL_LABELS:
+            why = (
+                f"Only {len(labels)} labeled postings: about {MEANINGFUL_LABELS} "
+                "make this meaningful."
+            )
+        old = rubric_before(proposal)
+        return templates.TemplateResponse(
+            request,
+            "effect.html",
+            {
+                "tabs": TABS,
+                "current": "/today",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": "Check the effect",
+                "heading": "Check the effect of a rubric change",
+                "proposal": proposal,
+                "count": len(labels or []),
+                "calls": estimate_calls(len(labels or [])),
+                "can_run": bool(labels) and old is not None and open_eval is not None,
+                "old_missing": old is None,
+                "warning": why,
+                "report": report,
+                "rows": report.rows() if report else [],
+                "problem": problem,
+            },
+        )
+
+    @app.get("/proposals/{proposal_id}/effect", response_class=HTMLResponse)
+    def effect_form(request: Request, proposal_id: JobId) -> Response:
+        if open_session is None:
+            return HTMLResponse("Not found.", status_code=404)
+        with open_session() as session:
+            return effect_page(request, session, proposal_id)
+
+    @app.post("/proposals/{proposal_id}/effect")
+    def run_effect(request: Request, proposal_id: JobId) -> Response:
+        """Run the ranking eval twice. Spends model calls, so only this button starts it."""
+        if open_session is None:
+            return HTMLResponse("Not found.", status_code=404)
+        with open_session() as session:
+            proposal = session.get(Proposal, proposal_id)
+            if proposal is None or proposal.kind != RUBRIC_KIND or proposal.status != "accepted":
+                return HTMLResponse("Not found.", status_code=404)
+            old, new = rubric_before(proposal), load_rubric()
+            doc, preferences = load_profile_doc(), load_preferences()
+            try:
+                labels = load_labels()
+            except EvalError as error:  # the page shows the same message on a plain load
+                return effect_page(request, session, proposal_id, problem=str(error))
+            if open_eval is None or not labels or old is None or new is None or doc is None:
+                return effect_page(request, session, proposal_id)
+            try:
+                router, extract_routes, score_routes = open_eval()
+                report = check_effect(
+                    router, labels, doc, old, new,
+                    preferences.hard_constraints if preferences else HardConstraints(),
+                    extract_routes, score_routes,
+                )  # fmt: skip
+            except (NoRoute, EvalError) as error:
+                return effect_page(request, session, proposal_id, problem=str(error))
+            except BudgetExceeded:
+                return effect_page(
+                    request, session, proposal_id,
+                    problem="This month's model budget is used up, so the check was not run.",
+                )  # fmt: skip
+            except (ProviderError, PrivacyViolation):
+                return effect_page(
+                    request, session, proposal_id,
+                    problem="A model could not be reached or is not allowed to see this, so the "
+                    "check was not run. Nothing was changed.",
+                )  # fmt: skip
+            return effect_page(request, session, proposal_id, report=report)
 
     @app.post("/proposals/{proposal_id}/{decision}")
     async def decide_proposal(request: Request, proposal_id: JobId, decision: str) -> Response:
