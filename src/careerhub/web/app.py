@@ -91,7 +91,14 @@ from careerhub.profile.facts import UnknownExtraction, decide
 from careerhub.profile.files import ProfileFileError, load_preferences, load_profile_doc
 from careerhub.profile.models import HardConstraints
 from careerhub.profile.rubric import load_rubric
-from careerhub.web.browse_view import SORTS, BrowseQuery, gather_browse
+from careerhub.web.browse_view import (
+    AGES,
+    MODES,
+    REACTED,
+    SORTS,
+    BrowseQuery,
+    gather_browse,
+)
 from careerhub.web.grouping import group_by_place
 from careerhub.web.job_detail import gather_job
 from careerhub.web.localtime import local_stamp
@@ -390,19 +397,13 @@ def create_app(
         return response
 
     @app.get("/browse", response_class=HTMLResponse)
-    def browse_tab(
-        request: Request,
-        q: str | None = None,
-        sort: str | None = None,
-        page: str | None = None,
-        group: str | None = None,
-    ) -> Response:
+    def browse_tab(request: Request) -> Response:
         if open_session is None:
             return tab("/browse")(request)
         opened["ok"] = opened["ok"] or check_database()
         if not opened["ok"]:
             return tab("/browse")(request)
-        query = BrowseQuery.clean(q, sort, page, group)
+        query = BrowseQuery.clean(dict(request.query_params))
         with open_session() as session:
             view = gather_browse(session, query)
         return templates.TemplateResponse(
@@ -416,6 +417,9 @@ def create_app(
                 "heading": "Browse",
                 "view": view,
                 "sorts": SORTS,
+                "modes": MODES,
+                "ages": AGES,
+                "reacted_options": REACTED,
                 "reasons": REASON_LABELS,
                 "place_groups": group_by_place([c.entry.location for c in view.cards])
                 if view.query.group

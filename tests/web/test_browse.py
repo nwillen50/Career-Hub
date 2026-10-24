@@ -150,3 +150,78 @@ def test_review_findings_a_superscript_digit_in_the_page_is_not_a_500(session: S
     client = web(session)
     for odd in ("%C2%B2", "%EF%BC%92", "%D9%A2"):  # ², full-width 2, Arabic-indic 2
         assert client.get(f"/browse?page={odd}").status_code == 200
+
+
+def test_ch200_each_filter_alone(session: Session) -> None:
+    from datetime import timedelta
+
+    from careerhub.core.models import Feedback, Source, utcnow
+
+    a = add_job(session, 1, 90, company="Acme", title="Alpha")
+    b = add_job(session, 2, 60, company="Globex", title="Beta")
+    c = add_job(session, 3, 40, company="Initech", title="Gamma")
+    b.location = "Austin, TX"
+    c.first_seen_at = utcnow() - timedelta(days=20)
+    a.structured_fields = {"fields": {"remote": "remote"}}
+    b.structured_fields = {"fields": {"remote": "hybrid"}}
+    other = Source(kind="lever", name="Other board", url="u2", status="approved")
+    session.add(other)
+    session.flush()
+    c.source_id = other.id
+    session.add(Feedback(job_id=a.id, reaction="interested"))
+    session.commit()
+    assert titles(session, min_score=50) == ["Alpha", "Beta"]
+    assert titles(session, max_score=50) == ["Gamma"]
+    assert titles(session, min_score=50, max_score=70) == ["Beta"]
+    assert titles(session, company="glob") == ["Beta"]
+    assert titles(session, place="austin") == ["Beta"]
+    assert titles(session, mode="remote") == ["Alpha"]
+    assert titles(session, mode="hybrid") == ["Beta"]
+    assert titles(session, mode="unknown") == ["Gamma"]
+    assert titles(session, age="7") == ["Alpha", "Beta"]
+    assert titles(session, age="30") == ["Alpha", "Beta", "Gamma"]
+    assert titles(session, source=other.id) == ["Gamma"]
+    assert titles(session, reacted="hide") == ["Beta", "Gamma"]
+    assert titles(session, reacted="only") == ["Alpha"]
+    assert titles(session, min_score=50, company="glob", reacted="hide") == ["Beta"]
+
+
+def test_ch200_filtered_out_jobs_show_with_the_reason_and_no_buttons(session: Session) -> None:
+    kept = add_job(session, 1, 80, title="Kept")
+    gone = add_job(session, 2, 70, title="Hidden role")
+    session.query(Assessment).filter_by(job_id=gone.id).update(
+        {
+            "filter_passed": False,
+            "fit_score": None,
+            "filter_results": {"reasons": ["Needs 8+ years"]},
+        }
+    )
+    session.commit()
+    client = web(session)
+    normal = client.get("/browse").text
+    assert "Kept" in normal and "Hidden role" not in normal
+    html = client.get("/browse?filtered=1").text
+    assert "Hidden role" in html and "Removed because: Needs 8+ years" in html
+    assert "Kept" not in html and "/react" not in html
+    assert f'href="/jobs/{gone.id}"' in html and f"/jobs/{kept.id}" not in html
+
+    assert check_page(html) == []
+
+
+def test_ch200_filters_live_in_the_url_survive_paging_and_junk_is_ignored(session: Session) -> None:
+    for n in range(1, 31):
+        add_job(session, n, 100 - n)
+    client = web(session)
+    html = client.get("/browse?min_score=50&mode=bogus&age=9999&source=x&min_score=abc").text
+    assert "30 open jobs" in html
+    page1 = client.get("/browse?min_score=60").text
+    assert "min_score=60" in page1 and "page=2" in page1 and 'value="60"' in page1
+    assert (
+        client.get("/browse?min_score=-5&max_score=1000&source=99999999999999999999").status_code
+        == 200
+    )
+    assert BrowseQuery.clean({"mode": "remote", "reacted": "hide", "min_score": "70"}).params() == (
+        "min_score=70&mode=remote&reacted=hide"
+    )
+    assert "Clear search and filters" in client.get("/browse?mode=remote").text
+    assert check_page(client.get("/browse?min_score=50&mode=remote&age=7&reacted=hide").text) == []
