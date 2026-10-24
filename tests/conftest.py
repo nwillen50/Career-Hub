@@ -51,3 +51,19 @@ def never_the_real_keychain(
     yield None
     if touched:
         pytest.fail(f"this test reached the real Keychain ({', '.join(touched)}); use a test store")
+
+
+@pytest.fixture(autouse=True)
+def never_the_real_calendar(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The weekly plan never opens the real Apple Calendar in a test (CH-208).
+
+    On a Mac with EventKit installed, tests that turn Apple Calendar on used to read the user's
+    real calendar (and could ask for permission). Tests that need calendar data pass a fake store
+    to AppleCalendar; here the plan sees Apple Calendar as unavailable, as it is off a Mac.
+    """
+    from careerhub.modules.plan.apple import CalendarUnavailable
+
+    def unavailable() -> object:
+        raise CalendarUnavailable("Apple Calendar is never read in tests.")
+
+    monkeypatch.setattr("careerhub.modules.plan.suggest.open_event_kit_store", unavailable)
