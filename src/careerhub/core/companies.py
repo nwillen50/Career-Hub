@@ -79,7 +79,7 @@ def merge_companies(
 
     moved = list(session.scalars(select(Job).where(Job.company_id == drop.id)))
     people = list(session.scalars(select(Person).where(Person.company_id == drop.id)))
-    entry = {
+    entry: dict[str, Any] = {
         "name": drop.name,
         "name_key": drop.name_key,
         "merged_keys": list(drop.merged_keys or []),
@@ -90,8 +90,10 @@ def merge_companies(
         "notes": drop.notes,
         "job_ids": [job.id for job in moved],
         "person_ids": [person.id for person in people],
+        #: What `drop` had itself absorbed, so splitting `drop` back out restores that too.
+        "carried": list(drop.merge_log or []),
     }
-    keep.merge_log = [*(keep.merge_log or []), *(drop.merge_log or []), entry]
+    keep.merge_log = [*(keep.merge_log or []), *entry["carried"], entry]
     for job in moved:
         job.company_id = keep.id
         job.dedupe_key = dedupe_key(keep.name, job.title, job.location, aliases)
@@ -157,6 +159,7 @@ def split_company(
         industry=entry["industry"] if entry else None,
         notes=entry["notes"] if entry else None,
         merged_keys=(entry["merged_keys"] or None) if entry else None,
+        merge_log=(list(entry.get("carried") or []) or None) if entry else None,
     )
     session.add(restored)
     session.flush()
@@ -179,7 +182,8 @@ def split_company(
             person.company_id = restored.id
     gone = {key, *(entry["merged_keys"] if entry else [])}
     company.merged_keys = [k for k in company.merged_keys or [] if k not in gone] or None
-    company.merge_log = [e for e in log if e["name_key"] != key] or None
+    carried = {e["name_key"] for e in (entry.get("carried") or [])} if entry else set()
+    company.merge_log = [e for e in log if e["name_key"] not in {key, *carried}] or None
     _never_merge(session, company, restored)
     session.flush()
     link_duplicates(session, [*old_keys, *(job.dedupe_key for job in jobs)])

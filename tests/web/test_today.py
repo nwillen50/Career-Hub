@@ -271,3 +271,16 @@ def test_a_follow_up_date_set_in_the_tracker_shows_on_today_and_in_the_count(
     assert "Follow up on your application: Role 1 at Globex" in html and "2 days overdue" in html
     track(session, job.id, "rejected")  # a closed application stops asking
     assert gather_today(session).follow_ups == []
+
+
+def test_job_card_reads_headline_facts_reason_buttons_then_the_fold_out(session: Session) -> None:
+    """CH-194: title and company in the headline, one link to Job detail, detail lower."""
+    job = add_job(session, 1, 80, company="Acme Robotics", title="Robotics Engineer")
+    html = web(session).get("/today").text
+    card = html[html.index('<article class="card job">') :]
+    card = card[: card.index("</article>")]
+    assert f'<a href="/jobs/{job.id}">Robotics Engineer</a> · Acme Robotics</h' in card
+    assert card.count("Details") == 0 and card.count(">Why it scored<") == 1
+    order = ["Boston, MA", "Fit score", "Strong match.", "Interested", "Why it scored"]
+    positions = [card.index(text) for text in order]
+    assert positions == sorted(positions)

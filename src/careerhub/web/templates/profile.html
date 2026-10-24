@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="muted">This is what Career Hub knows about you. It stays on this Mac. To change anything, edit the file named in each section; this page only reads them, except for the facts waiting for review.</p>
+
+<section aria-labelledby="ready-h"><h2 id="ready-h">Is your profile ready?</h2>
+  {% if profile.scoring_on %}
+  <p class="card">Scoring has been on since {{ profile.scoring_since }}. <span class="muted">Switch it off with <code>hub profile ready --off</code>.</span></p>
+  {% elif profile.missing %}
+  <div class="card">
+    <p>Scoring is off. These are still missing:</p>
+    <ul>{% for item in profile.missing %}<li>{{ item }}</li>{% endfor %}</ul>
+    <p class="muted">When they are done, run <code>hub profile ready</code> in the terminal to switch scoring on.</p>
+  </div>
+  {% else %}
+  <p class="card">Everything is in place. Run <code>hub profile ready</code> in the terminal to switch scoring on.</p>
+  {% endif %}
+</section>
+
+<section aria-labelledby="you-h"><h2 id="you-h">About you</h2>
+  <p class="muted">From <code>profile/profile.md</code>.</p>
+  {% if profile.has_profile_file %}
+  <dl class="card facts">
+    <dt>Name</dt><dd>{{ profile.name }}</dd>
+    <dt>Education</dt><dd>{% if profile.education %}<ul>{% for line in profile.education %}<li>{{ line }}</li>{% endfor %}</ul>{% else %}none set{% endif %}</dd>
+    <dt>Skills</dt><dd>{{ profile.skills|join(", ") or "none set" }}</dd>
+    <dt>Interests</dt><dd>{{ profile.interests|join(", ") or "none set" }}</dd>
+    <dt>About</dt><dd>{{ profile.about or "nothing written" }}</dd>
+  </dl>
+  {% else %}<p class="card muted">There is no <code>profile.md</code> yet.</p>{% endif %}
+</section>
+
+<section aria-labelledby="rules-h"><h2 id="rules-h">Where you would work, and the rules</h2>
+  <p class="muted">From <code>profile/preferences.yaml</code>. Jobs that break one of these are filtered out.</p>
+  {% if profile.has_preferences_file %}
+  <dl class="card facts">{% for label, value in profile.constraints %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
+  {% else %}<p class="card muted">There is no <code>preferences.yaml</code> yet.</p>{% endif %}
+</section>
+
+<section aria-labelledby="rubric-h"><h2 id="rubric-h">How jobs are scored</h2>
+  <p class="muted">From <code>profile/rubric.yaml</code>{% if profile.rubric_version %} (version {{ profile.rubric_version }}){% endif %}. A bigger weight counts for more.</p>
+  {% if profile.rubric %}
+  <table>
+    <caption class="muted">Scoring criteria</caption>
+    <thead><tr><th scope="col">Criterion</th><th scope="col">Weight</th><th scope="col">What a good match looks like</th></tr></thead>
+    <tbody>{% for name, weight, description in profile.rubric %}<tr><td>{{ name }}</td><td>{{ weight }}</td><td>{{ description }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p class="card muted">There is no <code>rubric.yaml</code> yet.</p>{% endif %}
+</section>
+
+<section aria-labelledby="plan-h"><h2 id="plan-h">Your weekly plan settings</h2>
+  <p class="muted">From <code>profile/preferences.yaml</code>.</p>
+  {% if profile.plan %}
+  <dl class="card facts">{% for label, value in profile.plan %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
+  {% else %}<p class="card muted">The plan uses its defaults.</p>{% endif %}
+</section>
+
+<section aria-labelledby="docs-h"><h2 id="docs-h">Resume and transcript</h2>
+  <p class="muted">Files in <code>inputs/</code>. Their text is never shown here.</p>
+  {% if profile.documents %}
+  <ul class="card">{% for label, info in profile.documents %}<li>{{ label }}: {{ info }}</li>{% endfor %}</ul>
+  {% else %}<p class="card muted">No resume or transcript was found.</p>{% endif %}
+</section>
+
+<section aria-labelledby="facts-h"><h2 id="facts-h">Facts waiting for your review</h2>
+  <p class="muted">Read from your resume and transcript by a model. Nothing counts until you accept it.
+  Accepted: {{ profile.fact_counts.get("accepted", 0) }}. Rejected: {{ profile.fact_counts.get("rejected", 0) }}.</p>
+  {% for item in profile.pending %}
+  <article class="card">
+    <h3>From your {{ item.kind }}</h3>
+    <ul>{% for line in item.lines %}<li>{{ line }}</li>{% endfor %}</ul>
+    <form method="post" action="/profile/facts/{{ item.id }}/accept" class="reactions">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit">Accept these facts</button>
+      <button type="submit" formaction="/profile/facts/{{ item.id }}/reject">Reject them</button>
+    </form>
+  </article>
+  {% else %}
+  <p class="card muted">No facts are waiting for review.</p>
+  {% endfor %}
+</section>
+{% endblock %}
