@@ -11,7 +11,9 @@ from careerhub.cli import main
 from careerhub.core.secrets import InMemoryKeyStore
 
 
-def test_hub_web_passes_the_router_opener(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_hub_web_passes_the_router_and_eval_openers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("CAREERHUB_DATA_DIR", str(tmp_path))  # never read the real data folder
     seen: dict[str, Any] = {}
 
@@ -23,4 +25,5 @@ def test_hub_web_passes_the_router_opener(monkeypatch: pytest.MonkeyPatch, tmp_p
     monkeypatch.setattr("uvicorn.run", lambda *a, **k: None)
     assert main(["web"], InMemoryKeyStore()) == 0
     assert callable(seen.get("open_router")), "Conversation would always say 'No model is set up'"
+    assert callable(seen.get("open_eval"))
     assert callable(seen.get("open_session"))

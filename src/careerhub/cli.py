@@ -576,7 +576,12 @@ def _web(options: list[str]) -> int:
     port = _port_from(options, load_settings().web_port)
     if port is None:
         return 2
-    from careerhub.web.app import create_app, make_router_opener, make_session_opener
+    from careerhub.web.app import (
+        create_app,
+        make_eval_opener,
+        make_router_opener,
+        make_session_opener,
+    )
 
     return _serve(
         port,
@@ -585,6 +590,7 @@ def _web(options: list[str]) -> int:
             port,
             open_session=make_session_opener(),
             open_router=make_router_opener(),
+            open_eval=make_eval_opener(),
         ),
     )
 
