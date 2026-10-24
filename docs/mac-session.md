@@ -106,3 +106,27 @@ Record each result on the matching ticket or ADR. Tick the box when it passes.
 
 - [ ] School job board saved-search emails (CH-129, then CH-128): forward one sample alert email
   (names removed) so the parser can be written against the real layout.
+
+## Catch-up of a skipped night (CH-181)
+
+- [ ] Run `uv run hub schedule install`, then the printed `launchctl bootstrap` commands for the
+  nightly and the catch-up jobs. Unplug the Mac and run `uv run hub nightly --if-plugged-in`.
+  Success: it prints "Skipped: the Mac is on battery power", and System status shows
+  "Skipped on battery at ...; no catch-up has run yet."
+- [ ] Plug the Mac in before the cutoff (`catchup_until`, default 08:00) and wait up to 30 minutes
+  (or run `uv run hub nightly --catch-up` yourself). Success: one full run happens, and System
+  status says "Skipped on battery at ..., caught up at ...". Run `--catch-up` again: it says
+  "nothing to do".
+
+## Menu-bar helper (CH-191)
+
+- [ ] `uv sync --extra menubar`, then `uv run hub menubar`. Success: an icon with a number appears in
+  the menu bar; hovering shows words like "2 follow-ups due, 3 new top jobs". After a failed nightly
+  run the text starts with "!".
+- [ ] Choose **Open Today** from its menu with no `hub web` running. Success: your browser opens
+  Today. Choose it again: the same page opens and no second server starts. With `hub web` already
+  running in a terminal, it says to use that window's link.
+- [ ] Set `"menubar_on": true` in `settings.json`, run `uv run hub schedule install`, run the printed
+  `launchctl bootstrap` line for `com.careerhub.menubar`, then log out and in. Success: the icon is
+  there without a terminal. Quit from its menu: it stays quit until the next login.
+- [ ] Note in the CH-33 spike whether a notification can be posted from this Python process.
