@@ -110,3 +110,14 @@ Record each result on the matching ticket or ADR. Tick the box when it passes.
 
 - [ ] School job board saved-search emails (CH-129, then CH-128): forward one sample alert email
   (names removed) so the parser can be written against the real layout.
+
+## Catch-up of a skipped night (CH-181)
+
+- [ ] Run `uv run hub schedule install`, then the printed `launchctl bootstrap` commands for the
+  nightly and the catch-up jobs. Unplug the Mac and run `uv run hub nightly --if-plugged-in`.
+  Success: it prints "Skipped: the Mac is on battery power", and System status shows
+  "Skipped on battery at ...; no catch-up has run yet."
+- [ ] Plug the Mac in before the cutoff (`catchup_until`, default 08:00) and wait up to 30 minutes
+  (or run `uv run hub nightly --catch-up` yourself). Success: one full run happens, and System
+  status says "Skipped on battery at ..., caught up at ...". Run `--catch-up` again: it says
+  "nothing to do".

@@ -107,7 +107,10 @@ def test_the_refresh_job_is_off_until_the_setting_turns_it_on(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     agents = _install(tmp_path, monkeypatch, "{}")
-    assert [p.name for p in agents.iterdir()] == ["com.careerhub.nightly.plist"]
+    assert sorted(p.name for p in agents.iterdir()) == [
+        "com.careerhub.catchup.plist",  # CH-181: written while the nightly requires power
+        "com.careerhub.nightly.plist",
+    ]
 
 
 def test_turning_it_on_writes_a_second_plist_without_starting_it(
@@ -119,5 +122,5 @@ def test_turning_it_on_writes_a_second_plist_without_starting_it(
     out = capsys.readouterr().out
     refresh = plistlib.loads((agents / "com.careerhub.refresh.plist").read_bytes())
     assert refresh["StartCalendarInterval"] == {"Hour": 13, "Minute": 15}
-    assert out.count("It is not running yet") == 2
+    assert out.count("It is not running yet") == 3  # nightly, refresh, and the catch-up job
     assert "bootout" in out and "com.careerhub.refresh" in out
