@@ -134,7 +134,7 @@ MVP includes a basic version of most capabilities, and later phases deepen them.
 | Source discovery | Proposes new sources based on the user's interests, conversations, and reactions. In the MVP it can only propose new configurations of existing source types (another company's job board, a new saved search); a new type of source is a code ticket. Nothing is added without the user's approval | Yes | — |
 | Understand | Turns each posting into structured fields (level, requirements, location as city, region, and country, visa sponsorship, whether the posting requires an existing right to work in its country, pay, deadline, degree required and preferred, degree fields, graduation window, work authorization, start date, required and preferred skills), a plain-English summary of what the job really is, and company context | Yes | Deeper company research |
 | Prioritize | Hard filters, then a fit score with a written explanation, then ranking by fit, odds, and urgency. Hard filters are only eligibility (a required degree level above the user's with no "or equivalent experience", a graduation window that excludes the user) and the user's explicit constraints. A job in a country where the user can't already work gets a work-visa flag stating the employer's sponsorship stance; it is hidden only if the user turns that on and the posting says it won't sponsor. Scoring uses every job field plus the user's preferences, judges degree fields and skills generously (physics counts toward most engineering; recent grad equals new grad), and ignores preferred skills. Scoring starts once the profile is ready, and small profile edits don't trigger a re-score | Yes | Scoring tuned by feedback |
-| Network | Who you know at each company, and the strongest warm path | From the LinkedIn connections export, plus alumni from lists the user provides (any layout) and connections the user tags. Anyone known to share the user's school is highlighted, and each company links to LinkedIn's alumni search for the user to open | Second-degree connections, past email contact, contacts no longer in the LinkedIn export flagged |
+| Network | Who you know at each company, and the strongest warm path | From the LinkedIn connections export, plus alumni from lists the user provides (any layout) and connections the user tags. Anyone known to share the user's school is highlighted, and each company links to LinkedIn's alumni search for the user to open | Second-degree connections, past email contact, contacts no longer in the LinkedIn export flagged, your own contacts (vCard export, or Apple Contacts opt-in) |
 | Tailor | Which experiences to lead with, which gaps to address, suggested resume changes, and the posting's preferred skills to highlight | Written tailoring notes | Generates resume variants in LaTeX (for LaTeX resumes) for the user to accept |
 | Outreach | Drafts messages to contacts, with etiquette limits on how often to contact a person or company | — | Yes |
 | Track | Applications, contacts, interactions, and follow-up dates; the agent checks every run that nothing slips | Yes | Status detected from Gmail |
@@ -294,7 +294,7 @@ read-only and as narrow as possible.
 | Job source | Public job-board feeds from Greenhouse, Lever, and Ashby for a target company list; The Muse as the broad source; jobs added by pasting a link; approved proposals of existing source types | Other applicant-tracking systems (Workday, Rippling, Workable), aggregators, "who's hiring" threads, job-alert emails, new types of sources | Public data only. LinkedIn and Handshake are never fetched or scraped |
 | Calendar | Apple Calendar (EventKit, on the Mac), which includes Google and Outlook calendars added to the Mac's Calendar app; exported calendar files | Direct Google Calendar and Outlook (Microsoft Graph) sync, free/busy only | Free/busy times only; event titles are not needed. Apple Calendar has no free/busy-only access, so Career Hub reads only start, end, and availability and never stores titles or other event details |
 | Mail | — | Gmail, then Outlook | Read-only, to detect application status and recruiter replies |
-| Network | LinkedIn data export (connections CSV), re-imported monthly; alumni lists in any common layout (CSV or Excel) | Alumni directories, contacts found in mail | A file the user downloads |
+| Network | LinkedIn data export (connections CSV), re-imported monthly; alumni lists in any common layout (CSV or Excel) | Alumni directories, contacts found in mail, your own contacts (a vCard export from any phone or address book, or Apple Contacts, opt-in on the Mac) | A file the user downloads |
 | Models | A built-in set (Anthropic, OpenAI, Google, and local MLX or Ollama) that the user switches on with their own API keys; others can be added in settings | Others as needed | API keys kept in the Keychain |
 
 **LinkedIn constraint:** LinkedIn offers no personal API for this, and scraping it breaks its terms
@@ -537,6 +537,11 @@ module, then packaging so other people can use it.
    - Alumni from school directories, where their terms allow it
    - Contacts missing from a newer LinkedIn export flagged as no longer connected (kept, never
      deleted) and left out of warm paths
+   - Your own contacts (a vCard export, or Apple Contacts as an opt-in on the Mac) as a network
+     source. Sensitive tier: never sent to a cloud model, and phone numbers and emails never leave
+     the Mac. Most address-book entries have only a name and a phone or email, with no employer or
+     school, and many names repeat, so they mostly add value by linking to people already known
+     from LinkedIn or alumni lists (matched carefully) and by the user tagging them
    - Suggested calendar blocks, added only after the user approves
    - Direct Google Calendar and Outlook sync (free/busy only), for calendars not on the Mac
    - Job-alert emails (LinkedIn, Handshake) and more applicant-tracking systems as sources
