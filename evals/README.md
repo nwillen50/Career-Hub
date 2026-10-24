@@ -51,3 +51,10 @@ data folder. After you accept a rubric change in the Conversation panel, "Check 
 the ranking eval with the old and the new rubric on them and shows the filter eval, the top-10
 eval, and the ordering share side by side. It says roughly how many model calls first, and only
 runs when you press the button. About 30 labeled postings make the numbers mean something.
+### Paired ranking eval (CH-175)
+
+`ranking/pairs.yaml` holds made-up pairs of postings that differ in one way (`close`: scores within
+`points` of each other, for a skill the profile does not list; `a_higher`: `a` leads `b` by at
+least `points`, for pay). `careerhub.modules.jobs.rank_pairs.run_pair_eval` scores both sides in a
+scratch in-memory database and reports each gap. Run it with real models after any change to the
+scoring prompt or rubric.

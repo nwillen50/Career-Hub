@@ -149,11 +149,11 @@ def demo_folder() -> Path:
 
 
 def check_folder(folder: Path) -> None:
-    """Refuse a folder that is, or sits inside, the real data folder."""
+    """Refuse a folder that is, sits inside, or contains the real data folder."""
     target = folder.expanduser().resolve()
     for real in real_folders():
         base = real.resolve()
-        if target == base or base in target.parents:
+        if target == base or base in target.parents or target in base.parents:
             raise ValueError(f"{folder} is the real Career Hub folder; the demo never uses it.")
 
 
@@ -362,21 +362,37 @@ def build_demo(folder: Path, now: datetime | None = None) -> Path:
     resolve inside the demo folder. Refuses the real folder.
     """
     check_folder(folder)
+    if folder.exists() and any(folder.iterdir()) and not (folder / MARKER).exists():
+        raise ValueError(
+            f"{folder} already exists and was not made by `hub demo`; leaving it alone."
+        )
     now = now or datetime.now(UTC)
+    fresh = not folder.exists() or not any(folder.iterdir())
+    before = os.environ.get(DATA_DIR_ENV)
     folder.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.environ[DATA_DIR_ENV] = str(folder)
-    (folder / "profile").mkdir(exist_ok=True)
-    write_private(folder / MARKER, "Made by `hub demo`. Safe to delete.\n")
-    write_private(folder / "profile" / "profile.md", _PROFILE)
-    write_private(folder / "profile" / "preferences.yaml", _PREFERENCES)
-    calendar = folder / "demo-calendar.ics"
-    write_private(calendar, _calendar(now))
-    save_settings(Settings(calendar_files=(str(calendar),)))
-    set_scoring(True, now.date())
-    engine = open_database(FileKeyStore(folder))
-    migrate(engine)
-    with session_factory(engine)() as session:
-        jobs = _seed_jobs(session, now)
-        _seed_network_and_tracker(session, jobs, now)
-    engine.dispose()
+    try:
+        (folder / "profile").mkdir(exist_ok=True)
+        write_private(folder / "profile" / "profile.md", _PROFILE)
+        write_private(folder / "profile" / "preferences.yaml", _PREFERENCES)
+        calendar = folder / "demo-calendar.ics"
+        write_private(calendar, _calendar(now))
+        save_settings(Settings(calendar_files=(str(calendar),)))
+        set_scoring(True, now.date())
+        engine = open_database(FileKeyStore(folder))
+        migrate(engine)
+        with session_factory(engine)() as session:
+            jobs = _seed_jobs(session, now)
+            _seed_network_and_tracker(session, jobs, now)
+        engine.dispose()
+        write_private(folder / MARKER, "Made by `hub demo`. Safe to delete.\n")  # last: built
+    except BaseException:
+        # A half-built demo must not look finished: remove what this call made.
+        if fresh:
+            shutil.rmtree(folder, ignore_errors=True)
+        if before is None:
+            os.environ.pop(DATA_DIR_ENV, None)
+        else:
+            os.environ[DATA_DIR_ENV] = before
+        raise
     return folder

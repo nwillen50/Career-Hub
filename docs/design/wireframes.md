@@ -1,4 +1,4 @@
-# Wireframes: Today, Tracker, Job detail, Conversation panel, System status
+# Wireframes: Today, Tracker, Job detail, Conversation panel, System status, Browse, Profile
 
 - Ticket: CH-32 (owner: Leo). **For Nicholas's review before any interface code** (Leo's sign-off
   condition in the PRD). Nothing here is built; the shortlist page (CH-69) already uses the card
@@ -172,6 +172,55 @@ Personal-tier data and can only create proposals.
 
 Shows exactly the lines the nightly run already records (type names and counts only, never posting
 or profile text).
+
+## 6. Browse (added Oct 24, CH-186)
+
+```
++--------------------------------------------------------------------------------+
+| Browse                          [Group by place]    [Label for evals >]        |
+| Search: [ robotics                    ]   Sort: [Score v]                      |
+| Score [ 50 ]-[ 100 ]  Company [ any v ]  Place [ any v ]  Mode [ any v ]        |
+| Posted [ any v ]  Source [ any v ]  [ ] Include reacted  [ ] Show filtered out  |
++--------------------------------------------------------------------------------+
+| 38 jobs                                                       Page 1 of 2  >   |
+| +----------------------------------------------------------------------------+ |
+| | Robotics Engineer, New Grad . Acme Robotics                                | |
+| | Boston, MA . $120,000 to $150,000 . 86 / 100                               | |
+| | Strong match on field and level.                                           | |
+| | [i] Interested   [x] Not interested v   [a] Applied                        | |
+| | > Why it scored                                                            | |
+| +----------------------------------------------------------------------------+ |
+| | (filtered out) Senior Controls Engineer . Acme . Needs 8+ years            | |
++--------------------------------------------------------------------------------+
+```
+
+- Same cards and reactions as Today; a reaction here counts the same and removes the job from Today.
+- "Show filtered out" lists jobs the hard filters removed, each with its reason, so a filter that
+  is too strict is easy to spot. These cards have no score and no reaction buttons.
+- The URL holds the search, filters, sort, and page, so a view can be bookmarked.
+- **Label for evals** shows one job with no reaction at a time with three buttons (great, okay,
+  no) and a one-line reason box; it feeds the labeled set the ranking evals use (CH-7).
+- Empty state: "No jobs match. Clear a filter." with a Clear filters button.
+
+## 7. Profile (added Oct 24, CH-186)
+
+```
++--------------------------------------------------------------------------------+
+| Profile                                                                        |
+| Is your profile ready?  Scoring is on since 2026-10-24.                        |
+| About you (profile/profile.md): name, education, skills, interests, About     |
+| Where you would work (profile/preferences.yaml): locations, work modes, rules |
+| How jobs are scored (profile/rubric.yaml): criteria and weights                |
+| Weekly plan settings (profile/preferences.yaml)                                |
+| Resume and transcript (inputs/): file kind and size only, never the text      |
+| Facts waiting for your review:   [Accept these facts] [Reject them]            |
++--------------------------------------------------------------------------------+
+```
+
+- Read-only except Accept and Reject on extracted facts. Editing stays in the files for the MVP; each
+  section names its file. When scoring is off, the first section lists what is missing, in plain
+  words, and says to run `hub profile ready`.
+- Shown only on this Mac; nothing on it is sent anywhere.
 
 ## Menu-bar icon and the morning notification
 
