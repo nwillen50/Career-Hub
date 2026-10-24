@@ -21,6 +21,7 @@ one approved source). `ingest_source` runs it, stores the result, and keeps the 
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 
@@ -45,7 +46,25 @@ _STREAK_KEYS = (STREAK_KEY, STREAK_DATE_KEY)
 
 
 class FetchError(Exception):
-    """A source couldn't be read. The message has no response content."""
+    """A source couldn't be read. The message has no response content.
+
+    `retryable` is True for trouble that may pass by itself (the network, a 5xx, a 429); a 4xx, a
+    bad config, or an unexpected reply is not retried.
+    """
+
+    def __init__(self, message: str, retryable: bool = False) -> None:
+        """Create the error; `retryable` says whether trying again can help."""
+        super().__init__(message)
+        self.retryable = retryable
+
+
+def retryable_status(code: int) -> bool:
+    """Say whether an HTTP status is worth trying again (server trouble or rate limiting)."""
+    return code >= 500 or code == 429
+
+
+#: Seconds to wait before the first retry; each further retry waits twice as long.
+RETRY_WAIT_SECONDS = 5.0
 
 
 def ingest_source(
@@ -58,14 +77,17 @@ def ingest_source(
     check_gone: GoneCheck | None = None,
     backstop_nights: int | None = None,
     aliases: Mapping[str, str] | None = None,
+    retries: int | None = None,
+    sleep: Callable[[float], None] | None = None,
 ) -> IngestReport:
     """Fetch and store one approved source, recording the fetch time and the source's health.
 
     `partial` is for search sources that never list everything: their jobs are not closed for being
     missing, and an empty result is normal rather than a glitch.
     """
+    attempts = (load_settings().source_retries if retries is None else retries) + 1
     try:
-        jobs = fetch(source, client)
+        jobs = _fetch_with_retries(fetch, source, client, attempts, sleep or time.sleep)
     except FetchError:
         if source.status == "approved":
             source.health = "failing"
@@ -84,6 +106,26 @@ def ingest_source(
     source.last_fetched_at = utcnow()
     session.commit()
     return replace(report, note=note) if note else report
+
+
+def _fetch_with_retries(
+    fetch: Fetcher,
+    source: Source,
+    client: httpx.Client | None,
+    attempts: int,
+    sleep: Callable[[float], None],
+) -> list[NormalizedJob]:
+    """Fetch, trying again after a pause (5 s, then 10 s...) while the trouble is retryable."""
+    wait = RETRY_WAIT_SECONDS
+    for attempt in range(1, attempts + 1):
+        try:
+            return fetch(source, client)
+        except FetchError as error:
+            if not error.retryable or attempt == attempts:
+                raise
+            sleep(wait)
+            wait *= 2
+    raise AssertionError("unreachable")  # the loop always returns or raises
 
 
 def _settle_empty_listing(

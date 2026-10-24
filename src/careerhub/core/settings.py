@@ -137,6 +137,8 @@ class Settings(BaseModel):
     #: Scores at or above this get the green bubble; at or above `score_tier_mid`, the brass one.
     score_tier_high: int = Field(default=75, ge=1, le=100)
     score_tier_mid: int = Field(default=55, ge=0, le=99)
+    #: How many more times a source fetch is tried after network trouble, a 5xx, or a 429 (CH-164).
+    source_retries: int = Field(default=2, ge=0, le=5)
     #: Run the nightly job only while the Mac is plugged in (the plist passes --if-plugged-in).
     nightly_require_power: bool = True
     #: The port `hub web` listens on (always on 127.0.0.1, never another address).
