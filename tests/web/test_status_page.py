@@ -149,5 +149,5 @@ def test_run_and_fetch_times_are_local_not_utc(session: Session) -> None:
     save_settings(Settings(timezone="Asia/Tokyo"))
     run = start_run(session, "fetch")
     finish_run(session, run, "ok")
-    view = gather_status(session)
+    view = gather_status(session, InMemoryKeyStore(), local_running=lambda: False)
     assert view.runs and "UTC" not in view.runs[0].started
