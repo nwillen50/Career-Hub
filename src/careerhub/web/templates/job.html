@@ -14,6 +14,11 @@
 </article>
 
 <p><a href="/conversation?job={{ job.job_id }}">Ask a question about this job</a></p>
+<form method="post" action="/jobs/{{ job.job_id }}/track" class="inline-form">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button type="submit">Follow {{ job.company }} and look for its job board</button>
+  <span class="muted">Checks the public Greenhouse, Lever, and Ashby boards by name. A board it finds is only proposed; you approve it.</span>
+</form>
 
 <section aria-labelledby="what-h"><h2 id="what-h">What the job is</h2>
   {% if job.summary %}<p>{{ job.summary }}</p>{% else %}<p class="muted">No summary was read from the posting.</p>{% endif %}
