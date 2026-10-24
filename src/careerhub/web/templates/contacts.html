@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<p class="muted">The people you know. Edit how you know someone in your own words; tags added by an alumni import stay as they are.</p>
+<p class="muted">The people you know. Edit how you know someone in your own words; tags added by an alumni import stay as they are. Emails and phone numbers stay on this Mac: they are never sent to a model, and Career Hub never emails anyone (Write opens your own mail app).</p>
 <form method="get" action="/contacts" class="filters" role="search">
   <label for="q">Filter by name or company</label>
   <input id="q" type="search" name="q" value="{{ text }}" maxlength="100">
@@ -10,7 +10,7 @@
 {% if contacts %}
 <table class="tracker">
   <caption class="muted">{{ contacts|length }} {{ "person" if contacts|length == 1 else "people" }}.</caption>
-  <thead><tr><th scope="col">Name</th><th scope="col">Company</th><th scope="col">How you know them</th><th scope="col">Last contact</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+  <thead><tr><th scope="col">Name</th><th scope="col">Company</th><th scope="col">How you know them</th><th scope="col">Email</th><th scope="col">Phone</th><th scope="col">Last contact</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
   <tbody>
   {% for c in contacts %}
   <tr>
@@ -21,6 +21,11 @@
       <input type="text" name="how_known" value="{{ c.own_words }}" maxlength="400" form="how-{{ c.id }}" aria-label="How you know {{ c.name }}">
       {% if c.imported_tags %}<br><span class="muted">{{ c.imported_tags }}</span>{% endif %}
     </td>
+    <td>
+      <input type="text" name="email" value="{{ c.email }}" maxlength="320" inputmode="email" autocomplete="off" form="how-{{ c.id }}" aria-label="Email for {{ c.name }}">
+      {% if c.email %}<br><a href="mailto:{{ c.email|urlencode }}" aria-label="Write to {{ c.name }} in your mail app">Write</a>{% endif %}
+    </td>
+    <td><input type="text" name="phone" value="{{ c.phone }}" maxlength="40" inputmode="tel" autocomplete="off" form="how-{{ c.id }}" aria-label="Phone for {{ c.name }}"></td>
     <td>{{ c.last_contact or "—" }}</td>
     <td><button type="submit" form="how-{{ c.id }}" aria-label="Save how you know {{ c.name }}">Save</button> <a href="/interactions?person={{ c.id }}#log" aria-label="Log a contact with {{ c.name }}">Log a contact</a></td>
   </tr>

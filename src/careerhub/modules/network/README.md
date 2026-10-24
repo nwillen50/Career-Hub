@@ -51,6 +51,10 @@ yours with `school_aliases` in `preferences.yaml`). Put `linkedin_school_slug` (
 that company. Career Hub only builds the link; it never visits it. See
 [ADR-0039](../../../../docs/decisions/0039-same-school.md).
 
+### Email and phone (CH-196)
+
+The Contacts tab has Email and Phone columns, edited in place (blank clears one). Both are Sensitive: stored in the encrypted database, shown only on the local page, never sent to a model, never logged. The email gets a "Write" link (`mailto:`) that opens your own mail app; Career Hub sends nothing. Alumni imports already fill the email; a phone column in an import is not read yet.
+
 ## Remembered column mappings (CH-116)
 
 `mappings.py` saves the `--map`, `--sheet`, and `--group` given to `hub alumni import` per file name in `alumni-mappings.json` (private, header and field names only). A later import of a file with the same name uses them; flags given again win and update them; `hub alumni mappings` lists them and `hub alumni forget <file>` removes one. A header that no longer exists is a clear error, not a guess.

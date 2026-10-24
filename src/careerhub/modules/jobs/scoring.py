@@ -35,7 +35,7 @@ from careerhub.profile.rubric import Rubric
 from careerhub.prompts import load_prompt, render
 
 PROMPT_NAME = "score_job"
-PROMPT_VERSION = 2
+PROMPT_VERSION = 3
 MAX_POSTING_CHARS = 6_000
 
 
