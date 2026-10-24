@@ -41,3 +41,9 @@ Each job lists up to two people you know at the company (from `hub paths` rules,
 reasons, or says that you don't know anyone there yet. Names, titles, and reasons are escaped like
 all page text. Your own `how_known` notes appear in the reasons, so the page stays in the private
 data folder.
+
+## Demo mode
+
+`create_app(..., banner=text)` shows `text` in a strip above the top bar on every page. `hub demo`
+(see `careerhub/demo.py`) uses it to label invented data "Demo data". Nothing else in the web app
+knows about the demo: it reads the demo folder the same way it reads the real one.

@@ -41,8 +41,8 @@ from careerhub.core.secrets import KeychainKeyStore, KeyStore
 from careerhub.core.settings import SettingsError, load_settings
 from careerhub.core.storage import StorageError, open_database, session_factory
 from careerhub.llm import BudgetExceeded, PrivacyViolation, Router
-from careerhub.llm.providers import ProviderError
 from careerhub.llm.catalog import ollama_is_running, with_catalog
+from careerhub.llm.providers import ProviderError
 from careerhub.llm.setup import NoRoute, build_router, routes_for
 from careerhub.modules.conversation import ask, build_context, recent_messages
 from careerhub.modules.jobs.applications import (
@@ -51,6 +51,7 @@ from careerhub.modules.jobs.applications import (
     set_next_step,
 )
 from careerhub.modules.jobs.applications import track as change_status
+from careerhub.modules.jobs.evals import EvalError
 from careerhub.modules.jobs.reactions import (
     UNDO_SECONDS,
     ReactionError,
@@ -66,8 +67,12 @@ from careerhub.modules.network.interactions import (
     set_follow_up_done,
     set_own_words,
 )
-from careerhub.modules.jobs.evals import EvalError
-from careerhub.modules.proposals import RUBRIC_KIND, ProposalError, declined_proposals, pending_proposals
+from careerhub.modules.proposals import (
+    RUBRIC_KIND,
+    ProposalError,
+    declined_proposals,
+    pending_proposals,
+)
 from careerhub.modules.proposals import accept as accept_proposal
 from careerhub.modules.proposals import reject as reject_proposal
 from careerhub.modules.proposals import reopen as reopen_proposal
@@ -223,6 +228,8 @@ def create_app(
     key_store: KeyStore | None = None,
     local_running: Callable[[], bool] = ollama_is_running,
     open_router: Callable[[], tuple[Router, list[str]]] | None = None,
+    banner: str | None = None,
+    open_eval: Callable[[], tuple[Router, list[str], list[str]]] | None = None,
 ) -> FastAPI:
     """Build the app. `token` is this start's secret; `check_database` says if data is usable.
 
@@ -233,6 +240,7 @@ def create_app(
     templates = Jinja2Templates(
         directory=str(resources.files("careerhub.web").joinpath("templates"))
     )
+    templates.env.globals["banner"] = banner  # shown on every page (the demo's "Demo data")
     sessions: dict[str, str] = {}  # session id -> CSRF token
     opened = {"ok": False}  # once the database has opened, it is not re-checked on every page
     static_dir = str(resources.files("careerhub.web").joinpath("static"))
@@ -759,22 +767,6 @@ def create_app(
                 )
             return conversation_page(request, session, job_id, answer.text)
 
-    @app.post("/proposals/{proposal_id}/{decision}")
-    async def decide_proposal(request: Request, proposal_id: JobId, decision: str) -> Response:
-        if open_session is None or decision not in ("accept", "reject", "reopen"):
-            return HTMLResponse("Not found.", status_code=404)
-        with open_session() as session:
-            try:
-                if decision == "accept":
-                    accept_proposal(session, proposal_id)
-                elif decision == "reject":
-                    reject_proposal(session, proposal_id)
-                else:
-                    reopen_proposal(session, proposal_id)
-            except ProposalError as problem:
-                return conversation_page(request, session, None, str(problem))
-        return RedirectResponse("/conversation", status_code=303)
-
     def effect_page(
         request: Request, session: Session, proposal_id: int, report: EffectReport | None = None,
         problem: str | None = None,
@@ -793,7 +785,10 @@ def create_app(
                 f"in {labels_path()} (the format is in evals/README.md) and come back."
             )
         elif labels is not None and len(labels) < MEANINGFUL_LABELS:
-            why = f"Only {len(labels)} labeled postings: about {MEANINGFUL_LABELS} make this meaningful."
+            why = (
+                f"Only {len(labels)} labeled postings: about {MEANINGFUL_LABELS} "
+                "make this meaningful."
+            )
         old = rubric_before(proposal)
         return templates.TemplateResponse(
             request,
@@ -857,6 +852,22 @@ def create_app(
                     "check was not run. Nothing was changed.",
                 )  # fmt: skip
             return effect_page(request, session, proposal_id, report=report)
+
+    @app.post("/proposals/{proposal_id}/{decision}")
+    async def decide_proposal(request: Request, proposal_id: JobId, decision: str) -> Response:
+        if open_session is None or decision not in ("accept", "reject", "reopen"):
+            return HTMLResponse("Not found.", status_code=404)
+        with open_session() as session:
+            try:
+                if decision == "accept":
+                    accept_proposal(session, proposal_id)
+                elif decision == "reject":
+                    reject_proposal(session, proposal_id)
+                else:
+                    reopen_proposal(session, proposal_id)
+            except ProposalError as problem:
+                return conversation_page(request, session, None, str(problem))
+        return RedirectResponse("/conversation", status_code=303)
 
     @app.post("/session/end")
     def end_session(request: Request) -> Response:
