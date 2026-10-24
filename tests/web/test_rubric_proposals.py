@@ -96,7 +96,7 @@ def test_the_diff_shows_the_criterion_and_the_version_bump(session: Session) -> 
         "- location: weight 2, Based where I can work.\n"
         "+ location: weight 5, Based where I can work.\n"
         "Jobs are scored again on the next nightly run.\n"
-        "Saving rewrites rubric.yaml without its comments; a copy of the old file is kept."
+        "Saving keeps your comments and layout, and a copy of the old file is kept."
     )
     assert rubric_path().read_text(encoding="utf-8") == RUBRIC  # nothing changed yet
 

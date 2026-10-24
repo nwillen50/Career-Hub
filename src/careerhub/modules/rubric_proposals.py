@@ -94,7 +94,7 @@ def render_rubric_diff(old: dict[str, Any], new: dict[str, Any], name: str) -> s
             f"rubric.yaml version {old.get('version')} -> {new.get('version')}",
             *body,
             "Jobs are scored again on the next nightly run.",
-            "Saving rewrites rubric.yaml without its comments; a copy of the old file is kept.",
+            "Saving keeps your comments and layout, and a copy of the old file is kept.",
         ]
     )
 
