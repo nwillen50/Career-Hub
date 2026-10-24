@@ -14,15 +14,19 @@ checked in a Mac session (docs/mac-session.md). The choice of rumps over a Swift
 from __future__ import annotations
 
 import json
+import os
 import re
 import socket
 import subprocess
 import sys
+import threading
 import webbrowser
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import IO
 
 POLL_SECONDS = 60
+LINK_WAIT_SECONDS = 20.0
 ERROR_TITLE = "!"
 _LINK = re.compile(r"Career Hub is at (http://127\.0\.0\.1:\d+/\?t=[A-Za-z0-9_\-]+)")
 
@@ -109,14 +113,26 @@ class WebLauncher:
         process = self._spawn(
             hub_command("web", "--port", str(self.port)),
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            # Without this, the link sits in a buffer and is never read from the pipe.
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
         )  # fmt: skip
-        line = process.stdout.readline() if process.stdout else ""
-        link = find_link(line)
+        link = find_link(_first_line(process.stdout))
         if link is None:
             return "Career Hub could not start its web page."
         self._link = link
         self._open(link)
         return "Opened Today."
+
+
+def _first_line(stream: IO[str] | None, wait: float = LINK_WAIT_SECONDS) -> str:
+    """Read one line from `stream`, giving up after `wait` seconds (never hangs the menu bar)."""
+    if stream is None:
+        return ""
+    box: list[str] = []
+    reader = threading.Thread(target=lambda: box.append(stream.readline()), daemon=True)
+    reader.start()
+    reader.join(wait)
+    return box[0] if box else ""
 
 
 def run_icon() -> int:
@@ -147,7 +163,7 @@ def run_icon() -> int:
         @rumps.clicked("Open Today")
         def open_today(self, _: object) -> None:
             message = launcher.open_today()
-            if "could not" in message:
+            if message != "Opened Today.":  # never a silent click
                 rumps.notification("Career Hub", "", message)
 
     App().run()

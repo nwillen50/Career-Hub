@@ -74,7 +74,7 @@ def render_plist(
                 "Label": MENUBAR_LABEL,
                 "ProgramArguments": [python or sys.executable, "-m", "careerhub.cli", "menubar"],
                 "RunAtLoad": True,
-                "KeepAlive": {"SuccessfulExit": False},
+                "KeepAlive": {"Crashed": True},
                 "StandardOutPath": str(logs / "menubar.out.log"),
                 "StandardErrorPath": str(logs / "menubar.err.log"),
                 "ProcessType": "Interactive",

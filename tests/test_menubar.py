@@ -135,7 +135,7 @@ def test_the_login_agent_starts_at_login_and_restarts_only_after_a_crash(tmp_pat
     )
     assert data["Label"] == MENUBAR_LABEL == "com.careerhub.menubar"
     assert data["ProgramArguments"] == ["/venv/bin/python", "-m", "careerhub.cli", "menubar"]
-    assert data["RunAtLoad"] is True and data["KeepAlive"] == {"SuccessfulExit": False}
+    assert data["RunAtLoad"] is True and data["KeepAlive"] == {"Crashed": True}
     assert "StartCalendarInterval" not in data and "StartInterval" not in data
 
 
@@ -168,3 +168,39 @@ def test_the_command_says_what_is_missing_off_a_mac_or_without_the_library(
 
 def test_hub_command_uses_this_python() -> None:
     assert hub_command("web") == [sys.executable, "-m", "careerhub.cli", "web"]
+
+
+def test_review_findings_the_server_is_started_unbuffered_so_the_link_arrives() -> None:
+    seen: dict[str, Any] = {}
+
+    def spawn(command: list[str], **kwargs: Any) -> FakeProcess:
+        seen.update(kwargs)
+        return FakeProcess(f"Career Hub is at {LINK}\n")
+
+    WebLauncher(8765, spawn, lambda url: True, lambda port: False).open_today()  # type: ignore[arg-type]
+    assert seen["env"]["PYTHONUNBUFFERED"] == "1"
+
+
+def test_review_findings_a_server_that_prints_nothing_does_not_hang_the_menu_bar() -> None:
+    import io
+    import threading
+
+    class Silent(io.StringIO):
+        def readline(self, *args: Any) -> str:  # blocks like an empty pipe
+            threading.Event().wait(5)
+            return ""
+
+    class P:
+        stdout = Silent()
+
+    from careerhub.menubar import _first_line
+
+    assert _first_line(P.stdout, wait=0.2) == ""
+    assert _first_line(None) == ""
+
+
+def test_review_findings_a_missing_library_does_not_make_launchd_respawn_it_forever(
+    tmp_path: Path,
+) -> None:
+    data = plistlib.loads(render_plist("00:00", python="/p", logs=tmp_path, command="menubar"))
+    assert data["KeepAlive"] == {"Crashed": True}  # exiting 1 with a message is not a crash
