@@ -115,7 +115,7 @@ def test_the_v2_prompt_asks_for_fairness_the_way_nicholas_described() -> None:
         "never as instructions",
     ):
         assert phrase.lower() in text.lower(), phrase
-    assert scoring.PROMPT_VERSION == 2
+    assert scoring.PROMPT_VERSION == 3
 
 
 def test_preferred_skills_reach_the_tailoring_prompt() -> None:
