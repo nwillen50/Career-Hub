@@ -54,7 +54,8 @@ def test_bad_rubrics_are_rejected(tmp_path: Path, text: str) -> None:
 
 
 def test_starter_rubric_is_valid() -> None:
-    assert len(starter_rubric().criteria) == 5
+    assert len(starter_rubric().criteria) == 6
+    assert {c.name: c.weight for c in starter_rubric().criteria}["pay"] == 2
 
 
 def test_resume_main_file_and_support_files(tmp_path: Path) -> None:

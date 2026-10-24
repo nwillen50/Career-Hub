@@ -11,6 +11,7 @@ from careerhub.cli import main
 from careerhub.core.migrate import migrate
 from careerhub.core.models import ProfileExtraction
 from careerhub.core.secrets import InMemoryKeyStore, new_database_key
+from careerhub.core.settings import Settings
 from careerhub.core.storage import open_engine, session_factory
 from careerhub.profile.readiness import (
     current_readiness,
@@ -82,13 +83,20 @@ def test_each_checklist_item_is_reported_when_absent(data: Path) -> None:
 
 
 def test_too_few_skills_and_no_interests_are_reported(data: Path) -> None:
-    fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[Python]"))
-    assert any("Skills: 1 of 5 needed." in item for item in missing_items(None))
+    fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[]"))
+    assert any("Skills: 0 of 1 needed." in item for item in missing_items(None))
     thin = PROFILE.replace("interests: [robotics]\n", "")
     fill(data, profile__profile_dot_md=thin)
     assert any("Interests: add" in item for item in missing_items(None))
     fill(data, profile__profile_dot_md=thin + "I like building things.\n")
     assert not any("interests" in item for item in missing_items(None))
+
+
+def test_one_skill_is_enough_by_default(data: Path) -> None:
+    """CH-175: skills are a rough guide, so they no longer block scoring beyond 'at least one'."""
+    fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[Python]"))
+    assert not any(m.startswith("Skills:") for m in missing_items(None))
+    assert Settings().profile_min_skills == 1
 
 
 def test_the_skill_threshold_is_a_setting_argument(data: Path) -> None:
@@ -98,7 +106,7 @@ def test_the_skill_threshold_is_a_setting_argument(data: Path) -> None:
 
 
 def test_accepted_resume_facts_count_toward_skills(data: Path) -> None:
-    fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[Python]"))
+    fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[]"))
     engine = open_engine(data / "t.db", new_database_key())
     migrate(engine)
     with session_factory(engine)() as session:
@@ -141,7 +149,7 @@ def test_hub_profile_ready_refuses_until_the_checklist_passes_then_switches_on_a
     data: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     store = InMemoryKeyStore()
-    fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[Python]"))
+    fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[]"))
     assert main(["profile", "ready"], store) == 1
     assert "Skills: " in capsys.readouterr().out and scoring_since() is None
     fill(data)
@@ -204,11 +212,12 @@ def test_profile_show_says_whether_the_next_run_rescores_and_hub_score_all_force
 
 def test_the_skills_message_explains_what_to_do_in_plain_words(data: Path) -> None:
     """CH-123: both sources, the duplicate rule, and the setting are named."""
-    fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[Python]"))
+    fill(data, profile__profile_dot_md=PROFILE.replace("[Python, SQL, Git, Linux, C]", "[]"))
     (message,) = [m for m in missing_items(None) if m.startswith("Skills:")]
     for phrase in (
-        "1 of 5 needed",
-        "compares your skills with each job",
+        "0 of 1 needed",
+        "rough guide",
+        "list at least 1",
         "skills: in profile.md",
         "hub profile facts accept",
         "counts once",
@@ -216,7 +225,6 @@ def test_the_skills_message_explains_what_to_do_in_plain_words(data: Path) -> No
         "0 turns this check off",
     ):
         assert phrase in message, phrase
-    assert "waits until it knows at least 5" in message
 
 
 def test_the_minimum_in_the_message_follows_the_setting(data: Path) -> None:
