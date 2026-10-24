@@ -29,6 +29,8 @@ the user's comments, blank lines, quoting, and sometimes key order.
 - ruamel.yaml drops a blank line that directly follows a one-line `{...}` list item (the style
   `rubric.yaml` is usually written in). Comments, ordering, quoting, and blank lines elsewhere
   survive.
+- Lists are edited by value, so each item keeps its own comment. When a whole mapping key is
+  deleted, a comment line above it stays and then sits above the next key.
 - `targets.yaml` (a list Career Hub itself imports and edits) is still written with a plain dump;
   it is not a hand-annotated file.
 

@@ -35,6 +35,7 @@ INVOCATIONS: dict[str, list[str]] = {
     "attention": ["attention", "--json"],
     "web": ["web"],
     "menubar": ["menubar"],
+    "demo": ["demo"],
     "add-job": [
         "add-job",
         "https://example.com/jobs/1",
@@ -51,6 +52,7 @@ INVOCATIONS: dict[str, list[str]] = {
     "targets list": ["targets", "list"],
     "targets enable-matching": ["targets", "enable-matching"],
     "targets enable": ["targets", "enable", "Acme"],
+    "targets add": ["targets", "add", "Acme"],
     "models list": ["models", "list"],
     "models routes": ["models", "routes"],
     "models remove": ["models", "remove", "gemini"],
@@ -81,6 +83,7 @@ COVERS = {
     "hub attention": "attention",
     "hub web": "web",
     "hub menubar": "menubar",
+    "hub demo": "demo",
     "hub add-job": "add-job",
     "hub jobs close": "jobs close",
     "hub companies": "companies",
@@ -88,6 +91,7 @@ COVERS = {
     "hub companies split": "companies split",
     "hub targets find-boards": "targets find-boards",
     "hub targets enable": "targets enable",
+    "hub targets add": "targets add",
     "hub models list": "models list",
     "hub models add": "models list",  # asks for a key at a hidden prompt; list proves the group
     "hub models remove": "models remove",

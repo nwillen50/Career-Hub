@@ -137,3 +137,30 @@ def test_a_broken_file_is_still_refused(session: Session) -> None:
     preferences_path().write_text("hard_constraints: [unclosed", encoding="utf-8")
     with pytest.raises(ProposalError):
         accept(session, proposal.id)
+
+
+def test_removing_or_inserting_a_list_item_keeps_every_comment_on_its_own_item() -> None:
+    """Review finding: comments used to stay at their index while the values moved."""
+    text = "locations:\n  - Boston  # home, keep\n  - Remote  # flexible\n  - Austin  # maybe\n"
+    data = yaml.safe_load(text)
+    data["locations"].remove("Boston")
+    removed = edit_yaml_text(text, data)
+    assert "- Remote  # flexible" in removed and "- Austin  # maybe" in removed
+    assert "Boston" not in removed and "home, keep" not in removed
+    data = yaml.safe_load(text)
+    data["locations"].insert(0, "Chicago")
+    inserted = edit_yaml_text(text, data)
+    assert "- Boston  # home, keep" in inserted and "- Remote  # flexible" in inserted
+    assert yaml.safe_load(inserted) == data
+    data["locations"][2] = "Denver"  # replace one in the middle
+    replaced = edit_yaml_text(text, data)
+    assert "- Boston  # home, keep" in replaced and "- Austin  # maybe" in replaced
+    assert yaml.safe_load(replaced) == data
+
+
+def test_a_changed_item_in_a_list_of_mappings_keeps_its_comment() -> None:
+    text = "criteria:\n  # first\n  - name: a\n    weight: 1  # light\n  - name: b\n    weight: 2\n"
+    data = yaml.safe_load(text)
+    data["criteria"][1]["weight"] = 5
+    out = edit_yaml_text(text, data)
+    assert "# first" in out and "weight: 1  # light" in out and "weight: 5" in out

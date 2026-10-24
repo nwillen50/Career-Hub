@@ -107,3 +107,42 @@ def test_the_table_is_consistent() -> None:
         assert entry.system is None or norm(entry.system) in table.systems
     for choices in table.ambiguous.values():
         assert len(choices) >= 2
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["", "   ", "​", "🎓", "x" * 100_000, "Penn State", "PENN STATE", "a&b"],
+)
+def test_odd_school_text_never_raises_and_never_matches_by_accident(text: str) -> None:
+    """Hostile or empty school names (imports and typed tags) are handled quietly."""
+    assert same_school([text], ["Tufts University"]) is None
+    assert related_school([text], ["Tufts University"]) is None
+    assert tie_between(text, "UC Davis") is None or tie_between(text, "UC Davis").kind != "same"  # type: ignore[union-attr]
+    assert ambiguous_choices(text) in ([], ambiguous_choices(text))
+
+
+def test_a_non_breaking_space_and_capitals_still_match() -> None:
+    assert same_school(["Penn State"], ["Pennsylvania State University"]) == "Penn State"
+    assert same_school(["PENN STATE"], ["penn state"]) == "PENN STATE"
+
+
+@pytest.mark.parametrize("short", ["PSU", "USC", "UW", "UM", "WashU ", "wash u", "MSU", "UT"])
+def test_review_findings_an_ambiguous_abbreviation_matches_nothing_not_even_itself(
+    short: str,
+) -> None:
+    if short.strip().lower() == "washu":  # WashU is one school in the table, not ambiguous
+        return
+    assert same_school([short], [short]) is None
+
+
+def test_review_findings_branch_and_system_ties_survive_a_user_alias() -> None:
+    aliases = {"Pennsylvania State University": ["PSU"]}
+    tie = related_school(["Penn State Behrend"], ["PSU"], aliases)
+    assert tie is not None and tie.label == "Branch campus: Penn State"
+    tie = related_school(["PSU"], ["Penn State Behrend"], aliases)
+    assert tie is not None and tie.kind == "branch"
+
+
+def test_review_findings_a_bare_system_name_is_not_an_alias_of_one_campus() -> None:
+    assert same_school(["University of Massachusetts"], ["UMass Amherst"]) is None
+    assert same_school(["University of Minnesota"], ["University of Minnesota-Twin Cities"]) is None

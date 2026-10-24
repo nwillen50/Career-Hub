@@ -32,6 +32,8 @@ class ContactView:
     own_words: str
     imported_tags: str
     last_contact: str
+    email: str = ""
+    phone: str = ""
 
 
 @dataclass(frozen=True)
@@ -97,6 +99,8 @@ def gather_contacts(session: Session, text: str = "") -> list[ContactView]:
                 own_words=own,
                 imported_tags=imported,
                 last_contact=_day(latest.get(person.id), zone),
+                email=person.email or "",
+                phone=person.phone or "",
             )
         )
     return views

@@ -14,12 +14,13 @@ from careerhub.core.companies import (
     find_companies,
     get_or_create_company,
     list_merges,
+    merge_companies,
     pending_merges,
     split_company,
     suggest_merges,
 )
 from careerhub.core.migrate import migrate
-from careerhub.core.models import Company, Job, Person, Source
+from careerhub.core.models import Company, Job, Person, Source, utcnow
 from careerhub.core.secrets import new_database_key
 from careerhub.core.storage import open_engine, session_factory
 from careerhub.modules.jobs import NormalizedJob, store_jobs
@@ -149,3 +150,35 @@ def test_merges_lists_each_merge_and_the_command_asks_before_splitting(
     assert main(["companies", "split", "Acme", "Acme Robotics"], store) == 0
     assert "Split Acme Robotics" in capsys.readouterr().out
     assert len(session.scalars(select(Company)).all()) == 2
+
+
+def test_splitting_a_company_that_had_absorbed_another_hands_the_log_back(
+    session: Session,
+) -> None:
+    """Review finding: merge A into B, then B into C; splitting B out keeps A splittable."""
+    a, b, c = (
+        get_or_create_company(session, n)
+        for n in ("Zeta", "Zeta Foundry", "Zeta Foundry Collective")
+    )
+    assert a and b and c and len({a.id, b.id, c.id}) == 3
+    for name, company in (("A job", a), ("B job", b)):
+        session.add(Job(company_id=company.id, source_id=source(session, name).id,
+                        external_id=name, title=name, url="u", dedupe_key=name,
+                        first_seen_at=utcnow(), last_seen_at=utcnow()))  # fmt: skip
+    session.commit()
+    merge_companies(session, b, a)
+    merge_companies(session, c, b)
+    session.commit()
+    assert {e["name_key"] for e in c.merge_log or []} == {a.name_key, b.name_key}
+    split_company(session, c, "Zeta Foundry")
+    restored = find_companies(session, "Zeta Foundry")[0]
+    assert restored is not c
+    assert [e["name_key"] for e in restored.merge_log or []] == ["zeta"]
+    assert c.merge_log is None and c.merged_keys is None
+    assert "zeta" in (restored.merged_keys or [])
+    split_company(session, restored, "Zeta")  # A can still be split out of B
+    assert {co.name for co in session.scalars(select(Company))} == {
+        "Zeta",
+        "Zeta Foundry",
+        "Zeta Foundry Collective",
+    }
