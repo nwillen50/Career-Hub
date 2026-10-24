@@ -27,6 +27,7 @@ from datetime import datetime
 from importlib import resources
 from typing import Annotated, Any
 from urllib.parse import parse_qs, urlsplit
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Path, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -73,6 +74,7 @@ from careerhub.profile.files import ProfileFileError, load_profile_doc
 from careerhub.profile.rubric import load_rubric
 from careerhub.web.grouping import group_by_place
 from careerhub.web.job_detail import gather_job
+from careerhub.web.localtime import local_stamp
 from careerhub.web.people_view import gather_contacts, gather_interactions, people_choices
 from careerhub.web.plan_view import gather_plan
 from careerhub.web.status_view import gather_status
@@ -308,9 +310,7 @@ def create_app(
                 "title": "Today",
                 "heading": f"Today, {data.local_now or data.now:%a %b %d}",
                 "built": f"{data.local_now or data.now:%a %b %d, %H:%M}",
-                "last_run": f"{shortlist.last_success:%a %b %d, %H:%M}"
-                if shortlist.last_success
-                else None,
+                "last_run": local_stamp(shortlist.last_success, ZoneInfo(load_settings().timezone)),
                 "last_error": shortlist.last_error,
                 "waiting_for": shortlist.waiting_for,
                 "reasons": REASON_LABELS,
