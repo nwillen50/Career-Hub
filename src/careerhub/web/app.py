@@ -50,6 +50,8 @@ from careerhub.modules.jobs.applications import (
     set_next_step,
 )
 from careerhub.modules.jobs.applications import track as change_status
+from careerhub.modules.jobs.labeling import LabelError, next_to_label, save_label
+from careerhub.modules.jobs.labeling import counts as label_counts
 from careerhub.modules.jobs.reactions import (
     UNDO_SECONDS,
     ReactionError,
@@ -383,6 +385,53 @@ def create_app(
                 else [],
             },
         )
+
+    def label_page(
+        request: Request, session: Session, skip: int, note: str | None = None
+    ) -> Response:
+        try:
+            job, found = next_to_label(session, skip), label_counts()
+        except LabelError as error:
+            job, found, note = None, {"great": 0, "okay": 0, "no": 0}, str(error)
+        return templates.TemplateResponse(
+            request, "label.html",
+            {
+                "tabs": TABS, "current": "/browse", "title": "Label postings",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "heading": "Label postings", "job": job, "skip": skip, "counts": found,
+                "note": note,
+            },
+        )  # fmt: skip
+
+    @app.get("/browse/label", response_class=HTMLResponse)
+    def label_view(request: Request, skip: str | None = None) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data.", status_code=404)
+        number = (
+            int(skip) if skip and skip.isascii() and skip.isdigit() and int(skip) < 10_000 else 0
+        )
+        with open_session() as session:
+            return label_page(request, session, number)
+
+    @app.post("/browse/label")
+    async def save_job_label(request: Request) -> Response:
+        if open_session is None:
+            return HTMLResponse("No data.", status_code=404)
+        form = parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True)
+        raw = form.get("job", [""])[0]
+        with open_session() as session:
+            job = (
+                session.get(Job, int(raw))
+                if raw.isascii() and raw.isdigit() and int(raw) < 2**62
+                else None
+            )
+            if job is None:
+                return label_page(request, session, 0, "That posting is gone.")
+            try:
+                save_label(job, form.get("label", [""])[0], form.get("reason", [""])[0])
+            except LabelError as error:
+                return label_page(request, session, 0, str(error))
+        return RedirectResponse("/browse/label", status_code=303)
 
     @app.get("/plan", response_class=HTMLResponse)
     def plan_tab(request: Request) -> Response:

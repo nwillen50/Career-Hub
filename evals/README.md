@@ -43,3 +43,11 @@ A `hub eval extract` command arrives with CH-64, which builds the router from se
 `sample.yaml`: made-up resumes and transcripts with the facts a good reading must find (GPA,
 skills, schools, organizations, course codes). `careerhub.profile.evals.run_profile_eval` reports
 the share of expected items found per field and lists the misses.
+
+### Labeling postings in the web app (CH-201)
+
+On Browse, "Label postings for the ranking checks" (`/browse/label`) shows open jobs you have not
+reacted to or labeled, one at a time, best score first, with Great, Okay, and Not a fit buttons and
+an optional one-line reason. Each label is written to `evals/ranking.yaml` in your data folder, the
+file the ranking eval and "Check the effect" read. A label is not a reaction. Career Hub rewrites
+that file whole when it saves a label, so hand-written comments in it are not kept.

@@ -40,6 +40,7 @@
     {% if view.query.text or view.query.has_filters %}<a href="/browse">Clear search and filters</a>{% endif %}
   </p>
 </form>
+<p><a href="/browse/label">Label postings for the ranking checks</a></p>
 <p class="muted" role="status">{{ view.total }} open job{{ "s" if view.total != 1 }}{% if view.query.text %} match “{{ view.query.text }}”{% endif %}{% if view.query.filtered %} (removed by your filters){% endif %}. Page {{ view.query.page }} of {{ view.pages }}.</p>
 <section aria-labelledby="jobs-h">
   <h2 id="jobs-h">Jobs</h2>
