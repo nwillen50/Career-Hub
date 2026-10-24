@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 from a11y import check_page
@@ -14,6 +15,7 @@ from careerhub.core.migrate import migrate
 from careerhub.core.models import Assessment, Company, Interaction, Job, Person, Source, utcnow
 from careerhub.core.runlog import finish_run, start_run
 from careerhub.core.secrets import new_database_key
+from careerhub.core.settings import load_settings
 from careerhub.core.storage import open_engine, session_factory
 from careerhub.web.app import create_app
 from careerhub.web.today import MAX_FOLLOW_UPS, MAX_TOP_JOBS, clean_section, gather_today
@@ -163,8 +165,13 @@ def test_follow_ups_due_overdue_and_the_more_link(session: Session) -> None:
     assert "Follow up with Ben Example at Globex" in html and 'href="/tracker"' in html
 
 
+def local_today() -> date:
+    """Return today's date in the user's timezone, as the Today page computes it (CH-182)."""
+    return utcnow().astimezone(ZoneInfo(load_settings().timezone)).date()
+
+
 def test_deadlines_this_week_only(session: Session) -> None:
-    today = utcnow().date()
+    today = local_today()  # the page uses the user's day, not the UTC day
     add_job(session, 1, 90, deadline=(today + timedelta(days=2)).isoformat())
     add_job(session, 2, 85, deadline=(today + timedelta(days=30)).isoformat())
     add_job(session, 3, 80, deadline=(today - timedelta(days=1)).isoformat())
@@ -239,7 +246,7 @@ def test_today_is_the_users_day_not_the_utc_day(session: Session) -> None:
 
 def test_a_deadline_shows_even_if_the_job_is_not_one_of_the_five_cards(session: Session) -> None:
     """Review: deadlines came only from the five shown cards."""
-    today = utcnow().date()
+    today = local_today()  # the page uses the user's day, not the UTC day
     for n in range(1, 8):
         add_job(session, n, 90 - n)
     low = add_job(session, 8, 10, deadline=(today + timedelta(days=2)).isoformat())
