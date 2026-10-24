@@ -604,11 +604,17 @@ def create_app(
         form = parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True)
         with open_session() as session:
             try:
-                if "email" in form or "phone" in form:  # first: a bad value changes nothing
+                if (
+                    "email" in form or "phone" in form
+                ):  # checked first; nothing is saved until both pass
                     set_contact_details(
-                        session, person_id, form.get("email", [""])[0], form.get("phone", [""])[0]
-                    )
-                set_own_words(session, person_id, form.get("how_known", [""])[0])
+                        session, person_id,
+                        form["email"][0] if "email" in form else None,
+                        form["phone"][0] if "phone" in form else None,
+                        commit=False,
+                    )  # fmt: skip
+                set_own_words(session, person_id, form.get("how_known", [""])[0], commit=False)
+                session.commit()
             except UnknownPerson:
                 return contacts_page(request, session, note="That person is gone.")
             except InteractionError as problem:

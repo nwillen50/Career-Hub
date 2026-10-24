@@ -88,7 +88,7 @@ def recent_interactions(session: Session, limit: int = 100) -> list[Interaction]
     )
 
 
-def set_own_words(session: Session, person_id: int, text: str) -> Person:
+def set_own_words(session: Session, person_id: int, text: str, commit: bool = True) -> Person:
     """Replace what the user wrote in `how_known`, keeping imported alumni tags.
 
     `how_known` holds `;`-separated notes. Notes that start with "alumni:" came from an import
@@ -107,7 +107,8 @@ def set_own_words(session: Session, person_id: int, text: str) -> Person:
     if len(combined) > MAX_HOW_KNOWN:
         raise InteractionError("That is too long. Keep it to a short phrase.")
     person.how_known = combined or None
-    session.commit()
+    if commit:
+        session.commit()
     return person
 
 
@@ -116,8 +117,17 @@ _EMAIL = re.compile(r"[^@\s<>\"']+@[^@\s<>\"']+\.[^@\s<>\"']+")
 _PHONE = re.compile(r"\+?[0-9][0-9 ().\-]{4,38}[0-9]")
 
 
-def set_contact_details(session: Session, person_id: int, email: str, phone: str) -> Person:
+def set_contact_details(
+    session: Session,
+    person_id: int,
+    email: str | None,
+    phone: str | None,
+    commit: bool = True,
+) -> Person:
     """Set a person's email and phone as typed on the Contacts page (blank clears one).
+
+    `None` leaves that one as it is (a request that names only one of them). With `commit=False`
+    the caller commits, so a later failed check can still undo this one.
 
     Both are Sensitive: they are stored in the encrypted database and shown only on the local
     page; nothing here logs them or sends them anywhere.
@@ -125,12 +135,16 @@ def set_contact_details(session: Session, person_id: int, email: str, phone: str
     person = session.get(Person, person_id)
     if person is None:
         raise UnknownPerson(person_id)
-    mail, number = email.strip(), " ".join(phone.split())
+    mail = None if email is None else email.strip()
+    number = None if phone is None else " ".join(phone.split())
     if mail and (len(mail) > 320 or not _EMAIL.fullmatch(mail)):
         raise InteractionError("That does not look like an email address.")
     if number and not _PHONE.fullmatch(number):
         raise InteractionError("A phone number may have digits, spaces, + ( ) . and -, up to 40.")
-    person.email = mail or None
-    person.phone = number or None
-    session.commit()
+    if mail is not None:
+        person.email = mail or None
+    if number is not None:
+        person.phone = number or None
+    if commit:
+        session.commit()
     return person

@@ -220,3 +220,31 @@ def test_email_and_phone_never_reach_a_prompt_or_the_logs(
     web(session).get("/contacts")
     assert "ada@example.org" not in context and "617 555 0100" not in context
     assert "ada@example.org" not in caplog.text and "555 0100" not in caplog.text
+
+
+def test_review_findings_a_failed_how_known_save_also_leaves_email_and_phone_alone(
+    session: Session, ada: Person
+) -> None:
+    reply = post(
+        web(session), f"/people/{ada.id}",
+        "how_known=" + "x" * 600 + "&email=" + quote("new@example.org")
+        + "&phone=" + quote("617 555 0100"),
+    )  # fmt: skip
+    assert reply.status_code == 200 and "too long" in reply.text
+    session.expire_all()
+    person = session.get(Person, ada.id)
+    assert person is not None and (person.email, person.phone) == (None, None)
+
+
+def test_review_findings_a_request_naming_only_one_of_email_or_phone_keeps_the_other(
+    session: Session, ada: Person
+) -> None:
+    ada.phone = "617 555 0100"
+    session.commit()
+    post(web(session), f"/people/{ada.id}", "how_known=x&email=" + quote("ada@example.org"))
+    session.expire_all()
+    person = session.get(Person, ada.id)
+    assert person is not None and (person.email, person.phone) == (
+        "ada@example.org",
+        "617 555 0100",
+    )
