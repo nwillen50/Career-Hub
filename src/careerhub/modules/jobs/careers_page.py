@@ -12,7 +12,9 @@ until the user approves it. Without a careers page, the company's name is used t
 
 from __future__ import annotations
 
+import ipaddress
 import re
+import socket
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from urllib import robotparser
@@ -29,6 +31,7 @@ from careerhub.modules.jobs.targets import Target
 USER_AGENT = "CareerHub/1.0 (personal job search tool; reads one careers page)"
 TIMEOUT_SECONDS = 15.0
 MAX_BYTES = 1_000_000
+MAX_ROBOTS_BYTES = 500_000
 MAX_REDIRECTS = 3
 #: Sites Career Hub never requests (PRD: no LinkedIn or Handshake access).
 NEVER_HOSTS = ("linkedin.com", "handshake.com", "joinhandshake.com")
@@ -65,19 +68,6 @@ class PageResult:
     problem: str | None = None
 
 
-def allowed_address(url: str) -> str | None:
-    """Return why `url` may not be requested, or None when it may (https only; no LinkedIn)."""
-    parts = urlsplit(url)
-    host = (parts.hostname or "").lower()
-    if parts.scheme != "https" or not host:
-        return "A careers page address must start with https://"
-    if any(host == h or host.endswith("." + h) for h in NEVER_HOSTS):
-        return "Career Hub never requests LinkedIn or Handshake."
-    if host == "localhost" or re.fullmatch(r"[\d.]+|[\da-f:]+", host):
-        return "Use the company's web address, not an IP address or this machine."
-    return None
-
-
 def find_board_in_page(html: str) -> PageResult:
     """Look in `html` for an embedded board of a supported system, then for an unsupported one."""
     for kind, pattern in _BOARD_PATTERNS:
@@ -92,47 +82,130 @@ def find_board_in_page(html: str) -> PageResult:
     return PageResult()
 
 
-def _robots_allow(url: str, client: httpx.Client) -> bool | str:
-    """Return True when `robots.txt` allows `url`, else the reason it was not fetched."""
-    parts = urlsplit(url)
-    robots_url = f"{parts.scheme}://{parts.netloc}/robots.txt"
+def resolve_host(host: str) -> list[str]:
+    """Return the addresses a host name points to (empty when it does not resolve)."""
     try:
-        reply = client.get(robots_url)
-    except httpx.HTTPError:
-        return "robots.txt could not be read, so the page was not fetched."
-    if reply.status_code >= 500:
-        return "robots.txt could not be read, so the page was not fetched."
-    if reply.status_code >= 400:
-        return True  # no robots.txt: nothing is disallowed
+        return sorted({str(info[4][0]) for info in socket.getaddrinfo(host, 443)})
+    except (OSError, UnicodeError):
+        return []
+
+
+def allowed_address(url: str) -> str | None:
+    """Return why `url` may not be requested, or None when it may.
+
+    https only; never LinkedIn or Handshake; never an IP address, `localhost`, or a name that
+    points at a private, loopback, link-local, or otherwise non-public address (so a careers page
+    cannot be used to reach this Mac or the local network). A trailing dot or odd spelling of an
+    address does not get around it, because the name is resolved and its addresses are checked.
+    """
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower().rstrip(".")
+    if parts.scheme != "https" or not host:
+        return "A careers page address must start with https://"
+    if any(host == h or host.endswith("." + h) for h in NEVER_HOSTS):
+        return "Career Hub never requests LinkedIn or Handshake."
+    local = "Use the company's web address, not an IP address or this machine."
+    if host == "localhost" or host.endswith(".localhost"):
+        return local
+    try:
+        ipaddress.ip_address(host)
+        return local
+    except ValueError:
+        pass
+    addresses = resolve_host(host)
+    if not addresses:
+        return "That address could not be found."
+    for address in addresses:
+        try:
+            if not ipaddress.ip_address(address.split("%")[0]).is_global:
+                return local
+        except ValueError:
+            return local
+    return None
+
+
+def _read_capped(client: httpx.Client, url: str, limit: int) -> tuple[int, httpx.Headers, str]:
+    """GET `url` and keep at most `limit` bytes of the body (the rest is never downloaded)."""
+    with client.stream("GET", url) as reply:
+        chunks: list[bytes] = []
+        size = 0
+        for chunk in reply.iter_bytes():
+            chunks.append(chunk[: limit - size])
+            size += len(chunk)
+            if size >= limit:
+                break
+        text = b"".join(chunks).decode(reply.encoding or "utf-8", errors="replace")
+        return reply.status_code, reply.headers, text
+
+
+def _same_site_https(url: str, location: str) -> str | None:
+    """Return the redirect target if it is https on the same host as `url`, else None."""
+    target = str(httpx.URL(url).join(location))
+    here, there = urlsplit(url), urlsplit(target)
+    return target if there.scheme == "https" and there.netloc == here.netloc else None
+
+
+def _load_robots(url: str, client: httpx.Client) -> robotparser.RobotFileParser | str:
+    """Return the site's parsed robots.txt, or the reason it could not be read."""
+    parts = urlsplit(url)
+    current = f"{parts.scheme}://{parts.netloc}/robots.txt"
+    unreadable = "robots.txt could not be read, so the page was not fetched."
     parser = robotparser.RobotFileParser()
-    parser.parse(reply.text.splitlines())
-    if parser.can_fetch(USER_AGENT, url):
-        return True
-    return "The site's robots.txt asks programs not to fetch that page, so it was not fetched."
+    for _ in range(MAX_REDIRECTS + 1):
+        try:
+            status, headers, text = _read_capped(client, current, MAX_ROBOTS_BYTES)
+        except httpx.HTTPError:
+            return unreadable
+        if status in (301, 302, 303, 307, 308) and headers.get("location"):
+            moved = _same_site_https(current, headers["location"])
+            if moved is None:
+                return unreadable
+            current = moved
+            continue
+        if status >= 500:
+            return unreadable
+        if status >= 400:
+            parser.parse([])  # no robots.txt: nothing is disallowed
+            return parser
+        parser.parse(text.splitlines())
+        return parser
+    return unreadable
+
+
+_ROBOTS_NO = "The site's robots.txt asks programs not to fetch that page, so it was not fetched."
 
 
 def read_careers_page(url: str, client: httpx.Client) -> PageResult:
-    """Fetch `url` once (after checking robots.txt) and look for a job board in it."""
+    """Fetch `url` once (after checking robots.txt) and look for a job board in it.
+
+    Every address is checked first, and every redirect (same site, https only, at most three)
+    is checked again against the address rules and robots.txt.
+    """
     why = allowed_address(url)
     if why:
         return PageResult(problem=why)
-    allowed = _robots_allow(url, client)
-    if allowed is not True:
-        return PageResult(problem=str(allowed))
+    robots = _load_robots(url, client)
+    if isinstance(robots, str):
+        return PageResult(problem=robots)
     current = url
     for _ in range(MAX_REDIRECTS + 1):
+        if not robots.can_fetch(USER_AGENT, current):
+            return PageResult(problem=_ROBOTS_NO)
         try:
-            reply = client.get(current)
+            status, headers, text = _read_capped(client, current, MAX_BYTES)
         except httpx.HTTPError:
             return PageResult(problem="The careers page could not be reached.")
-        if reply.status_code in (301, 302, 303, 307, 308) and reply.headers.get("location"):
-            current = str(httpx.URL(current).join(reply.headers["location"]))
-            if urlsplit(current).netloc != urlsplit(url).netloc:
-                return PageResult(problem="The page redirected to another site, so it was skipped.")
+        if status in (301, 302, 303, 307, 308) and headers.get("location"):
+            moved = _same_site_https(current, headers["location"])
+            if moved is None:
+                return PageResult(
+                    problem="The page redirected somewhere not allowed, so it was skipped."
+                )
+            current = moved
             continue
-        if reply.status_code != 200:
-            return PageResult(problem=f"The careers page answered with {reply.status_code}.")
-        return find_board_in_page(reply.text[:MAX_BYTES])
+        if status != 200:
+            return PageResult(problem=f"The careers page answered with {status}.")
+        return find_board_in_page(text)
     return PageResult(problem="The careers page redirected too many times.")
 
 

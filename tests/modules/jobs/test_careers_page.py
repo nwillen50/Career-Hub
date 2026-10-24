@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
@@ -48,6 +49,14 @@ def client(
         return httpx.Response(404)
 
     return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+@pytest.fixture(autouse=True)
+def public_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Names resolve to a public address, so no test needs a network."""
+    monkeypatch.setattr(
+        "careerhub.modules.jobs.careers_page.resolve_host", lambda host: ["93.184.216.34"]
+    )
 
 
 @pytest.fixture
@@ -159,7 +168,7 @@ def test_a_redirect_to_another_site_is_not_followed() -> None:
         return httpx.Response(302, headers={"location": "https://www.linkedin.com/jobs"})
 
     result = read_careers_page(url, httpx.Client(transport=httpx.MockTransport(handler)))
-    assert "another site" in (result.problem or "")
+    assert "somewhere not allowed" in (result.problem or "")
 
 
 def test_hostile_page_text_is_only_read_never_run(session: Session) -> None:
@@ -192,3 +201,118 @@ def test_the_command_adds_the_target_and_saves_it(
     saved = load_targets()
     assert [(t.name, t.enabled, t.board) for t in saved] == [("Orchard Bio", True, "orchardbio")]
     assert main(["targets", "add", "--careers-url"], InMemoryKeyStore()) == 2
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://[::ffff:127.0.0.1]/",
+        "https://[::1]/",
+        "https://169.254.169.254/latest/meta-data",
+        "https://0x7f000001/",
+        "https://localhost./",
+        "https://foo.localhost/",
+        "https://www.linkedin.com./jobs",
+        "https://evil@127.0.0.1/",
+    ],
+)
+def test_review_findings_odd_spellings_of_local_and_forbidden_addresses_are_refused(
+    url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A name like 0x7f000001 resolves to 127.0.0.1 in a real resolver.
+    monkeypatch.setattr(
+        "careerhub.modules.jobs.careers_page.resolve_host",
+        lambda host: ["127.0.0.1"] if host.startswith("0x") else ["93.184.216.34"],
+    )
+    seen: list[str] = []
+    result = read_careers_page(url, client({}, seen=seen))
+    assert result.problem and seen == []
+
+
+def test_review_findings_a_name_that_points_at_a_private_address_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for address in ("10.0.0.5", "192.168.1.1", "169.254.169.254", "127.0.0.1", "::1", "fd00::1"):
+        monkeypatch.setattr(
+            "careerhub.modules.jobs.careers_page.resolve_host", lambda host, a=address: [a]
+        )
+        assert allowed_address("https://jobs.example.com/") is not None, address
+    monkeypatch.setattr("careerhub.modules.jobs.careers_page.resolve_host", lambda host: [])
+    assert "could not be found" in (allowed_address("https://nope.example/") or "")
+
+
+def routed_client(routes: dict[str, httpx.Response], seen: list[str]) -> httpx.Client:
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return routes.get(str(request.url), httpx.Response(404))
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_review_findings_a_redirect_to_plain_http_is_not_followed() -> None:
+    seen: list[str] = []
+    web = routed_client(
+        {
+            "https://acme.example/robots.txt": httpx.Response(200, text=ROBOTS_OPEN),
+            "https://acme.example/jobs": httpx.Response(
+                302, headers={"location": "http://acme.example/private"}
+            ),
+            "http://acme.example/private": httpx.Response(200, text=page("lever_link.html")),
+        },
+        seen,
+    )
+    result = read_careers_page("https://acme.example/jobs", web)
+    assert result.board is None and "http://acme.example/private" not in seen
+
+
+def test_review_findings_robots_txt_also_applies_to_where_a_redirect_goes() -> None:
+    seen: list[str] = []
+    web = routed_client(
+        {
+            "https://acme.example/robots.txt": httpx.Response(
+                200, text="User-agent: *\nDisallow: /private\n"
+            ),
+            "https://acme.example/jobs": httpx.Response(302, headers={"location": "/private"}),
+            "https://acme.example/private": httpx.Response(200, text=page("lever_link.html")),
+        },
+        seen,
+    )
+    result = read_careers_page("https://acme.example/jobs", web)
+    assert result.board is None and "robots.txt" in (result.problem or "")
+    assert "https://acme.example/private" not in seen
+
+
+def test_review_findings_a_redirected_robots_txt_is_followed_not_ignored() -> None:
+    seen: list[str] = []
+    web = routed_client(
+        {
+            "https://acme.example/robots.txt": httpx.Response(
+                301, headers={"location": "https://acme.example/real-robots.txt"}
+            ),
+            "https://acme.example/real-robots.txt": httpx.Response(
+                200, text="User-agent: *\nDisallow: /jobs\n"
+            ),
+            "https://acme.example/jobs": httpx.Response(200, text=page("lever_link.html")),
+        },
+        seen,
+    )
+    result = read_careers_page("https://acme.example/jobs", web)
+    assert result.board is None and "https://acme.example/jobs" not in seen
+
+
+def test_review_findings_a_huge_page_is_cut_off_while_downloading() -> None:
+    sent = {"bytes": 0}
+
+    def body() -> Iterator[bytes]:
+        for _ in range(10_000):  # up to 10 GB if anyone keeps reading
+            sent["bytes"] += 1_000_000
+            yield b"x" * 1_000_000
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(200, content=body())
+
+    web = httpx.Client(transport=httpx.MockTransport(handler))
+    result = read_careers_page("https://acme.example/jobs", web)
+    assert result.board is None and sent["bytes"] <= 5_000_000
