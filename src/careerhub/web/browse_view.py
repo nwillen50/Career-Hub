@@ -43,7 +43,9 @@ class BrowseQuery:
         return cls(
             " ".join((text or "").split())[:MAX_SEARCH],
             sort if sort in SORTS else DEFAULT_SORT,
-            int(page) if page and page.isdigit() and 0 < int(page) < 10_000 else 1,
+            int(page)
+            if page and page.isascii() and page.isdigit() and 0 < int(page) < 10_000
+            else 1,
             group == "place",
         )
 

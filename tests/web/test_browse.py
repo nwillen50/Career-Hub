@@ -143,3 +143,10 @@ def test_reactions_on_browse_use_the_same_buttons_as_today(session: Session) -> 
     job = add_job(session, 1, 80)
     html = web(session).get("/browse").text
     assert f'action="/jobs/{job.id}/react"' in html and "Why it scored" in html
+
+
+def test_review_findings_a_superscript_digit_in_the_page_is_not_a_500(session: Session) -> None:
+    add_job(session, 1, 80)
+    client = web(session)
+    for odd in ("%C2%B2", "%EF%BC%92", "%D9%A2"):  # ², full-width 2, Arabic-indic 2
+        assert client.get(f"/browse?page={odd}").status_code == 200
