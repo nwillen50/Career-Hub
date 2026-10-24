@@ -110,6 +110,15 @@ class EffectReport:
             ),
             ("Label pairs in the right order", pairs(self.before), pairs(self.after)),
         ]
+        for name, report in (("before", self.before), ("after", self.after)):
+            if report.unscored:
+                lines.append(
+                    (
+                        f"Postings that could not be scored, {name} (the numbers leave them out)",
+                        str(len(report.unscored)) if name == "before" else "",
+                        str(len(report.unscored)) if name == "after" else "",
+                    )
+                )
         for label in ("great", "okay", "no"):
             old, new = self.before.mean_score.get(label), self.after.mean_score.get(label)
             lines.append(

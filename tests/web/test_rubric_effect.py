@@ -197,3 +197,33 @@ def test_unknown_or_pending_proposals_are_not_found(session: Session) -> None:
     assert client.get("/proposals/999/effect").status_code == 404
     pending = propose_rubric_change(session, ADD_TITLE_FIT)
     assert client.get(f"/proposals/{pending.id}/effect").status_code == 404
+
+
+def test_review_findings_a_broken_labels_file_on_post_says_so_instead_of_a_500(
+    session: Session,
+) -> None:
+    proposal_id = accepted(session)
+    labels_path().parent.mkdir(parents=True, exist_ok=True)
+    labels_path().write_text("cases: [unclosed", encoding="utf-8")
+    result = post(web(session), f"/proposals/{proposal_id}/effect")
+    assert result.status_code == 200 and "not a valid ranking eval file" in result.text
+
+
+def test_review_findings_the_page_never_shows_the_data_folder_path(session: Session) -> None:
+    proposal_id = accepted(session)
+    html = web(session).get(f"/proposals/{proposal_id}/effect").text
+    assert str(labels_path().parent) not in html and "evals/ranking.yaml" in html
+
+
+def test_review_findings_postings_that_could_not_be_scored_are_listed(session: Session) -> None:
+    proposal_id = accepted(session)
+    add_labels()
+
+    class Garbled(Scripted):
+        def complete(self, request: LLMRequest) -> LLMResponse:
+            if "extract structured facts" in request.prompt:
+                return super().complete(request)
+            return LLMResponse(text="not json", provider="m", model="m-1")
+
+    html = post(web(session, Garbled()), f"/proposals/{proposal_id}/effect").text
+    assert "could not be scored" in html

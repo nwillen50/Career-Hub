@@ -82,7 +82,6 @@ from careerhub.modules.rubric_effect import (
     accepted_rubric_changes,
     check_effect,
     estimate_calls,
-    labels_path,
     load_labels,
     rubric_before,
 )
@@ -782,7 +781,8 @@ def create_app(
         if labels is None and why is None:
             why = (
                 "There are no labeled postings yet. Label about 30 postings great, okay, or no "
-                f"in {labels_path()} (the format is in evals/README.md) and come back."
+                "in evals/ranking.yaml inside your Career Hub data folder (the format is in "
+                "evals/README.md) and come back."
             )
         elif labels is not None and len(labels) < MEANINGFUL_LABELS:
             why = (
@@ -827,8 +827,12 @@ def create_app(
             proposal = session.get(Proposal, proposal_id)
             if proposal is None or proposal.kind != RUBRIC_KIND or proposal.status != "accepted":
                 return HTMLResponse("Not found.", status_code=404)
-            old, new, labels = rubric_before(proposal), load_rubric(), load_labels()
+            old, new = rubric_before(proposal), load_rubric()
             doc, preferences = load_profile_doc(), load_preferences()
+            try:
+                labels = load_labels()
+            except EvalError as error:  # the page shows the same message on a plain load
+                return effect_page(request, session, proposal_id, problem=str(error))
             if open_eval is None or not labels or old is None or new is None or doc is None:
                 return effect_page(request, session, proposal_id)
             try:
