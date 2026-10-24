@@ -69,6 +69,10 @@ Record each result on the matching ticket or ADR. Tick the box when it passes.
 
 ## 6. The local web app and attention (CH-138 to CH-147)
 
+- [ ] `uv run hub demo` makes `~/Library/Application Support/CareerHubDemo` and prints a link. Success:
+  every page shows the "Demo data" strip, about 30 invented jobs are on Today and Tracker, and
+  nothing in `~/Library/Application Support/CareerHub` changed. `hub demo --reset` rebuilds it.
+
 - [ ] `uv run hub web` prints a link like `http://127.0.0.1:8765/?t=...`. Open it in your browser.
   Success: Today opens with your real top jobs; Plan, Tracker and System status open; a page
   loaded from any other address (try `http://localhost:8765/today` without the token) says to

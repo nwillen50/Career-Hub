@@ -27,6 +27,7 @@ from datetime import datetime
 from importlib import resources
 from typing import Annotated, Any
 from urllib.parse import parse_qs, urlsplit
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Path, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -75,6 +76,7 @@ from careerhub.profile.rubric import load_rubric
 from careerhub.web.browse_view import SORTS, BrowseQuery, gather_browse
 from careerhub.web.grouping import group_by_place
 from careerhub.web.job_detail import gather_job
+from careerhub.web.localtime import local_stamp
 from careerhub.web.people_view import gather_contacts, gather_interactions, people_choices
 from careerhub.web.plan_view import gather_plan
 from careerhub.web.profile_view import gather_profile
@@ -195,6 +197,7 @@ def create_app(
     key_store: KeyStore | None = None,
     local_running: Callable[[], bool] = ollama_is_running,
     open_router: Callable[[], tuple[Router, list[str]]] | None = None,
+    banner: str | None = None,
 ) -> FastAPI:
     """Build the app. `token` is this start's secret; `check_database` says if data is usable.
 
@@ -205,6 +208,7 @@ def create_app(
     templates = Jinja2Templates(
         directory=str(resources.files("careerhub.web").joinpath("templates"))
     )
+    templates.env.globals["banner"] = banner  # shown on every page (the demo's "Demo data")
     sessions: dict[str, str] = {}  # session id -> CSRF token
     opened = {"ok": False}  # once the database has opened, it is not re-checked on every page
     static_dir = str(resources.files("careerhub.web").joinpath("static"))
@@ -324,9 +328,7 @@ def create_app(
                 "title": "Today",
                 "heading": f"Today, {data.local_now or data.now:%a %b %d}",
                 "built": f"{data.local_now or data.now:%a %b %d, %H:%M}",
-                "last_run": f"{shortlist.last_success:%a %b %d, %H:%M}"
-                if shortlist.last_success
-                else None,
+                "last_run": local_stamp(shortlist.last_success, ZoneInfo(load_settings().timezone)),
                 "last_error": shortlist.last_error,
                 "waiting_for": shortlist.waiting_for,
                 "reasons": REASON_LABELS,
