@@ -114,6 +114,8 @@ class Settings(BaseModel):
     empty_listing_backstop_nights: int = Field(default=3, ge=1, le=30)
     #: A change you declined in the conversation is not proposed again for this many days (CH-159).
     proposal_repeat_days: int = Field(default=90, ge=1, le=3650)
+    #: A declined suggestion stays on the Declined list (to reopen) this many days (CH-161).
+    declined_keep_days: int = Field(default=30, ge=1, le=365)
     #: A profile list item (a skill, a school, a location) that changes by more than this many
     #: letters counts as a new item and re-scores jobs; a smaller change is a typo fix (CH-115).
     score_typo_distance: int = Field(default=2, ge=0, le=10)
