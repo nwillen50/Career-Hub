@@ -168,12 +168,27 @@ a menu-bar icon means nothing gets missed.
   Interested but not applied for over a week; Has a warm path; Interested. Plus CSV export.
 - **Job detail.** One job in full: a short summary of what the job is, the fit explanation, warm
   paths, tailoring notes, the posting (collapsed by default), and feedback buttons.
+- **Browse.** Every open job, not only Today's top five and the daily exploration pick, to look
+  through at leisure and to fine-tune scoring. A search box (title, company, location, summary), filters
+  (score range, company, place, work mode, posting age, source, reacted or not, and "filtered out"
+  jobs with the reason, so too-strict filters show), sorting (score by default, newest, deadline,
+  company), the Group by place toggle, and about 25 jobs a page. The URL holds the filters, so a view
+  can be bookmarked. Jobs use the same cards and reactions as Today; a reaction here counts the same
+  and removes the job from Today. A "Label for evals" view shows jobs with no reaction one at a time
+  for quick great, okay, or no labeling, which becomes the labeled postings the scoring evals need.
+  Scoring tuned automatically from reactions stays Post-MVP; in the MVP, reactions with reasons can
+  prompt rubric proposals in the Conversation panel.
 - **Conversation panel.** A side panel on Today and Job detail. Use it to refine interests,
   preferences, and the scoring rubric, or to ask why a job ranks where it does. Changes appear as
   proposals with Accept and Reject. Declined proposals stay in a list for 30 days and aren't
   proposed again for 90.
 - **System status.** Last run, errors, source health, and this month's model spending.
-- **Profile and settings.** The MVP edits plain files. Post-MVP, this becomes a form.
+- **Profile.** A read-only view of what Career Hub knows about the user: education, skills,
+  interests, locations and work modes, hard constraints, the rubric with its weights, the plan
+  settings, and the readiness checklist in plain words. Facts read from the resume and transcript
+  wait here with Accept and Reject. Each section says which file holds it. It is shown only on this
+  Mac and sent nowhere.
+- **Settings.** The MVP edits plain files. Post-MVP, the Profile and settings become a form.
 - **Ask** (Post-MVP). A plain-English chat pane for requests like "prep me for Acme" or "mark Acme
   as applied." It finds prep material online, internalizes it, and uses it to help the user
   prepare.
@@ -199,7 +214,7 @@ The goal is to be impossible to miss without flooding the inbox:
 
 Every job has quick reactions: interested, not interested (with a one-click reason: level,
 location, field, company, or pay), and applied. These reactions feed scoring and the interest
-model.
+model. They count the same on Today, Job detail, Tracker, and Browse.
 
 ### States and accessibility
 
@@ -480,8 +495,8 @@ Target dates are set once Nicholas confirms his weekly build hours.
 - **Advice:** written tailoring notes for the top jobs
 - **Planning:** free/busy from Apple Calendar (including Google and Outlook accounts added on the
   Mac) or calendar files, a time budget, a weekly plan
-- **Interface:** local web app with Today, Plan, Tracker, Job detail, Conversation panel, and
-  System status; menu-bar count and error state; morning notification; escalation email to self,
+- **Interface:** local web app with Today, Plan, Tracker, Job detail, Browse, Profile,
+  Conversation panel, and System status; menu-bar count and error state; morning notification; escalation email to self,
   off by default
 - **International jobs (Milestone B):** places stored as city, region, and country; an optional
   grouping by country, then city, with ranked order as the default; work-visa flags for countries
@@ -572,7 +587,8 @@ and its tests pass before the next step starts.
 8. **Advise and plan:** tailoring notes, calendar providers (Apple Calendar, calendar files),
    weekly plan. *Starts with* a spike on Apple Calendar access from the background job. *Done when*
    a plan is generated from real free/busy data.
-9. **Interface:** web app (Today, Plan, Tracker, Job detail, Conversation panel, System status),
+9. **Interface:** web app (Today, Plan, Tracker, Job detail, Browse, Profile, Conversation panel,
+   System status),
    menu-bar helper, notification, optional email. *Starts with* wireframes (done, CH-32), a visual
    design direction agreed with Nicholas (CH-105), and a spike on macOS notifications. *Done when*
    the user completes a daily review without a terminal.
