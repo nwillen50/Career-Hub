@@ -29,6 +29,7 @@ from typing import Annotated, Any
 from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
 
+import httpx
 from fastapi import FastAPI, Path, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -52,6 +53,7 @@ from careerhub.modules.jobs.applications import (
     set_next_step,
 )
 from careerhub.modules.jobs.applications import track as change_status
+from careerhub.modules.jobs.careers_page import new_client, track_company
 from careerhub.modules.jobs.evals import EvalError
 from careerhub.modules.jobs.reactions import (
     UNDO_SECONDS,
@@ -60,6 +62,7 @@ from careerhub.modules.jobs.reactions import (
     reacted_job_ids,
     undo,
 )
+from careerhub.modules.jobs.targets import TargetsError, load_targets, save_targets
 from careerhub.modules.network import UnknownPerson
 from careerhub.modules.network.interactions import (
     CHANNELS,
@@ -244,6 +247,7 @@ def create_app(
     key_store: KeyStore | None = None,
     local_running: Callable[[], bool] = ollama_is_running,
     open_router: Callable[[], tuple[Router, list[str]]] | None = None,
+    track_client: Callable[[], httpx.Client] = new_client,
     banner: str | None = None,
     open_eval: Callable[[], tuple[Router, list[str], list[str]]] | None = None,
 ) -> FastAPI:
@@ -563,6 +567,38 @@ def create_app(
             reason_label=dict(REASON_LABELS).get(reason or ""),
             seconds=UNDO_SECONDS,
         )
+
+    @app.post("/jobs/{job_id}/track")
+    def track_job_company(request: Request, job_id: JobId) -> Response:
+        """Follow this job's company and look for its board. Network only when pressed."""
+        if open_session is None:
+            return HTMLResponse("Not found.", status_code=404)
+        with open_session() as session:
+            job = session.get(Job, job_id)
+            if job is None:
+                return HTMLResponse("Not found.", status_code=404)
+            name = job.company.name
+            try:
+                targets = load_targets()
+                lines = track_company(
+                    session,
+                    targets,
+                    name,
+                    None,
+                    track_client(),
+                    (preferences.alias_keys() if (preferences := load_preferences()) else {}),
+                )
+                save_targets(targets)
+            except TargetsError:
+                lines = ["Your targets file has a problem, so nothing was changed."]
+            except httpx.HTTPError:
+                lines = [
+                    "The job boards could not be reached. Nothing was changed; try again later."
+                ]
+        return page(
+            request, 200, title="Follow this company", heading=f"Following {name}",
+            message=" ".join(lines), back=f"/jobs/{job_id}",
+        )  # fmt: skip
 
     @app.post("/jobs/{job_id}/undo")
     async def undo_reaction(request: Request, job_id: JobId) -> Response:

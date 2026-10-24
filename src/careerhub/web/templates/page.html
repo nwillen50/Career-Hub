@@ -4,4 +4,5 @@
     <p>{{ message }}</p>
     {% if empty %}<p class="muted">Nothing to show yet.</p>{% endif %}
   </section>
+  {% if back %}<p><a href="{{ back }}">&larr; Back to the job</a></p>{% endif %}
 {% endblock %}
