@@ -13,6 +13,8 @@
   {{ reactions(job.job_id, csrf, reasons) }}
 </article>
 
+<p><a href="/conversation?job={{ job.job_id }}">Ask a question about this job</a></p>
+
 <section aria-labelledby="what-h"><h2 id="what-h">What the job is</h2>
   {% if job.summary %}<p>{{ job.summary }}</p>{% else %}<p class="muted">No summary was read from the posting.</p>{% endif %}
   {% if job.role_focus %}<p class="muted">Role: {{ job.role_focus }}</p>{% endif %}
