@@ -73,6 +73,7 @@ from careerhub.modules.proposals import reopen as reopen_proposal
 from careerhub.profile.facts import UnknownExtraction, decide
 from careerhub.profile.files import ProfileFileError, load_profile_doc
 from careerhub.profile.rubric import load_rubric
+from careerhub.web.browse_view import SORTS, BrowseQuery, gather_browse
 from careerhub.web.grouping import group_by_place
 from careerhub.web.job_detail import gather_job
 from careerhub.web.localtime import local_stamp
@@ -124,6 +125,7 @@ CSP = (
 #: The tabs, in order: (path, label).
 TABS = (
     ("/today", "Today"),
+    ("/browse", "Browse"),
     ("/plan", "Plan"),
     ("/tracker", "Tracker"),
     ("/contacts", "Contacts"),
@@ -133,6 +135,7 @@ TABS = (
 )
 PAGES = {
     "/today": ("Today", "Your top jobs, follow-ups, and deadlines will appear here."),
+    "/browse": ("Browse", "Every open job will appear here."),
     "/plan": ("Plan", "This week's suggested blocks will appear here."),
     "/tracker": ("Tracker", "Applications and their statuses will appear here."),
     "/contacts": ("Contacts", "The people you know will appear here."),
@@ -292,6 +295,7 @@ def create_app(
     for path in PAGES:
         if path not in (
             "/today",
+            "/browse",
             "/plan",
             "/status",
             "/tracker",
@@ -343,6 +347,40 @@ def create_app(
         if section in SECTIONS:  # remember the choice between visits
             response.set_cookie(SECTION_COOKIE, chosen, samesite="strict", path="/")
         return response
+
+    @app.get("/browse", response_class=HTMLResponse)
+    def browse_tab(
+        request: Request,
+        q: str | None = None,
+        sort: str | None = None,
+        page: str | None = None,
+        group: str | None = None,
+    ) -> Response:
+        if open_session is None:
+            return tab("/browse")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/browse")(request)
+        query = BrowseQuery.clean(q, sort, page, group)
+        with open_session() as session:
+            view = gather_browse(session, query)
+        return templates.TemplateResponse(
+            request,
+            "browse.html",
+            {
+                "tabs": TABS,
+                "current": "/browse",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": "Browse",
+                "heading": "Browse",
+                "view": view,
+                "sorts": SORTS,
+                "reasons": REASON_LABELS,
+                "place_groups": group_by_place([c.entry.location for c in view.cards])
+                if view.query.group
+                else [],
+            },
+        )
 
     @app.get("/plan", response_class=HTMLResponse)
     def plan_tab(request: Request) -> Response:
