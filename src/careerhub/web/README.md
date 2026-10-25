@@ -51,3 +51,5 @@ data folder.
 knows about the demo: it reads the demo folder the same way it reads the real one.
 
 Job cards on Today and Browse have a "Follow <company>" button (CH-198): it posts to `/jobs/<id>/track`, the same as the Job detail button, and makes network calls only when pressed.
+
+Contacts has a copy button beside each email and phone (CH-204): bundled `static/copy.js`, shown per value on hover or keyboard focus, hidden without JavaScript.

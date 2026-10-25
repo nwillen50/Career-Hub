@@ -54,3 +54,10 @@ textarea { font: inherit; color: var(--text); background: var(--surface); border
   border-radius: var(--radius-sm); padding: var(--space-2); }
 .answer { border-left: 4px solid var(--brass-rule); }
 .inline-form { display: inline-block; margin-right: var(--space-2); }
+.copy-cell { display: inline-flex; align-items: center; gap: var(--space-1); }
+/* Per cell, not per row: only the value you point at or tab to shows its copy button. */
+.copy-btn { opacity: 0; display: inline-flex; padding: var(--space-1); background: none; border: 1px solid transparent;
+  border-radius: var(--radius-sm); color: var(--accent); cursor: pointer; }
+.copy-cell:hover .copy-btn, .copy-cell:focus-within .copy-btn { opacity: 1; }
+.copy-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.copy-note { min-width: 3.5rem; }

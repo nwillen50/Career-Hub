@@ -22,10 +22,20 @@
       {% if c.imported_tags %}<br><span class="muted">{{ c.imported_tags }}</span>{% endif %}
     </td>
     <td>
-      <input type="text" name="email" value="{{ c.email }}" maxlength="320" inputmode="email" autocomplete="off" form="how-{{ c.id }}" aria-label="Email for {{ c.name }}">
+      <span class="copy-cell">
+        <input type="text" id="email-{{ c.id }}" name="email" value="{{ c.email }}" maxlength="320" inputmode="email" autocomplete="off" form="how-{{ c.id }}" aria-label="Email for {{ c.name }}">
+        <button type="button" class="copy-btn" hidden data-copy-from="email-{{ c.id }}" aria-label="Copy {{ c.name }}'s email"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><rect x="5" y="5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H11" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+        <span class="copy-note muted" role="status"></span>
+      </span>
       {% if c.email %}<br><a href="mailto:{{ c.email|urlencode }}" aria-label="Write to {{ c.name }} in your mail app">Write</a>{% endif %}
     </td>
-    <td><input type="text" name="phone" value="{{ c.phone }}" maxlength="40" inputmode="tel" autocomplete="off" form="how-{{ c.id }}" aria-label="Phone for {{ c.name }}"></td>
+    <td>
+      <span class="copy-cell">
+        <input type="text" id="phone-{{ c.id }}" name="phone" value="{{ c.phone }}" maxlength="40" inputmode="tel" autocomplete="off" form="how-{{ c.id }}" aria-label="Phone for {{ c.name }}">
+        <button type="button" class="copy-btn" hidden data-copy-from="phone-{{ c.id }}" aria-label="Copy {{ c.name }}'s phone"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><rect x="5" y="5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H11" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+        <span class="copy-note muted" role="status"></span>
+      </span>
+    </td>
     <td>{{ c.last_contact or "—" }}</td>
     <td><button type="submit" form="how-{{ c.id }}" aria-label="Save how you know {{ c.name }}">Save</button> <a href="/interactions?person={{ c.id }}#log" aria-label="Log a contact with {{ c.name }}">Log a contact</a></td>
   </tr>
@@ -35,4 +45,5 @@
 {% else %}
 <p class="card">{% if text %}Nobody matches that.{% else %}No contacts yet. Import your LinkedIn export or an alumni list from the terminal (`hub people import-alumni`).{% endif %}</p>
 {% endif %}
+<script src="/static/copy.js" defer></script>
 {% endblock %}

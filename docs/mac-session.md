@@ -141,3 +141,9 @@ Record each result on the matching ticket or ADR. Tick the box when it passes.
   (`HTTP 401 (key rejected)`, `HTTP 400 (often no credit)`, ...). No key or prompt text appears.
 - [ ] After `uv run hub nightly`, `~/Library/Application Support/CareerHub/logs/careerhub.log`
   exists (mode 600) and names any skipped model with its reason, and has no emails or keys.
+
+## Copy buttons on Contacts (CH-204)
+
+- [ ] In `hub web`, open Contacts. Point at one email: only its copy icon appears (not the phone's).
+  Click it, paste somewhere: the exact email. "Copied" shows for about 2 seconds.
+- [ ] Tab to a phone value: its copy icon appears; press Enter; paste. With VoiceOver on, "Copied" is read out.
