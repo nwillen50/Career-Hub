@@ -44,12 +44,20 @@ def preferences_path() -> Path:
     return data_dir() / PROFILE_DIRNAME / PREFERENCES_FILENAME
 
 
+def read_profile_text(path: Path) -> str:
+    """Read a profile file as UTF-8; text that is not valid UTF-8 is a `ProfileFileError`."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise ProfileFileError(f"{path.name} is not valid UTF-8 text.") from None
+
+
 def load_profile_doc(path: Path | None = None) -> ProfileDoc | None:
     """Read `profile.md`. Returns None if the file doesn't exist."""
     path = path or profile_doc_path()
     if not path.exists():
         return None
-    match = _FRONT_MATTER.match(path.read_text(encoding="utf-8"))
+    match = _FRONT_MATTER.match(read_profile_text(path))
     if match is None:
         raise ProfileFileError(
             f"{path.name} must start with a line of three dashes, YAML fields, "
@@ -65,9 +73,7 @@ def load_preferences(path: Path | None = None) -> Preferences | None:
     path = path or preferences_path()
     if not path.exists():
         return None
-    return validate_model(
-        Preferences, parse_yaml(path.read_text(encoding="utf-8"), path.name), path.name
-    )
+    return validate_model(Preferences, parse_yaml(read_profile_text(path), path.name), path.name)
 
 
 def parse_yaml(text: str, filename: str) -> dict[str, Any]:

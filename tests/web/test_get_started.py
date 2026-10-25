@@ -145,3 +145,25 @@ def test_the_profile_tab_links_to_it(session: Session) -> None:
     c = web(session, InMemoryKeyStore())
     c.get(f"/?t={TOKEN}")
     assert 'href="/get-started"' in c.get("/profile").text
+
+
+def test_unreadable_files_make_a_step_not_done_instead_of_an_error(
+    session: Session, data: Path
+) -> None:
+    """CH-203 review: bytes that are not UTF-8 must not turn the page into a 500."""
+    (data / "profile").mkdir(parents=True)
+    (data / "profile" / "profile.md").write_bytes(b"---\n\xff\xfe\n---\n")
+    (data / "targets.yaml").write_bytes(b"\xff\xfe\x00")
+    c = web(session, InMemoryKeyStore())
+    c.get(f"/?t={TOKEN}")
+    assert c.get("/get-started").status_code == 200
+
+
+def test_the_demo_opens_on_today_not_the_setup_page(session: Session) -> None:
+    app = create_app(
+        TOKEN, PORT, lambda: True, session_factory(session.get_bind()), InMemoryKeyStore(),
+        lambda: False, banner="Demo data",
+    )  # fmt: skip
+    c = TestClient(app, base_url=f"http://127.0.0.1:{PORT}", follow_redirects=False)
+    assert c.get(f"/?t={TOKEN}").headers["location"] == "/today"
+    assert c.get("/").headers["location"] == "/today"

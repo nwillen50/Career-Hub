@@ -325,8 +325,8 @@ def create_app(
 
     def entry_path() -> str:
         """Where to land: Get started until steps 1 to 7 are done, else Today (CH-203)."""
-        if open_session is None or key_store is None:
-            return "/today"  # no data, or no Keychain to judge by (the demo): nothing to set up
+        if open_session is None or key_store is None or banner is not None:
+            return "/today"  # no data, or the demo (it has a banner): nothing to set up
         try:
             opened["ok"] = opened["ok"] or check_database()
             if not opened["ok"]:

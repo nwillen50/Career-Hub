@@ -116,7 +116,7 @@ def gather_setup(
         has_files = load_profile_doc() is not None and load_preferences() is not None
         if not has_files:
             problem = "profile.md or preferences.yaml is missing."
-    except ProfileFileError:
+    except (ProfileFileError, OSError, ValueError):  # ValueError: not valid UTF-8
         has_files, problem = False, "profile.md or preferences.yaml has a problem."
     waiting = counts(session)["pending"]
     steps.append(
@@ -140,7 +140,7 @@ def gather_setup(
     )  # fmt: skip
     try:
         followed = sum(1 for t in load_targets() if t.enabled)
-    except TargetsError:
+    except (TargetsError, OSError, ValueError):
         followed = 0
     approved = session.scalar(
         select(func.count()).select_from(Source).where(Source.status == "approved",

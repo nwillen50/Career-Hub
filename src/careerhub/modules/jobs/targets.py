@@ -65,7 +65,7 @@ def read_targets(path: Path) -> list[Target]:
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         return TargetsFile.model_validate(raw).targets
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         raise TargetsError(f"Can't read {path.name}.") from None
     except yaml.YAMLError:
         raise TargetsError(f"{path.name} is not valid YAML.") from None
