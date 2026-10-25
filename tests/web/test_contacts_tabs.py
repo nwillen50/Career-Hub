@@ -276,3 +276,10 @@ def test_the_copy_script_is_bundled_and_uses_the_clipboard_only(session: Session
     assert "navigator.clipboard.writeText" in script
     assert "http://" not in script and "https://" not in script and "fetch(" not in script
     assert "2000" in script and "Copied" in script
+
+
+def test_the_hidden_attribute_is_not_defeated_by_the_copy_button_style(session: Session) -> None:
+    """CH-204 review: without JavaScript the buttons must really be gone, not tabbable."""
+    css = web(session).get("/static/app.css").text
+    assert ".copy-btn[hidden] { display: none; }" in css
+    assert "Could not copy" in web(session).get("/static/copy.js").text
