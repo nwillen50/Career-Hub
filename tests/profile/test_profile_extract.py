@@ -161,3 +161,15 @@ def test_a_resume_that_tells_the_model_what_to_do_stays_inside_the_data_markers(
     prompt = provider.requests[0].prompt
     start, end = prompt.index("=== DOCUMENT START ==="), prompt.index("=== DOCUMENT END ===")
     assert start < prompt.index("Ignore previous instructions") < end
+
+
+def test_the_request_leaves_room_for_a_full_resume_or_transcript() -> None:
+    """Bug CH-211: 2,500 output tokens cut a real resume's facts off mid-JSON on Nicholas's Mac.
+
+    A full answer (15 experiences, 80 courses, 15 projects) needs several thousand tokens, and a
+    cut-off answer is invalid JSON every time, so retrying never helps.
+    """
+    from careerhub.profile.extract import build_request
+
+    for kind in ("resume", "transcript"):
+        assert build_request(kind, "Some text", ProfileDoc(name="Jane Sample")).max_tokens >= 8000
