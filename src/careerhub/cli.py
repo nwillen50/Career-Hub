@@ -182,7 +182,7 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None) -> int:
             return _with_session(store, lambda s: _profile_facts(s, args[2:]))
         if args == ["profile", "show"]:
             print(format_profile(_load_profile(store)))
-            print(_readiness_summary())
+            print(_readiness_summary(store))
             print(_rescore_summary(store))
             note = _ambiguous_schools_note()
             if note:
@@ -957,9 +957,20 @@ def _ambiguous_schools_note() -> str:
     return "\nSchool names to settle (they match nothing until you do):\n" + "\n".join(lines)
 
 
-def _readiness_summary() -> str:
-    """Describe whether scoring is on and, if not, what the profile still needs."""
-    readiness = current_readiness(None, load_settings().profile_min_skills)
+def _readiness_summary(store: KeyStore) -> str:
+    """Describe whether scoring is on and, if not, what the profile still needs.
+
+    Accepted resume facts count, so the database is read when it can be opened.
+    """
+    min_skills = load_settings().profile_min_skills
+    try:
+        engine = open_database(store)
+    except (StorageError, SecretsError):
+        readiness = current_readiness(None, min_skills)  # files only
+    else:
+        migrate(engine)
+        with session_factory(engine)() as session:
+            readiness = current_readiness(session, min_skills)
     if readiness.on:
         return f"\nScoring: on since {readiness.since}."
     items = "\n".join(f"  - {item}" for item in readiness.missing) or "  (nothing missing)"

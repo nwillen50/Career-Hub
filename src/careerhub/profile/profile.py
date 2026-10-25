@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.models import Person
 from careerhub.profile.documents import DocumentText, read_document
-from careerhub.profile.facts import counts
+from careerhub.profile.extract import ProfileFacts
+from careerhub.profile.facts import accepted_facts, counts
 from careerhub.profile.files import load_preferences, load_profile_doc
 from careerhub.profile.inputs import ResumeFiles, find_resume, find_transcript
 from careerhub.profile.models import HardConstraints, Preferences, ProfileDoc
@@ -54,6 +55,8 @@ class Profile:
     transcript_info: DocumentInfo | None = None
     #: How many extracted fact sets are pending, accepted, or rejected (None: no database).
     fact_counts: dict[str, int] | None = None
+    #: Facts the user accepted from the resume and transcript (None: none, or no database).
+    accepted: ProfileFacts | None = None
 
 
 def load_profile(session: Session | None = None) -> Profile:
@@ -99,6 +102,7 @@ def load_profile(session: Session | None = None) -> Profile:
         resume_info,
         transcript_info,
         fact_counts,
+        accepted_facts(session) if session is not None else None,
     )
 
 
@@ -131,6 +135,11 @@ def _modes(hard: HardConstraints) -> str:
     return ", ".join(allowed) or "none"
 
 
+def _plain(text: str) -> str:
+    """Make resume-derived text safe to print: control characters (newlines, ANSI) become spaces."""
+    return "".join(" " if ord(c) < 32 or ord(c) == 127 else c for c in text)
+
+
 def format_profile(profile: Profile) -> str:
     """Render `profile` as plain text for `hub profile show` (no resume or transcript text)."""
     lines: list[str] = []
@@ -139,8 +148,29 @@ def format_profile(profile: Profile) -> str:
         for school in profile.doc.education:
             when = f", {school.graduation:%b %Y}" if school.graduation else ""
             lines.append(f"Education: {school.degree}, {school.school}{when}")
-        lines.append(f"Skills: {', '.join(profile.doc.skills) or '-'}")
+        typed = {s.strip().lower() for s in profile.doc.skills}
+        from_resume = [
+            _plain(s)
+            for s in (profile.accepted.skills if profile.accepted else [])
+            if s.lower() not in typed
+        ]
+        skills = ", ".join(profile.doc.skills) or "-"
+        if from_resume:
+            extra = ", ".join(dict.fromkeys(from_resume))
+            skills = (
+                extra + " (from your resume)"
+                if skills == "-"
+                else f"{skills}; {extra} (from your resume)"
+            )
+        lines.append(f"Skills: {skills}")
         lines.append(f"Interests: {', '.join(profile.doc.interests) or '-'}")
+        typed_schools = {e.school.strip().lower() for e in profile.doc.education}
+        for fact in profile.accepted.education if profile.accepted else []:
+            if fact.school.strip().lower() not in typed_schools:
+                detail = _plain(
+                    ", ".join(x for x in (fact.degree, fact.school, fact.graduation) if x)
+                )
+                lines.append(f"Education: {detail} (from your resume)")
     if profile.preferences:
         hard = profile.preferences.hard_constraints
         lines += [

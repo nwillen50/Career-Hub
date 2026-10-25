@@ -18,6 +18,7 @@ from careerhub.modules.jobs.extract import JobFields
 from careerhub.modules.jobs.filters import apply_filters
 from careerhub.modules.jobs.scoring import ranked_jobs
 from careerhub.profile.eligibility import Eligibility, degree_level, eligibility_from
+from careerhub.profile.extract import EducationFact
 from careerhub.profile.models import Education, HardConstraints, Preferences, ProfileDoc
 
 ME = Eligibility(highest_degree="bachelor", graduation=date(2027, 5, 1))
@@ -65,7 +66,10 @@ def test_eligibility_uses_the_highest_degree_and_its_graduation_date() -> None:
     )
     prefs = Preferences(work_authorization="us_citizen")
     assert eligibility_from(doc, prefs) == Eligibility("master", date(2027, 5, 1), "us_citizen")
-    assert eligibility_from(doc, None, ["PhD"]).highest_degree == "phd"
+    assert (
+        eligibility_from(doc, None, [EducationFact(school="S", degree="PhD")]).highest_degree
+        == "phd"
+    )
     assert eligibility_from(ProfileDoc(name="J"), None) == Eligibility()
 
 

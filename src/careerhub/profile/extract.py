@@ -28,7 +28,7 @@ from careerhub.profile.redact import personal_text, transcript_text
 from careerhub.prompts import load_prompt, render
 
 PROMPT_NAME = "profile_extract"
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2
 MAX_DOCUMENT_CHARS = 12_000
 _Text = Field(default=None, max_length=300)
 
@@ -54,6 +54,8 @@ class EducationFact(_Fact):
 
     school: str = Field(max_length=200)
     degree: str | None = _Text
+    #: "associate", "bachelor", "master", or "phd" when the model could tell (else None).
+    level: str | None = Field(default=None, max_length=20)
     graduation: str | None = Field(default=None, max_length=40)
 
 
