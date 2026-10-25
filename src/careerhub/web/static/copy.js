@@ -15,6 +15,8 @@
         if (!note) { return; }
         note.textContent = "Copied";
         window.setTimeout(function () { note.textContent = ""; }, 2000);
+      }, function () {
+        if (note) { note.textContent = "Could not copy"; }
       });
     });
   });
