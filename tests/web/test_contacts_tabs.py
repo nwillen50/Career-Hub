@@ -248,3 +248,38 @@ def test_review_findings_a_request_naming_only_one_of_email_or_phone_keeps_the_o
         "ada@example.org",
         "617 555 0100",
     )
+
+
+def test_copy_buttons_are_per_value_labelled_and_hidden_without_javascript(
+    session: Session,
+) -> None:
+    """CH-204: each email and phone has its own copy button, shown only for that cell."""
+    session.add(Person(full_name="Maya Chen", email="maya@example.com", phone="555-0100"))
+    session.commit()
+    c = web(session)
+    html = c.get("/contacts").text
+    assert check_page(html) == []
+    assert 'aria-label="Copy Maya Chen\'s email"' in html.replace("&#39;", "'")
+    assert 'aria-label="Copy Maya Chen\'s phone"' in html.replace("&#39;", "'")
+    assert html.count("data-copy-from=") == 2
+    assert html.count('class="copy-btn" hidden') == 2  # hidden until the script runs
+    assert html.count('role="status"') >= 2  # 'Copied' is announced
+    assert "mailto:" in html  # Write stays; there is no tel: link
+    assert "tel:" not in html
+    css = c.get("/static/app.css").text
+    assert ".copy-cell:hover .copy-btn" in css and ".copy-cell:focus-within .copy-btn" in css
+    assert ".copy-btn { opacity: 0" in css and "tr:hover .copy" not in css  # per cell, not per row
+
+
+def test_the_copy_script_is_bundled_and_uses_the_clipboard_only(session: Session) -> None:
+    script = web(session).get("/static/copy.js").text
+    assert "navigator.clipboard.writeText" in script
+    assert "http://" not in script and "https://" not in script and "fetch(" not in script
+    assert "2000" in script and "Copied" in script
+
+
+def test_the_hidden_attribute_is_not_defeated_by_the_copy_button_style(session: Session) -> None:
+    """CH-204 review: without JavaScript the buttons must really be gone, not tabbable."""
+    css = web(session).get("/static/app.css").text
+    assert ".copy-btn[hidden] { display: none; }" in css
+    assert "Could not copy" in web(session).get("/static/copy.js").text
