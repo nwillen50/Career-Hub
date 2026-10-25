@@ -173,3 +173,17 @@ def test_preview_changes_nothing_and_matched_on_undoes_one_run(
     after = load_targets()
     assert [t.name for t in after if t.enabled] == ["Abselion"]  # the hand-picked one stays
     assert all(t.matched_on is None for t in after)
+
+
+def test_enable_matching_points_to_find_boards_with_the_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("CAREERHUB_DATA_DIR", str(tmp_path))
+    store = InMemoryKeyStore()
+    main(["targets", "import", str(SEED)], store)
+    (tmp_path / "profile").mkdir()
+    (tmp_path / "profile" / "profile.md").write_text("---\nname: J\ninterests: [robotics]\n---\n")
+    capsys.readouterr()
+    main(["targets", "enable-matching"], store)
+    out = capsys.readouterr().out
+    assert "Next: `hub targets find-boards`" in out and "minutes" in out

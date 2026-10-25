@@ -738,8 +738,12 @@ def _find_boards(session: Session, client: httpx.Client | None = None) -> int:
     """Look for the job boards of followed companies; hits become proposed sources."""
     try:
         targets = load_targets()
-        report = find_boards(session, targets, client)
-        save_targets(targets)
+        try:
+            report = find_boards(
+                session, targets, client, progress=lambda line: print(line, flush=True)
+            )
+        finally:
+            save_targets(targets)  # also when stopped with Ctrl-C: keep what was found
     except TargetsError as error:
         print(error)
         return 1
@@ -845,6 +849,12 @@ def _targets(args: list[str]) -> int:
                 print("Nothing was changed. Run `hub targets enable-matching` to follow them.")
             elif hits:
                 print(f"To undo: hub targets disable --matched-on {today}")
+                minutes = max(1, round(len(hits) * 24 / 60))
+                unit = "minute" if minutes == 1 else "minutes"
+                print(
+                    "Next: `hub targets find-boards` looks for their job boards. It prints "
+                    f"progress and takes up to about {minutes} {unit} for these (often much less)."
+                )
             return 0
     except (TargetsError, ProfileFileError) as error:
         print(error)
