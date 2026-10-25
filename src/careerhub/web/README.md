@@ -53,3 +53,5 @@ knows about the demo: it reads the demo folder the same way it reads the real on
 Job cards on Today and Browse have a "Follow <company>" button (CH-198): it posts to `/jobs/<id>/track`, the same as the Job detail button, and makes network calls only when pressed.
 
 Contacts has a copy button beside each email and phone (CH-204): bundled `static/copy.js`, shown per value on hover or keyboard focus, hidden without JavaScript.
+
+The Get started page (CH-203, `/get-started`, reachable from the Profile tab) lists setup steps 1 to 7 with a live done / not done check and the command or file that fixes each. The link `hub web` prints lands there until steps 1 to 7 are done; Today is never blocked, and the page changes nothing. Data: `setup_view.py`, built on the System status data.

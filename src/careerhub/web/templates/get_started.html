@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="muted">Career Hub is ready to use when steps 1 to 7 are done. Each step checks itself every time you open this page, and shows the exact command or file that fixes it. This page changes nothing; the commands run in the terminal. More detail is in <code>docs/mac-session.md</code>.</p>
+{% if setup.complete %}
+<p class="card" role="status">Setup is complete. <a href="/today">Go to Today</a>.</p>
+{% else %}
+<p class="card">{% set nxt = setup.next_step %}Next: step {{ nxt.number }}, {{ nxt.title|lower }}. <a href="/today">Skip for now</a></p>
+{% endif %}
+<ol class="steps">
+{% for step in setup.steps %}
+  <li>
+    <h2 id="step-{{ step.number }}">Step {{ step.number }}: {{ step.title }} <span class="step-state">{{ "Done" if step.done else "Not done" }}</span></h2>
+    <p>{{ step.detail }}</p>
+    {% if not step.done %}<p>To fix: {{ step.fix }}{% if step.link %} See <a href="{{ step.link[0] }}">{{ step.link[1] }}</a>.{% endif %}</p>{% endif %}
+  </li>
+{% endfor %}
+</ol>
+<section aria-labelledby="optional-h"><h2 id="optional-h">Optional</h2>
+  <ul>{% for item in setup.optional %}<li>{{ item.title }}: {{ item.fix }}</li>{% endfor %}</ul>
+</section>
+{% endblock %}
