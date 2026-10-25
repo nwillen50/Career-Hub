@@ -101,7 +101,7 @@ def build_request(kind: Kind, text: str, doc: ProfileDoc) -> LLMRequest:
         kind=kind,
         document=redact(text, doc.name, doc.aliases)[:MAX_DOCUMENT_CHARS],
     )
-    return LLMRequest(prompt=prompt, tier=PrivacyTier.PERSONAL, max_tokens=2500, essential=False)
+    return LLMRequest(prompt=prompt, tier=PrivacyTier.PERSONAL, max_tokens=8000, essential=False)
 
 
 def extract_and_save(
