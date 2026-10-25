@@ -1,5 +1,5 @@
 {
-  "prices_checked": "2026-10-22",
+  "prices_checked": "2026-10-24",
   "presets": [
     {"name": "claude-haiku", "kind": "anthropic", "model": "claude-haiku-5-5", "strength": "cheap",
      "input_per_mtok": 0.10, "output_per_mtok": 0.50, "trains_on_data": false},
@@ -9,10 +9,10 @@
      "input_per_mtok": 0.25, "output_per_mtok": 2.0, "trains_on_data": false},
     {"name": "openai-strong", "kind": "openai", "model": "gpt-5.4-mini", "strength": "strong",
      "input_per_mtok": 0.75, "output_per_mtok": 4.5, "trains_on_data": false},
-    {"name": "gemini-free", "kind": "google", "model": "gemini-2.5-flash", "tier": "free",
+    {"name": "gemini-free", "kind": "google", "model": "gemini-3.8-flash", "tier": "free",
      "strength": "cheap", "input_per_mtok": 0.0, "output_per_mtok": 0.0, "trains_on_data": true},
-    {"name": "gemini-paid", "kind": "google", "model": "gemini-2.5-flash", "tier": "paid",
-     "strength": "cheap", "input_per_mtok": 0.30, "output_per_mtok": 2.50, "trains_on_data": false},
+    {"name": "gemini-paid", "kind": "google", "model": "gemini-3.8-flash", "tier": "paid",
+     "strength": "cheap", "input_per_mtok": 0.75, "output_per_mtok": 3.75, "trains_on_data": false},
     {"name": "local-8b", "kind": "local", "model": "llama3.1:8b", "strength": "cheap",
      "trains_on_data": false}
   ]
