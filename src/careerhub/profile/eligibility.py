@@ -80,20 +80,17 @@ def parse_graduation(text: str | None) -> date | None:
     "Aug. 2023 -- May 2027 (Expected)" the end counts. Text without a year gives None, and so
     does a year with no month (we won't guess one).
     """
-    result: date | None = None
     found = _WHEN.findall(text or "")
-    if len(found) == 1 and re.search(r"(?i)\b(present|current|now)\b", text or ""):
+    if not found or re.search(r"(?i)[-–—]\s*(present|current|now|ongoing)\b", text or ""):
         return None  # "Aug 2023 - Present" gives a start, not a graduation
-    for word, year, month_digits in found:
-        month = None
-        if month_digits and 1 <= int(month_digits) <= 12:
-            month = int(month_digits)
-        elif word:
-            number = _MONTHS.get(word.lower())
-            month = _SEASON_MONTH.get(number or 0, number)
-        if month is not None:
-            result = date(int(year), month, 1)
-    return result
+    word, year, month_digits = found[-1]  # the end of a range is the last date written
+    month = None
+    if month_digits and 1 <= int(month_digits) <= 12:
+        month = int(month_digits)
+    elif word:
+        number = _MONTHS.get(word.lower())
+        month = _SEASON_MONTH.get(number or 0, number)
+    return date(int(year), month, 1) if month is not None else None
 
 
 def education_level(entry: EducationFact) -> str | None:

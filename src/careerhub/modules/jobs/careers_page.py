@@ -17,6 +17,7 @@ import re
 import socket
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import Any
 from urllib import robotparser
 from urllib.parse import urlsplit
 
@@ -239,6 +240,7 @@ def track_company(
         lines.append(f"Now following {target.name}.")
     else:
         target.enabled = True
+        target.matched_on = None  # followed on purpose now, so "disable --matched-on" leaves it
         lines.append(f"{target.name} was already in your list; it is followed now.")
     if target.board:
         return [*lines, f"Its board is already known ({target.board_kind}:{target.board})."]
@@ -260,11 +262,9 @@ def track_company(
                     "single jobs with hub add-job."]  # fmt: skip
         lines.append(result.problem or "No supported job board was embedded in that page.")
         lines.append("Trying likely board names instead.")
-    report = (
-        find_boards(session, [target], http, sleep)
-        if sleep
-        else find_boards(session, [target], http)
-    )
+    kwargs: dict[str, Any] = {"sleep": sleep} if sleep else {}
+    others = [(t.board_kind, t.board) for t in targets if t is not target and t.board]
+    report = find_boards(session, [target], http, taken=others, **kwargs)
     for _, hit in report.found:
         lines.append(
             f"Found a {hit.kind} board {hit.token!r} (proposed; approve it with hub sources)."
