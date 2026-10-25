@@ -19,6 +19,12 @@
   <p class="score">Fit score <strong>{{ entry.score|round|int }}</strong> out of 100</p>
   <p>{{ entry.first_sentence }}</p>
   {{ reactions(entry.job_id, csrf, reasons) }}
+  {% if entry.job_id is not none %}
+  <form method="post" action="/jobs/{{ entry.job_id }}/track" class="inline-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">Follow {{ entry.company }}</button>
+  </form>
+  {% endif %}
   <details>
     <summary>Why it scored</summary>
     <p>{{ entry.explanation }}</p>
