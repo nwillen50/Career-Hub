@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from careerhub.core.files import write_private
 from careerhub.core.paths import data_dir
 from careerhub.profile.documents import read_document
+from careerhub.profile.eligibility import parse_graduation
 from careerhub.profile.facts import accepted_facts
 from careerhub.profile.files import ProfileFileError, load_preferences, load_profile_doc
 from careerhub.profile.inputs import find_resume
@@ -73,9 +74,13 @@ def missing_items(session: Session | None, min_skills: int = DEFAULT_MIN_SKILLS)
     skills = {s.strip().lower() for s in doc.skills if s.strip()}
     if facts:
         skills |= {s.strip().lower() for s in facts.skills if s.strip()}
-    if not any(e.graduation for e in doc.education):
+    has_graduation = any(e.graduation for e in doc.education) or any(
+        parse_graduation(e.graduation) for e in (facts.education if facts else [])
+    )
+    if not has_graduation:
         missing.append(
-            "Education: add your school and expected graduation date to profile.md; "
+            "Education: add your school and expected graduation date to profile.md, or accept "
+            "the education read from your resume with `hub profile facts accept`; "
             "filters and scoring use your graduation window"
         )
     if len(skills) < min_skills:

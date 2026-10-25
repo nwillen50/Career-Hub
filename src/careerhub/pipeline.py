@@ -259,9 +259,7 @@ def _understand_and_rank(
     constraints = preferences.hard_constraints if preferences else HardConstraints()
     aliases = preferences.alias_keys() if preferences else {}
     eligibility = (
-        eligibility_from(doc, preferences, [e.degree or "" for e in _accepted_education(session)])
-        if doc
-        else Eligibility()
+        eligibility_from(doc, preferences, _accepted_education(session)) if doc else Eligibility()
     )
     if not light and (doc is None or rubric is None) and current_readiness(session).on:
         report.problems.append("scoring skipped: profile.md or rubric.yaml is missing")
@@ -381,7 +379,7 @@ def profile_epoch(
 def _accepted_education(session: Session) -> list[EducationFact]:
     """Return the education entries from the user's accepted resume and transcript facts."""
     facts = accepted_facts(session)
-    return [e for e in facts.education if e.degree] if facts else []
+    return [e for e in facts.education if e.degree or e.level] if facts else []
 
 
 def _tailor_top_jobs(

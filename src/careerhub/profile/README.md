@@ -158,3 +158,12 @@ file never reuses an old epoch. Numbers and dates in a line, and short or symbol
 scores and tailors existing jobs once more, because the input hash now carries the epoch.
 One decisive edit inside a long About or facts text waits until the 5 percent is reached;
 `hub score --all` forces it sooner.
+
+## Education from the resume (CH-212)
+
+Prompt `profile_extract` v2 reads graduation as the end of the date range as written ("Aug. 2023 -- May 2027
+(Expected)" gives "May 2027") and sets `level` to "bachelor" for an undergraduate college that lists
+concentrations instead of a degree name. `parse_graduation` turns "May 2027", "2027-05", "Spring 2027" (May) and
+"Fall 2026" (December) into the first of the month; a year alone or an unreadable string stays missing.
+Accepted education facts now satisfy the readiness check and feed the eligibility filters (profile.md wins), and
+`hub profile show` counts accepted facts, marking them "(from your resume)".
