@@ -12,6 +12,7 @@ import logging
 import logging.handlers
 import re
 from pathlib import Path
+from typing import Any
 
 from careerhub.core.paths import data_dir
 
@@ -57,6 +58,15 @@ class RedactingFilter(logging.Filter):
         return True
 
 
+class _PrivateRotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """A rotating log whose every file, including the new one after a rollover, is mode 600."""
+
+    def _open(self) -> Any:
+        stream = super()._open()
+        Path(self.baseFilename).chmod(0o600)
+        return stream
+
+
 def log_file_path() -> Path:
     """Return the log file's path, inside the data folder."""
     return data_dir() / "logs" / "careerhub.log"
@@ -78,7 +88,7 @@ def configure_logging(level: str = "INFO", log_file: Path | None = None) -> logg
     handlers: list[logging.Handler] = [logging.StreamHandler()]
     if log_file is not None:
         log_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        file_handler = logging.handlers.RotatingFileHandler(
+        file_handler = _PrivateRotatingFileHandler(
             log_file, maxBytes=1_000_000, backupCount=3, encoding="utf-8"
         )
         log_file.chmod(0o600)

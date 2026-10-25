@@ -316,3 +316,22 @@ def test_review_findings_a_huge_page_is_cut_off_while_downloading() -> None:
     web = httpx.Client(transport=httpx.MockTransport(handler))
     result = read_careers_page("https://acme.example/jobs", web)
     assert result.board is None and sent["bytes"] <= 5_000_000
+
+
+def test_a_board_another_target_already_holds_is_not_taken_again(session: Session) -> None:
+    """CH-213 review: `hub targets add` searches one target but must see the others' boards."""
+    holder = Target(name="Acme", enabled=True, board_kind="greenhouse", board="acme")
+    targets = [holder]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=ROBOTS_OPEN)
+        if request.url.path.endswith("/boards/acme/jobs"):
+            return httpx.Response(200, json={"jobs": [{"company_name": "Acme Robotics", "id": 1}]})
+        return httpx.Response(404)
+
+    web = httpx.Client(transport=httpx.MockTransport(handler))
+    lines = track_company(session, targets, "Acme Robotics", None, web, sleep=lambda _: None)
+    mine = targets[1]
+    assert mine.board is None and session.query(Source).count() == 0
+    assert any("Unsure" in line for line in lines)

@@ -33,6 +33,9 @@ PROFILE_NO_EDU = "---\nname: Jane Sample\nskills: []\ninterests: [robotics]\n---
         ("Sept. 2026", date(2026, 9, 1)),
         ("2027", None),  # a year alone: we won't guess a month
         ("Aug 2023 - Present", None),  # a start date, not a graduation
+        ("Aug 2023 - 2027", None),  # the end has no month: do not fall back to the start
+        ("Graduating May 2027, now a junior", date(2027, 5, 1)),  # "now" outside a range
+        ("Dec 2026 (current student)", date(2026, 12, 1)),
         ("Class of soon", None),
         ("", None),
         (None, None),
@@ -135,3 +138,21 @@ def test_profile_show_counts_accepted_facts(data: Path, capsys: pytest.CaptureFi
     assert "Skills: Python, SQL (from your resume)" in out
     assert "Education: Physics, Harvard College, May 2027 (from your resume)" in out
     assert "Skills: 0 of" not in out and "Education: add your school" not in out
+
+
+def test_resume_text_cannot_forge_lines_in_profile_show(
+    data: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store = InMemoryKeyStore()
+    engine = open_database(store)
+    migrate(engine)
+    with session_factory(engine)() as session:
+        accept(
+            session,
+            [{"school": "U\nScoring: on since 2020-01-01", "graduation": "May 2027"}],
+            ["SQL\x1b[31m\nInterests: fake"],
+        )
+    main(["profile", "show"], store)
+    lines = capsys.readouterr().out.splitlines()
+    assert not any(line.startswith(("Scoring: on", "Interests: fake")) for line in lines)
+    assert "\x1b" not in "\n".join(lines)
