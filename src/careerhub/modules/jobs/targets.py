@@ -43,6 +43,8 @@ class Target(BaseModel):
     enabled: bool = False
     #: A job system we can't read (for example "Workday"); shown so the gap is visible.
     unsupported_ats: str | None = Field(default=None, max_length=50)
+    #: The day `enable-matching` switched this company on (YYYY-MM-DD), so that run can be undone.
+    matched_on: str | None = Field(default=None, max_length=10)
 
 
 class TargetsFile(BaseModel):
@@ -111,13 +113,30 @@ def _tokens(text: str) -> set[str]:
     return {w for w in _WORDS.findall(text.lower()) if w not in _STOP}
 
 
+def match_reason(target: Target, interests: list[str]) -> str | None:
+    """Say why `target` matches an interest, or None when it does not (CH-215).
+
+    The company's first-listed sector is its primary one: an interest matches it when all of the
+    interest's words are in it. A later sector counts only when the interest names it
+    specifically: the same words, or at least two words that are all in it. So the single word
+    "AI" matches a company whose main sector is applied AI, not every biotech that mentions AI.
+    """
+    for interest in interests:
+        wanted = _tokens(interest)
+        if not wanted:
+            continue
+        for position, sector in enumerate(target.sectors):
+            words = _tokens(sector)
+            if position == 0 and wanted <= words:
+                return f"{interest.strip()} (main sector: {sector})"
+            if position > 0 and (wanted == words or (len(wanted) >= 2 and wanted <= words)):
+                return f"{interest.strip()} (also: {sector})"
+    return None
+
+
 def matches_interests(target: Target, interests: list[str]) -> bool:
-    """Say whether any of the company's sectors covers any interest (all of its words match)."""
-    sector_words = [_tokens(s) for s in target.sectors]
-    return any(
-        (wanted := _tokens(interest)) and any(wanted <= words for words in sector_words)
-        for interest in interests
-    )
+    """Say whether the company's main sector (or a sector named specifically) fits an interest."""
+    return match_reason(target, interests) is not None
 
 
 def set_unsupported(targets: list[Target], name: str, ats: str) -> bool:
@@ -139,4 +158,5 @@ def set_enabled(targets: list[Target], names: list[str], enabled: bool) -> list[
             unknown.append(name)
         else:
             target.enabled = enabled
+            target.matched_on = None  # the user's own choice now, not the matcher's
     return unknown

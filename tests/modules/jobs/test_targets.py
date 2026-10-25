@@ -12,6 +12,7 @@ from careerhub.modules.jobs.targets import (
     Target,
     TargetsError,
     load_targets,
+    match_reason,
     matches_interests,
     merge_import,
     read_targets,
@@ -116,3 +117,59 @@ def test_the_commands_import_list_enable_and_match_interests(
     assert main(["targets", "disable", "100XBIO"], store) == 0
     assert main(["targets", "bogus"], store) == 2
     assert main(["targets", "import", str(tmp_path / "nope.yaml")], store) == 1
+
+
+INTERESTS = ["quantum computing", "quantum information", "AI", "quant", "sports vc"]
+
+
+def test_ai_matches_main_sector_not_every_company_that_mentions_ai() -> None:
+    """CH-215: the broad word 'AI' switched on 19 biotech companies that only list AI second."""
+    biotech = Target(name="Accure Health", sectors=["BIOTECH / LIFE SCIENCES", "APPLIED AI & ML"])
+    ai_first = Target(name="Ai Co", sectors=["APPLIED AI & ML", "ENERGY"])
+    assert match_reason(biotech, ["AI"]) is None
+    assert match_reason(ai_first, ["AI"]) == "AI (main sector: APPLIED AI & ML)"
+
+
+def test_a_later_sector_counts_only_when_the_interest_names_it() -> None:
+    quantum = Target(name="Q", sectors=["COMPUTING", "QUANTUM COMPUTING"])
+    assert match_reason(quantum, ["quantum computing"]) == (
+        "quantum computing (also: QUANTUM COMPUTING)"
+    )
+    assert match_reason(quantum, ["quantum"]) is None  # one word is too broad for a later sector
+    assert match_reason(Target(name="N", sectors=[]), ["AI"]) is None
+
+
+def test_the_engine_seed_with_broad_interests_leaves_out_biotech_that_only_mentions_ai() -> None:
+    seed = read_targets(SEED)
+    hits = [t for t in seed if match_reason(t, INTERESTS)]
+    assert hits  # something still matches (quantum, applied AI)
+    assert all(
+        not t.sectors[0].startswith("BIOTECH") or match_reason(t, INTERESTS) is None for t in hits
+    )
+    assert len(hits) < 44  # was 44 with the broad rule
+
+
+def test_preview_changes_nothing_and_matched_on_undoes_one_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("CAREERHUB_DATA_DIR", str(tmp_path))
+    store = InMemoryKeyStore()
+    main(["targets", "import", str(SEED)], store)
+    (tmp_path / "profile").mkdir()
+    (tmp_path / "profile" / "profile.md").write_text(
+        "---\nname: Jane\ninterests: [robotics]\n---\n"
+    )
+    capsys.readouterr()
+    assert main(["targets", "enable-matching", "--preview"], store) == 0
+    out = capsys.readouterr().out
+    assert "Would follow" in out and "matched: robotics" in out and "Nothing was changed" in out
+    assert not any(t.enabled for t in load_targets())
+    assert main(["targets", "enable"] + ["Abselion"], store) == 0  # followed by hand first
+    assert main(["targets", "enable-matching"], store) == 0
+    out = capsys.readouterr().out
+    day = next(t.matched_on for t in load_targets() if t.matched_on)
+    assert f"hub targets disable --matched-on {day}" in out
+    assert main(["targets", "disable", "--matched-on", day], store) == 0
+    after = load_targets()
+    assert [t.name for t in after if t.enabled] == ["Abselion"]  # the hand-picked one stays
+    assert all(t.matched_on is None for t in after)

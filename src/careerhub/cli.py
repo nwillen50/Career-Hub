@@ -73,7 +73,7 @@ from careerhub.modules.jobs.scoring import profile_snapshot
 from careerhub.modules.jobs.targets import (
     TargetsError,
     load_targets,
-    matches_interests,
+    match_reason,
     merge_import,
     read_targets,
     save_targets,
@@ -149,10 +149,10 @@ USAGE = """Usage:
   hub jobs close <id> | reopen <id>      (only for jobs you added by link; nothing is deleted)
   hub companies suggestions | merge <id> | skip <id>   (near-duplicate company names)
   hub companies merges | split <company> <name>   (list merges; undo one, with a yes/no question)
-  hub targets find-boards | note <name> <ats> | import <file> | list | enable-matching
+  hub targets find-boards | note <name> <ats> | import <file> | list | enable-matching [--preview]
   hub targets add <name> [--careers-url URL]   (follow a company; looks for its board; fetches
                           that one page, honoring robots.txt, never LinkedIn or Handshake)
-  hub targets enable <name>... | disable <name>...
+  hub targets enable <name>... | disable <name>... | disable --matched-on <YYYY-MM-DD>
                           (companies you follow; the Engine list is in docs/seeds)
   hub models list | routes | check   (check sends one tiny call to each model)
   hub models add <anthropic|openai|gemini --tier free|paid|local|preset>   (asks for the key)
@@ -804,6 +804,13 @@ def _targets(args: list[str]) -> int:
                 print(f"[{mark}] {target.name} ({sectors}); {board}")
             print(f"{len(targets)} companies, {sum(t.enabled for t in targets)} followed.")
             return 0
+        if args[0] == "disable" and len(args) == 3 and args[1] == "--matched-on":
+            undone = [t for t in targets if t.enabled and t.matched_on == args[2]]
+            for target in undone:
+                target.enabled, target.matched_on = False, None
+            save_targets(targets)
+            print(f"Stopped following {len(undone)} companies matched on {args[2]}.")
+            return 0
         if args[0] in ("enable", "disable") and len(args) >= 2:
             unknown = set_enabled(targets, args[1:], args[0] == "enable")
             save_targets(targets)
@@ -815,17 +822,29 @@ def _targets(args: list[str]) -> int:
             save_targets(targets)
             print(f"No target named {args[1]!r}." if missing else "Noted.")
             return 1 if missing else 0
-        if args[0] == "enable-matching" and len(args) == 1:
+        if args[0] == "enable-matching" and args[1:] in ([], ["--preview"]):
             doc = load_profile_doc()
             if doc is None or not doc.interests:
                 print("Add interests to profile.md first.")
                 return 1
-            hits = [t for t in targets if matches_interests(t, doc.interests)]
-            for target in hits:
-                target.enabled = True
-            save_targets(targets)
-            print(f"Now following {len(hits)} companies whose sectors match your interests:")
-            print("\n".join(f"  {t.name}" for t in hits))
+            preview = args[1:] == ["--preview"]
+            today = utcnow().astimezone(ZoneInfo(load_settings().timezone)).date().isoformat()
+            hits = []
+            for target in targets:
+                reason = match_reason(target, doc.interests)
+                if reason is not None and not target.enabled:
+                    hits.append((target, reason))
+            if not preview:
+                for target, _ in hits:
+                    target.enabled, target.matched_on = True, today
+                save_targets(targets)
+            verb = "Would follow" if preview else "Now following"
+            print(f"{verb} {len(hits)} more companies whose sectors match your interests:")
+            print("\n".join(f"  {t.name}   matched: {why}" for t, why in hits))
+            if preview:
+                print("Nothing was changed. Run `hub targets enable-matching` to follow them.")
+            elif hits:
+                print(f"To undo: hub targets disable --matched-on {today}")
             return 0
     except (TargetsError, ProfileFileError) as error:
         print(error)
