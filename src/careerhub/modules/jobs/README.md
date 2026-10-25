@@ -73,7 +73,11 @@ companies (public list) to `targets.yaml` in your data folder, all **disabled**;
 changes nothing and never touches a company you already have. `hub targets list` shows them;
 `hub targets enable <name>` / `disable <name>` follow or stop following one;
 `hub targets enable-matching` follows the ones whose sectors match your interests in `profile.md`
-(whole words: "robotics" matches "AUTONOMOUS SYSTEMS / ROBOTICS"). Finding each company's job board
+(whole words: "robotics" matches "AUTONOMOUS SYSTEMS / ROBOTICS"). Matching uses each company's first-listed
+sector; a later sector counts only when the interest names it (the same words, or two or more words all in it), so
+"AI" does not switch on every biotech that also lists AI (CH-215). It prints `matched: <why>` per company,
+`--preview` lists them and changes nothing, and `hub targets disable --matched-on <date>` (printed after a run)
+undoes that run without touching companies you followed by hand. Finding each company's job board
 is the next ticket.
 
 ## When a board lists no jobs
