@@ -112,4 +112,4 @@ def test_keys_are_not_in_the_resulting_settings() -> None:
 
 def test_stale_prices_are_flagged_after_90_days() -> None:
     assert stale_warning(date(2026, 11, 1)) is None
-    assert "2026-10-22" in (stale_warning(date(2027, 3, 1)) or "")
+    assert "2026-10-24" in (stale_warning(date(2027, 3, 1)) or "")

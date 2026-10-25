@@ -77,7 +77,7 @@ def test_list_shows_state_prices_and_the_checked_date(
     assert models_list(store, date(2026, 11, 1), lambda: False) == 0
     out = capsys.readouterr().out
     assert "ON  gemini-free" in out and "off claude-haiku" in out
-    assert "Prices checked on 2026-10-22." in out and "Warning" not in out
+    assert "Prices checked on 2026-10-24." in out and "Warning" not in out
     models_list(store, date(2027, 6, 1), lambda: False)
     assert "Warning" in capsys.readouterr().out
 
