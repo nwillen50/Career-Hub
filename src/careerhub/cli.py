@@ -850,10 +850,10 @@ def _targets(args: list[str]) -> int:
             elif hits:
                 print(f"To undo: hub targets disable --matched-on {today}")
                 minutes = max(1, round(len(hits) * 24 / 60))
+                unit = "minute" if minutes == 1 else "minutes"
                 print(
-                    f"Next: `hub targets find-boards` looks for their job boards. It prints "
-                    f"progress and takes up to about {minutes} {'minute' if minutes == 1 else 'minutes'} "
-                    "for these (often much less)."
+                    "Next: `hub targets find-boards` looks for their job boards. It prints "
+                    f"progress and takes up to about {minutes} {unit} for these (often much less)."
                 )
             return 0
     except (TargetsError, ProfileFileError) as error:
