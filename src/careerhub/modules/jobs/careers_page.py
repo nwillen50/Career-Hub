@@ -17,6 +17,7 @@ import re
 import socket
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import Any
 from urllib import robotparser
 from urllib.parse import urlsplit
 
@@ -260,8 +261,9 @@ def track_company(
                     "single jobs with hub add-job."]  # fmt: skip
         lines.append(result.problem or "No supported job board was embedded in that page.")
         lines.append("Trying likely board names instead.")
-    kwargs = {"sleep": sleep} if sleep else {}
-    report = find_boards(session, [target], http, **kwargs)
+    kwargs: dict[str, Any] = {"sleep": sleep} if sleep else {}
+    others = [(t.board_kind, t.board) for t in targets if t is not target and t.board]
+    report = find_boards(session, [target], http, taken=others, **kwargs)
     for _, hit in report.found:
         lines.append(
             f"Found a {hit.kind} board {hit.token!r} (proposed; approve it with hub sources)."
