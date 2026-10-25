@@ -229,3 +229,25 @@ def test_the_command_prints_progress_and_saves_after_an_interrupt(
     with pytest.raises(KeyboardInterrupt):
         main(["targets", "find-boards"], InMemoryKeyStore())
     assert load_targets()[0].board == "northwind"  # kept, not lost
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        [1, "x", None, [], {}],  # a list of non-objects
+        {"jobs": "not a list"},
+        {"jobs": [{"company_name": 7}]},
+        {"jobs": [{"company_name": "Northwind" * 5000}]},  # huge text
+        {"jobs": [{"title": "\x00<script>alert(1)</script>"}]},
+        {"jobs": {"a": 1}},
+    ],
+)
+def test_hostile_board_answers_never_crash_and_never_verify_by_accident(
+    session: Session, body: object
+) -> None:
+    """Untrusted input: whatever a board answers, the search finishes."""
+    targets = [Target(name="Northwind", enabled=True)]
+    web = client({"/jobs": httpx.Response(200, json=body)})
+    report = find_boards(session, targets, web, sleep=lambda _: None)
+    assert len(report.found) + len(report.uncertain) + len(report.missed) == 1
+    assert all("<script>" not in str(t.board) for t in targets)
