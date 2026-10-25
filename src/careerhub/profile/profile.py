@@ -135,6 +135,11 @@ def _modes(hard: HardConstraints) -> str:
     return ", ".join(allowed) or "none"
 
 
+def _plain(text: str) -> str:
+    """Make resume-derived text safe to print: control characters (newlines, ANSI) become spaces."""
+    return "".join(" " if ord(c) < 32 or ord(c) == 127 else c for c in text)
+
+
 def format_profile(profile: Profile) -> str:
     """Render `profile` as plain text for `hub profile show` (no resume or transcript text)."""
     lines: list[str] = []
@@ -145,7 +150,7 @@ def format_profile(profile: Profile) -> str:
             lines.append(f"Education: {school.degree}, {school.school}{when}")
         typed = {s.strip().lower() for s in profile.doc.skills}
         from_resume = [
-            s
+            _plain(s)
             for s in (profile.accepted.skills if profile.accepted else [])
             if s.lower() not in typed
         ]
@@ -162,7 +167,9 @@ def format_profile(profile: Profile) -> str:
         typed_schools = {e.school.strip().lower() for e in profile.doc.education}
         for fact in profile.accepted.education if profile.accepted else []:
             if fact.school.strip().lower() not in typed_schools:
-                detail = ", ".join(x for x in (fact.degree, fact.school, fact.graduation) if x)
+                detail = _plain(
+                    ", ".join(x for x in (fact.degree, fact.school, fact.graduation) if x)
+                )
                 lines.append(f"Education: {detail} (from your resume)")
     if profile.preferences:
         hard = profile.preferences.hard_constraints

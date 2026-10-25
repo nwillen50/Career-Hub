@@ -127,3 +127,55 @@ def test_models_check_prints_ok_or_the_reason(
     assert code == 1
     assert "good: OK" in out and "bad: FAILED HTTP 401 (key rejected)" in out
     assert KEY not in out
+
+
+def test_the_log_stays_private_after_it_rotates(tmp_path: Path) -> None:
+    import os
+
+    from careerhub.core.logging import configure_logging
+
+    old = os.umask(0o022)
+    try:
+        path = tmp_path / "logs" / "careerhub.log"
+        log = configure_logging(log_file=path)
+        for _ in range(12_000):
+            log.info("x" * 100)
+        assert path.with_name("careerhub.log.1").exists()  # it rotated
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    finally:
+        os.umask(old)
+        for handler in list(logging.getLogger("careerhub").handlers):
+            logging.getLogger("careerhub").removeHandler(handler)
+            handler.close()
+
+
+def test_models_check_goes_through_the_router_so_the_budget_pauses_it(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from careerhub.core.migrate import migrate
+    from careerhub.core.storage import open_database, session_factory
+
+    monkeypatch.setenv("CAREERHUB_DATA_DIR", str(tmp_path))
+    store = InMemoryKeyStore()
+    store.set("api-key-good", KEY)
+    calls: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "pong"}}]})
+
+    settings = Settings.model_validate(
+        {
+            "monthly_budget_usd": 0,
+            "providers": [
+                {"name": "good", "kind": "openai", "model": "m", "base_url": "https://x.test/good",
+                 "input_per_mtok": 1, "output_per_mtok": 1}
+            ],
+        }
+    )  # fmt: skip
+    engine = open_database(store)
+    migrate(engine)
+    client = httpx.Client(transport=httpx.MockTransport(handle))
+    code = models_check(settings, store, session_factory(engine), client)
+    assert code == 1 and calls == []  # paused by the budget, no call made
+    assert "budget" in capsys.readouterr().out
