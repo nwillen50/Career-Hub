@@ -193,3 +193,6 @@ and deterministic. CH-121 (grouping) and CH-122 (work-visa flags) can use `parse
 A one-word guess left after dropping words from a longer name ("Quantum Machines" to `quantum`) is never tried,
 a board counts as the company's only if every distinctive word of the name appears in it, and a board already
 held by one target is listed as uncertain for any other target instead of being proposed twice.
+
+`hub targets find-boards` prints a first line with the longest it could take, then "Checking <name> (3 of 44)..."
+and the result for each company (CH-214). Ctrl-C keeps the boards found so far.

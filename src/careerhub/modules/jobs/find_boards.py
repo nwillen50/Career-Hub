@@ -137,10 +137,27 @@ def find_boards(
     targets: list[Target],
     client: httpx.Client | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    progress: Callable[[str], None] | None = None,
 ) -> FindReport:
-    """Search for the boards of enabled targets that have none; save hits and propose sources."""
+    """Search for the boards of enabled targets that have none; save hits and propose sources.
+
+    `progress` gets one line before each company ("Checking Acme (3 of 44)...") and one with its
+    result, so a long search does not look frozen. A first line gives the longest it could take.
+    """
+    say = progress or (lambda _line: None)
     http = client or httpx.Client(timeout=TIMEOUT_SECONDS)
     report = FindReport()
+    todo = [t for t in targets if t.enabled and not t.board and not t.unsupported_ats]
+    if todo:
+        worst = len(todo) * MAX_TOKENS * len(BOARD_URLS) * REQUEST_DELAY_SECONDS
+        minutes = max(1, round(worst / 60))
+        say(
+            f"Looking for the boards of {len(todo)} companies, one request a second. "
+            f"This takes up to about {minutes} {'minute' if minutes == 1 else 'minutes'} "
+            "(often much less); "
+            "Ctrl-C stops it and keeps what was found."
+        )
+    position = 0
     first = True
     # One board, one company.
     claimed: set[tuple[str | None, str | None]] = {
@@ -149,6 +166,8 @@ def find_boards(
     for target in targets:
         if not target.enabled or target.board or target.unsupported_ats:
             continue
+        position += 1
+        say(f"Checking {target.name} ({position} of {len(todo)})...")
         hit: BoardHit | None = None
         weak: BoardHit | None = None
         try:
@@ -169,6 +188,7 @@ def find_boards(
             return report
         if hit and (hit.kind, hit.token) in claimed:
             report.uncertain.append((target.name, hit))  # another company already has this board
+            say("  unsure: another company already has that board")
         elif hit:
             claimed.add((hit.kind, hit.token))
             target.board_kind, target.board = hit.kind, hit.token  # type: ignore[assignment]
@@ -177,8 +197,11 @@ def find_boards(
                 {"board": hit.token},
             )  # fmt: skip
             report.found.append((target.name, hit))
+            say(f"  found: {hit.kind} board {hit.token!r}")
         elif weak:
             report.uncertain.append((target.name, weak))
+            say(f"  unsure: a {weak.kind} board answered but doesn't name the company")
         else:
             report.missed.append(target.name)
+            say("  no board found")
     return report

@@ -191,3 +191,41 @@ def test_a_board_already_claimed_by_another_target_is_not_proposed_twice(
     assert [n for n, _ in report.found] == ["Northwind"]
     assert [n for n, _ in report.uncertain] == ["Northwind Labs"]
     assert len(session.scalars(select(Source)).all()) == 1
+
+
+def test_progress_lines_come_one_per_company_and_start_with_the_time(session: Session) -> None:
+    """CH-214: a long search must not look frozen."""
+    targets = [
+        Target(name="Northwind", enabled=True),
+        Target(name="Nowhere Co", enabled=True),
+        Target(name="Off Co"),  # not followed: not counted
+    ]
+    web = client({"boards/northwind/jobs": greenhouse("Northwind")})
+    lines: list[str] = []
+    find_boards(session, targets, web, sleep=lambda _: None, progress=lines.append)
+    assert lines[0].startswith("Looking for the boards of 2 companies")
+    assert "up to about 1 minute " in lines[0] and "Ctrl-C" in lines[0]
+    assert lines[1] == "Checking Northwind (1 of 2)..."
+    assert lines[2] == "  found: greenhouse board 'northwind'"
+    assert lines[3] == "Checking Nowhere Co (2 of 2)..."
+    assert lines[4] == "  no board found"
+
+
+def test_the_command_prints_progress_and_saves_after_an_interrupt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("CAREERHUB_DATA_DIR", str(tmp_path))
+    save_targets([Target(name="Northwind", enabled=True)])
+
+    def interrupted(
+        session: object, targets: list[Target], *args: object, **kwargs: object
+    ) -> None:
+        targets[0].board_kind, targets[0].board = "lever", "northwind"  # found before Ctrl-C
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("careerhub.cli.find_boards", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        main(["targets", "find-boards"], InMemoryKeyStore())
+    assert load_targets()[0].board == "northwind"  # kept, not lost

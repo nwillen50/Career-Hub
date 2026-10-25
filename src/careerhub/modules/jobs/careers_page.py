@@ -260,8 +260,11 @@ def track_company(
                     "single jobs with hub add-job."]  # fmt: skip
         lines.append(result.problem or "No supported job board was embedded in that page.")
         lines.append("Trying likely board names instead.")
-    kwargs = {"sleep": sleep} if sleep else {}
-    report = find_boards(session, [target], http, **kwargs)
+    report = (
+        find_boards(session, [target], http, sleep)
+        if sleep
+        else find_boards(session, [target], http)
+    )
     for _, hit in report.found:
         lines.append(
             f"Found a {hit.kind} board {hit.token!r} (proposed; approve it with hub sources)."
