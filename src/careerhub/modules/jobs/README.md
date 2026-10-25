@@ -183,3 +183,9 @@ location filter now also matches by country, so a preference of "Germany" matche
 Germany" and "Munich, DE". Decision (flagged for Nicholas): places are parsed when needed rather
 than stored in a new column, so there is no migration and no re-extraction; the parser is cheap
 and deterministic. CH-121 (grouping) and CH-122 (work-visa flags) can use `parse_places` directly.
+
+### find-boards safeguards (CH-213)
+
+A one-word guess left after dropping words from a longer name ("Quantum Machines" to `quantum`) is never tried,
+a board counts as the company's only if every distinctive word of the name appears in it, and a board already
+held by one target is listed as uncertain for any other target instead of being proposed twice.
