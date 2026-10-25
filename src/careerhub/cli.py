@@ -640,6 +640,7 @@ def _web(options: list[str]) -> int:
             token,
             port,
             open_session=make_session_opener(),
+            key_store=KeychainKeyStore(),
             open_router=make_router_opener(),
             open_eval=make_eval_opener(),
         ),

@@ -2,6 +2,8 @@
 {% block content %}
 <p class="muted">This is what Career Hub knows about you. It stays on this Mac. To change anything, edit the file named in each section; this page only reads them, except for the facts waiting for review.</p>
 
+<p><a href="/get-started">Setup checklist (Get started)</a></p>
+
 <section aria-labelledby="ready-h"><h2 id="ready-h">Is your profile ready?</h2>
   {% if profile.scoring_on %}
   <p class="card">Scoring has been on since {{ profile.scoring_since }}. <span class="muted">Switch it off with <code>hub profile ready --off</code>.</span></p>

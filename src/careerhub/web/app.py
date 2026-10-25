@@ -110,6 +110,7 @@ from careerhub.web.localtime import local_stamp
 from careerhub.web.people_view import gather_contacts, gather_interactions, people_choices
 from careerhub.web.plan_view import gather_plan
 from careerhub.web.profile_view import gather_profile
+from careerhub.web.setup_view import gather_setup
 from careerhub.web.status_view import gather_status
 from careerhub.web.today import SECTIONS, clean_section, gather_today, job_cards
 from careerhub.web.tracker_view import (
@@ -289,6 +290,8 @@ def create_app(
             response = await call_next(request)
         elif path == "/" and "t" in request.query_params:
             response = _start_session(request, token, sessions)
+            if response.status_code == 303:
+                response.headers["location"] = entry_path()
         else:
             sid = request.cookies.get(SESSION_COOKIE, "")
             if sid not in sessions:
@@ -320,9 +323,45 @@ def create_app(
         response.headers["Cache-Control"] = "no-store"
         return response
 
+    def entry_path() -> str:
+        """Where to land: Get started until steps 1 to 7 are done, else Today (CH-203)."""
+        if open_session is None or key_store is None:
+            return "/today"  # no data, or no Keychain to judge by (the demo): nothing to set up
+        try:
+            opened["ok"] = opened["ok"] or check_database()
+            if not opened["ok"]:
+                return "/today"
+            with open_session() as session:
+                done = gather_setup(session, key_store, local_running).complete
+        except Exception:  # a failed check must never keep Today from opening
+            return "/today"
+        return "/today" if done else "/get-started"
+
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request) -> Response:
-        return RedirectResponse("/today", status_code=303)
+        return RedirectResponse(entry_path(), status_code=303)
+
+    @app.get("/get-started", response_class=HTMLResponse)
+    def get_started(request: Request) -> Response:
+        if open_session is None:
+            return tab("/today")(request)
+        opened["ok"] = opened["ok"] or check_database()
+        if not opened["ok"]:
+            return tab("/today")(request)
+        with open_session() as session:
+            view = gather_setup(session, key_store, local_running)
+        return templates.TemplateResponse(
+            request,
+            "get_started.html",
+            {
+                "tabs": TABS,
+                "current": "/profile",
+                "csrf": sessions.get(request.cookies.get(SESSION_COOKIE, ""), ""),
+                "title": "Get started",
+                "heading": "Get started",
+                "setup": view,
+            },
+        )
 
     def tab(path: str) -> Callable[[Request], Response]:
         title, empty = PAGES[path]
