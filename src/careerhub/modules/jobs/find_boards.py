@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
 import httpx
@@ -138,6 +138,7 @@ def find_boards(
     client: httpx.Client | None = None,
     sleep: Callable[[float], None] = time.sleep,
     progress: Callable[[str], None] | None = None,
+    taken: Iterable[tuple[str | None, str | None]] = (),
 ) -> FindReport:
     """Search for the boards of enabled targets that have none; save hits and propose sources.
 
@@ -162,7 +163,7 @@ def find_boards(
     # One board, one company.
     claimed: set[tuple[str | None, str | None]] = {
         (t.board_kind, t.board) for t in targets if t.board
-    }
+    } | set(taken)  # `taken`: boards held by targets that are not being searched this time
     for target in targets:
         if not target.enabled or target.board or target.unsupported_ats:
             continue
