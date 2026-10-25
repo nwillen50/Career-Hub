@@ -14,7 +14,7 @@ See [ADR-0003](../../../docs/decisions/0003-router-contract.md).
 | `cost` | Cost log and the monthly budget | CH-51 | Built |
 | `setup` | `build_router(settings, store, sessions)` and `routes_for` | CH-64 | Built |
 | `catalog` | Built-in presets, switched on by a key; default routes | CH-99 | Built |
-| `commands` | `hub models list, add, remove, add-custom, routes` | CH-108 | Built |
+| `commands` | `hub models list, add, remove, add-custom, routes, check` | CH-108 | Built |
 | `providers` | Anthropic, OpenAI, Google, and local adapters | CH-52 | Built |
 
 ## The privacy rule
@@ -105,6 +105,7 @@ hub models add gemini --tier free     the tier is required: free trains on your 
 hub models remove openai              asks first, then deletes the key from the Keychain
 hub models add-custom NAME KIND MODEL [--base-url U] [--input N] [--output N] [--no-training]
 hub models routes                     the model each task will try, and why
+hub models check                      one tiny public call per model: OK, or the short reason it failed
 ```
 
 A custom cloud model is assumed to **train on your data** (so personal tasks never route to it)
@@ -114,3 +115,10 @@ only `local` models and local presets may use `http://localhost`. If saving sett
 just stored is removed again.
 
 Keys go only into the Keychain: never printed, logged, or written to `settings.json`.
+
+### Why a model failed (CH-209)
+
+A failed call raises `ProviderError` with a short `reason`: `HTTP 401 (key rejected)`, `HTTP 400 (often
+no credit)`, `HTTP 404 (model id unknown)`, `HTTP 429/529 (busy)`, or `request failed (ConnectError)`.
+Never a key, prompt, or reply body. The nightly report ("fell back past a model") and the log
+(`logs/careerhub.log` in the data folder, written by `hub nightly`, `refresh`, `--catch-up`, and `hub web`) use it.

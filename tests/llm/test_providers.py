@@ -104,7 +104,7 @@ def test_a_sensitive_call_reaches_local_but_not_cloud_through_the_router() -> No
 def test_http_errors_never_include_the_response_body() -> None:
     with pytest.raises(ProviderError) as raised:
         OpenAIProvider("o", "m", "KEY", client=client(429)).complete(REQUEST)
-    assert str(raised.value) == "o: HTTP 429" and "Say hi" not in str(raised.value)
+    assert str(raised.value) == "o: HTTP 429 (busy)" and "Say hi" not in str(raised.value)
 
 
 def test_a_reply_of_the_wrong_shape_is_a_provider_error() -> None:

@@ -23,7 +23,33 @@ TIMEOUT_SECONDS = 120.0
 
 
 class ProviderError(Exception):
-    """A provider call failed. The message has the status code only, never the response body."""
+    """A provider call failed. The message has the status code only, never the response body.
+
+    `reason` is the short, safe cause (for example "HTTP 401 (key rejected)"), without the
+    provider's name; it defaults to the message.
+    """
+
+    def __init__(self, message: str, reason: str | None = None) -> None:
+        """Keep the message and the short `reason` (the message itself if none is given)."""
+        super().__init__(message)
+        self.reason = reason or message
+
+
+#: What the common HTTP failures usually mean, so a failing model can be diagnosed from the log.
+_STATUS_HINTS = {
+    400: "often no credit",
+    401: "key rejected",
+    403: "key rejected",
+    404: "model id unknown",
+    429: "busy",
+    529: "busy",
+}
+
+
+def describe_status(status: int) -> str:
+    """Return "HTTP 401 (key rejected)" style text for a failed reply's status code."""
+    hint = _STATUS_HINTS.get(status)
+    return f"HTTP {status} ({hint})" if hint else f"HTTP {status}"
 
 
 class MissingApiKey(Exception):
@@ -76,9 +102,11 @@ class _HttpProvider:
         try:
             reply = self._client.post(f"{self._base_url}{path}", json=body, headers=headers)
         except httpx.HTTPError as error:
-            raise ProviderError(f"{self.name}: request failed ({type(error).__name__})") from None
+            reason = f"request failed ({type(error).__name__})"
+            raise ProviderError(f"{self.name}: {reason}", reason) from None
         if reply.status_code != 200:
-            raise ProviderError(f"{self.name}: HTTP {reply.status_code}")
+            reason = describe_status(reply.status_code)
+            raise ProviderError(f"{self.name}: {reason}", reason)
         try:
             data: dict[str, Any] = reply.json()
         except ValueError:

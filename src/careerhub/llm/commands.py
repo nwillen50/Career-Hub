@@ -25,7 +25,7 @@ from careerhub.llm.catalog import (
     stale_warning,
     with_catalog,
 )
-from careerhub.llm.providers import api_key_name
+from careerhub.llm.providers import ProviderError, api_key_name
 
 #: Short names accepted by `hub models add` / `remove`, and the presets each one covers.
 GROUPS = {
@@ -202,3 +202,50 @@ def models_routes(
         shown = " -> ".join(route) if route else "(no route)"
         print(f"{task:<16} {shown}   [{setup.reasons.get(task, '')}]")
     return 0
+
+
+def models_check(
+    settings: Settings,
+    store: KeyStore,
+    sessions: Any,
+    client: Any = None,
+) -> int:
+    """Send one tiny public call to each configured model and print OK or the short reason.
+
+    Nothing personal is sent: the prompt is "ping" and a random id, sent through the router (so
+    the budget applies). A failure prints the same safe reason the nightly report and the log use
+    (never a key or a reply body). Exit 1 if any fail.
+    """
+    import uuid
+
+    from careerhub.llm.cost import BudgetExceeded
+    from careerhub.llm.router import Router
+    from careerhub.llm.setup import build_router
+    from careerhub.llm.types import LLMRequest, PrivacyTier
+
+    setup = build_router(settings, store, sessions, client)
+    router: Router = setup.router
+    failed = bool(setup.problems)
+    for problem in setup.problems:
+        print(f"skipped: {problem}")
+    for name in setup.built:
+        # Through the router like every model call (privacy check, budget, cost log). A fresh id
+        # in the prompt keeps the answer cache from hiding a key that stopped working.
+        request = LLMRequest(
+            prompt=f"ping {uuid.uuid4().hex[:8]}", tier=PrivacyTier.PUBLIC, max_tokens=5,
+            essential=False,
+        )  # fmt: skip
+        try:
+            router.complete(request, name)
+        except ProviderError as error:
+            failed = True
+            print(f"{name}: FAILED {error.reason}")
+        except BudgetExceeded:
+            failed = True
+            print(f"{name}: SKIPPED the monthly budget is reached (calls are paused)")
+        else:
+            print(f"{name}: OK")
+    if not setup.built:
+        print("No models are set up. Run `hub models list` to see how to add one.")
+        return 1
+    return 1 if failed else 0

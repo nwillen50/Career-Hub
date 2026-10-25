@@ -76,7 +76,7 @@ def test_a_rate_limited_gemini_falls_through_to_the_local_model_and_is_noted() -
     router = Router([gemini, local])
     request = LLMRequest(prompt="x", tier=PrivacyTier.PUBLIC)
     assert complete_validated(router, request, Answer, ["gemini-free", "local-8b"]).ok
-    assert router.skipped == ["gemini-free: ProviderError"]
+    assert router.skipped == ["gemini-free: HTTP 429"]
 
 
 def test_tailoring_falls_back_to_local_when_haiku_is_paused_by_the_budget() -> None:
