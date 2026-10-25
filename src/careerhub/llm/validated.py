@@ -3,8 +3,9 @@
 `complete_validated` asks for JSON, checks it against a Pydantic schema, and if the answer is
 invalid asks the same model once more (telling it what was wrong). If that fails too, it moves to
 the next, stronger provider in `routes` and repeats. A provider that is down, rate limited, or
-paused by the monthly budget is skipped the same way (noted in `router.skipped`, as a type name
-only); if no provider can answer, the last such error is raised. Every attempt goes through
+paused by the monthly budget is skipped the same way (noted in `router.skipped` and the log
+as the short reason only, such as "HTTP 401 (key rejected)"); if no provider can answer, the last
+such error is raised. Every attempt goes through
 `Router.complete`, so the privacy check applies to every provider tried: escalating a Sensitive
 call to a cloud provider raises `PrivacyViolation` rather than being skipped.
 """
@@ -12,6 +13,7 @@ call to a cloud provider raises `PrivacyViolation` rather than being skipped.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import replace
@@ -105,7 +107,9 @@ def complete_validated_detailed[T: BaseModel](
                     current, name, accept=lambda r: _is_valid(r.text, schema, check)
                 )
             except (ProviderError, BudgetExceeded) as error:
-                router.skipped.append(f"{name}: {type(error).__name__}")
+                why = error.reason if isinstance(error, ProviderError) else type(error).__name__
+                router.skipped.append(f"{name}: {why}")
+                logging.getLogger("careerhub.llm").warning("model %s skipped: %s", name, why)
                 unavailable = error
                 break  # try the next provider
             try:

@@ -27,6 +27,7 @@ from careerhub.core.companies import (
     split_company,
     suggest_merges,
 )
+from careerhub.core.logging import configure_logging, log_file_path
 from careerhub.core.migrate import migrate
 from careerhub.core.models import Company, utcnow
 from careerhub.core.paths import DATA_DIR_ENV, database_path
@@ -42,6 +43,7 @@ from careerhub.llm.cache import ResponseCache
 from careerhub.llm.commands import (
     models_add,
     models_add_custom,
+    models_check,
     models_list,
     models_remove,
     models_routes,
@@ -152,7 +154,7 @@ USAGE = """Usage:
                           that one page, honoring robots.txt, never LinkedIn or Handshake)
   hub targets enable <name>... | disable <name>...
                           (companies you follow; the Engine list is in docs/seeds)
-  hub models list | routes
+  hub models list | routes | check   (check sends one tiny call to each model)
   hub models add <anthropic|openai|gemini --tier free|paid|local|preset>   (asks for the key)
   hub models remove <same names>
   hub models add-custom <name> <kind> <model> [--base-url U] [--input N] [--output N]
@@ -519,6 +521,11 @@ def _backup_restore(store: KeyStore, backup: Path, folder: Path) -> int:
     return 0
 
 
+def _start_logging() -> None:
+    """Write the redacted log file (`logs/careerhub.log` in the data folder) for this command."""
+    configure_logging(log_file=log_file_path())
+
+
 def _nightly(
     store: KeyStore,
     light: bool = False,
@@ -537,6 +544,7 @@ def _nightly(
     skipped for battery and the Mac is now plugged in before the cutoff; then the full nightly
     runs once.
     """
+    _start_logging()
     if if_plugged_in and power() == "battery":
         print("Skipped: the Mac is on battery power. The next scheduled run will try again.")
         logging.getLogger("careerhub.nightly").info("skipped: on battery")
@@ -618,6 +626,7 @@ def _web(options: list[str]) -> int:
     port = _port_from(options, load_settings().web_port)
     if port is None:
         return 2
+    _start_logging()
     from careerhub.web.app import (
         create_app,
         make_eval_opener,
@@ -863,6 +872,10 @@ def _models(store: KeyStore, args: list[str]) -> int:
     secret = lambda prompt: getpass.getpass(prompt)  # noqa: E731  (hidden input, never echoed)
     if args[0] == "list" and not words:
         return models_list(store, date.today())
+    if args[0] == "check" and not words:
+        engine = open_database(store)
+        migrate(engine)
+        return models_check(load_settings(), store, session_factory(engine))
     if args[0] == "routes" and not words:
         return models_routes(load_settings(), store)
     if args[0] in ("add", "remove") and len(words) == 1:

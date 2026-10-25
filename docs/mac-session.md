@@ -134,3 +134,10 @@ Record each result on the matching ticket or ADR. Tick the box when it passes.
   `launchctl bootstrap` line for `com.careerhub.menubar`, then log out and in. Success: the icon is
   there without a terminal. Quit from its menu: it stays quit until the next login.
 - [ ] Note in the CH-33 spike whether a notification can be posted from this Python process.
+
+## Model checks and the log (CH-209)
+
+- [ ] `uv run hub models check` prints OK for each model with a key, or the short reason
+  (`HTTP 401 (key rejected)`, `HTTP 400 (often no credit)`, ...). No key or prompt text appears.
+- [ ] After `uv run hub nightly`, `~/Library/Application Support/CareerHub/logs/careerhub.log`
+  exists (mode 600) and names any skipped model with its reason, and has no emails or keys.
