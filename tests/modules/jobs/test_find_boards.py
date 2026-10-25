@@ -143,3 +143,51 @@ def test_hub_targets_note_and_list(
     assert main(["targets", "list"], store) == 0
     assert "not supported (Workday)" in capsys.readouterr().out
     assert main(["targets", "note", "Nobody", "Workday"], store) == 1
+
+
+def test_a_generic_word_left_after_dropping_words_is_never_guessed() -> None:
+    """CH-213: 'Quantum Machines' must not try the board called 'quantum'."""
+    for name in ("Quantum Machines", "Quantum Formatics", "Quantum Labs", "Acme AI"):
+        assert "quantum" not in candidate_tokens(name) and "ai" not in candidate_tokens(name)
+    assert "quantummachines" in candidate_tokens("Quantum Machines")
+    assert "northwind" in candidate_tokens("Northwind Labs")  # a distinctive word still works
+    assert "quantum" in candidate_tokens("Quantum")  # the whole name is fair game
+
+
+def test_two_companies_never_get_the_same_generic_board(session: Session) -> None:
+    targets = [
+        Target(name="Quantum Machines", enabled=True),
+        Target(name="Quantum Formatics", enabled=True),
+    ]
+    ashby = httpx.Response(
+        200, json={"jobs": [{"title": "Engineer at Quantum Machines", "company": "x"}]}
+    )
+    web = httpx.Client(  # only the generic 'quantum' board exists
+        transport=httpx.MockTransport(
+            lambda r: ashby if r.url.path.endswith("job-board/quantum") else httpx.Response(404)
+        )
+    )
+    report = find_boards(session, targets, web, sleep=lambda _: None)
+    assert not report.found and all(t.board is None for t in targets)
+    assert session.scalars(select(Source)).all() == []
+
+
+def test_a_board_that_only_shares_the_first_word_is_uncertain(session: Session) -> None:
+    targets = [Target(name="Quantum Formatics", enabled=True)]
+    web = client({"boards/quantumformatics/jobs": greenhouse("Quantum Machines")})
+    report = find_boards(session, targets, web, sleep=lambda _: None)
+    assert not report.found and [n for n, _ in report.uncertain] == ["Quantum Formatics"]
+
+
+def test_a_board_already_claimed_by_another_target_is_not_proposed_twice(
+    session: Session,
+) -> None:
+    targets = [
+        Target(name="Northwind", enabled=True),
+        Target(name="Northwind Labs", enabled=True),
+    ]
+    web = client({"boards/northwind/jobs": greenhouse("Northwind")})
+    report = find_boards(session, targets, web, sleep=lambda _: None)
+    assert [n for n, _ in report.found] == ["Northwind"]
+    assert [n for n, _ in report.uncertain] == ["Northwind Labs"]
+    assert len(session.scalars(select(Source)).all()) == 1

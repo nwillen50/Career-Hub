@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
 import httpx
@@ -30,6 +30,13 @@ _TOKEN = re.compile(r"^[a-z0-9-]{2,60}$")
 _GENERIC = frozenset(
     "inc llc ltd corp co company labs lab bio biosciences therapeutics technologies technology "
     "tech systems robotics energy materials health sciences group holdings".split()
+)
+#: Ordinary words that are not a company's own name. A one-word guess made by dropping words from
+#: a longer name ("Quantum Machines" -> "quantum") must never be one of these: it hits whichever
+#: unrelated company owns that board (CH-213).
+_COMMON = _GENERIC | frozenset(
+    "quantum ai ml data cloud software digital global network networks machines machine "
+    "robots robot sports health medical energy security finance labs".split()
 )
 #: How each system's board is addressed on the web (used for the proposed source's address).
 BOARD_URLS = {
@@ -75,22 +82,29 @@ def candidate_tokens(name: str) -> list[str]:
     core = [w for w in words if w not in _GENERIC] or words
     guesses = [
         "".join(words), "-".join(words), "".join(core), "-".join(core),
-        core[0] if core else "", "".join(core) + "hq", "".join(words[:2]), "-".join(words[:2]),
+        core[0] if len(core) == 1 else "", "".join(core) + "hq", "".join(words[:2]),
+        "-".join(words[:2]),
     ]  # fmt: skip
     seen: list[str] = []
     for guess in guesses:
+        if len(words) > 1 and guess in _COMMON:
+            continue  # a generic word left after dropping words: it would match a stranger
         if guess and _TOKEN.match(guess) and guess not in seen:
             seen.append(guess)
     return seen[:MAX_TOKENS]
 
 
 def _mentions(body: object, name: str) -> bool:
-    """Say whether the board's answer names the company (first distinctive word, whole word)."""
+    """Say whether the board's answer names the company (every distinctive word, whole words).
+
+    All the words must appear, so "Quantum Formatics" is not tied to "Quantum Machines" by the
+    shared first word.
+    """
     words = [w for w in re.findall(r"[a-z0-9]+", name.lower()) if w not in _GENERIC]
     if not words:
         return False
     text = str(body).lower()
-    return re.search(rf"(?<![a-z0-9]){re.escape(words[0])}(?![a-z0-9])", text) is not None
+    return all(re.search(rf"(?<![a-z0-9]){re.escape(w)}(?![a-z0-9])", text) for w in words)
 
 
 def probe(kind: str, token: str, name: str, client: httpx.Client) -> BoardHit | None:
@@ -123,11 +137,16 @@ def find_boards(
     targets: list[Target],
     client: httpx.Client | None = None,
     sleep: Callable[[float], None] = time.sleep,
+    taken: Iterable[tuple[str | None, str | None]] = (),
 ) -> FindReport:
     """Search for the boards of enabled targets that have none; save hits and propose sources."""
     http = client or httpx.Client(timeout=TIMEOUT_SECONDS)
     report = FindReport()
     first = True
+    # One board, one company.
+    claimed: set[tuple[str | None, str | None]] = {
+        (t.board_kind, t.board) for t in targets if t.board
+    } | set(taken)  # `taken`: boards held by targets that are not being searched this time
     for target in targets:
         if not target.enabled or target.board or target.unsupported_ats:
             continue
@@ -149,7 +168,10 @@ def find_boards(
         except RateLimited as error:
             report.stopped = f"{error} asked us to slow down; run it again later."
             return report
-        if hit:
+        if hit and (hit.kind, hit.token) in claimed:
+            report.uncertain.append((target.name, hit))  # another company already has this board
+        elif hit:
+            claimed.add((hit.kind, hit.token))
             target.board_kind, target.board = hit.kind, hit.token  # type: ignore[assignment]
             propose_source(
                 session, hit.kind, target.name, BOARD_URLS[hit.kind].format(token=hit.token),
