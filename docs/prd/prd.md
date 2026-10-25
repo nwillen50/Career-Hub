@@ -183,6 +183,11 @@ a menu-bar icon means nothing gets missed.
   proposals with Accept and Reject. Declined proposals stay in a list for 30 days and aren't
   proposed again for 90.
 - **System status.** Last run, errors, source health, and this month's model spending.
+- **Get started.** A read-only setup checklist (CH-203). `hub web` opens it instead of Today until
+  setup is done, and it is always reachable from the Profile tab. Each step (database key, a model
+  key, input files, profile files and reviewed resume facts, scoring switched on, followed companies
+  with an approved source, a first nightly run) shows done or not done and the exact command or file
+  that fixes it. It changes nothing, can be skipped, and stops showing once the steps are done.
 - **Profile.** A read-only view of what Career Hub knows about the user: education, skills,
   interests, locations and work modes, hard constraints, the rubric with its weights, the plan
   settings, and the readiness checklist in plain words. Facts read from the resume and transcript
@@ -496,7 +501,7 @@ Target dates are set once Nicholas confirms his weekly build hours.
 - **Planning:** free/busy from Apple Calendar (including Google and Outlook accounts added on the
   Mac) or calendar files, a time budget, a weekly plan
 - **Interface:** local web app with Today, Plan, Tracker, Job detail, Browse, Profile,
-  Conversation panel, and System status; menu-bar count and error state; morning notification; escalation email to self,
+  Conversation panel, System status, and Get started; menu-bar count and error state; morning notification; escalation email to self,
   off by default
 - **International jobs (Milestone B):** places stored as city, region, and country; an optional
   grouping by country, then city, with ranked order as the default; work-visa flags for countries
