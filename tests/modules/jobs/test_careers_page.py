@@ -335,3 +335,12 @@ def test_a_board_another_target_already_holds_is_not_taken_again(session: Sessio
     mine = targets[1]
     assert mine.board is None and session.query(Source).count() == 0
     assert any("Unsure" in line for line in lines)
+
+
+def test_following_a_company_by_hand_clears_the_enable_matching_mark(session: Session) -> None:
+    """CH-215 review: `disable --matched-on` must not switch off a company you followed."""
+    held = Target(
+        name="Acme", enabled=True, matched_on="2026-10-25", board_kind="greenhouse", board="x"
+    )
+    track_company(session, [held], "Acme", None, client({}))
+    assert held.matched_on is None and held.enabled

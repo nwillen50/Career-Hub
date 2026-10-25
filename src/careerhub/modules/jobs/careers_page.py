@@ -240,6 +240,7 @@ def track_company(
         lines.append(f"Now following {target.name}.")
     else:
         target.enabled = True
+        target.matched_on = None  # followed on purpose now, so "disable --matched-on" leaves it
         lines.append(f"{target.name} was already in your list; it is followed now.")
     if target.board:
         return [*lines, f"Its board is already known ({target.board_kind}:{target.board})."]
