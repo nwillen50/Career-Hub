@@ -49,3 +49,5 @@ data folder.
 `create_app(..., banner=text)` shows `text` in a strip above the top bar on every page. `hub demo`
 (see `careerhub/demo.py`) uses it to label invented data "Demo data". Nothing else in the web app
 knows about the demo: it reads the demo folder the same way it reads the real one.
+
+Job cards on Today and Browse have a "Follow <company>" button (CH-198): it posts to `/jobs/<id>/track`, the same as the Job detail button, and makes network calls only when pressed.

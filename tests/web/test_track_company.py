@@ -89,3 +89,22 @@ def test_it_needs_the_csrf_token_and_a_real_job(session: Session) -> None:
     refused = client.post(f"/jobs/{job.id}/track", headers={**ORIGIN, **FORM}, content="")
     assert refused.status_code == 403 and requests == []
     assert post(client, "/jobs/999/track").status_code == 404
+
+
+def test_the_button_is_on_today_and_browse_cards_and_loading_makes_no_request(
+    session: Session,
+) -> None:
+    job = add_job(session, 1, 80, company="Acme")
+    requests: list[str] = []
+    client = web(session, requests, set())
+    for page in ("/today", "/browse"):
+        html = client.get(page).text
+        assert f'action="/jobs/{job.id}/track"' in html and ">Follow Acme<" in html, page
+        assert check_page(html) == [], page
+    assert requests == []
+
+
+def test_pressing_the_card_button_follows_the_company(session: Session) -> None:
+    job = add_job(session, 1, 80, company="Acme")
+    reply = post(web(session, [], {"acme"}), f"/jobs/{job.id}/track")
+    assert reply.status_code == 200 and [t.name for t in load_targets()] == ["Acme"]
