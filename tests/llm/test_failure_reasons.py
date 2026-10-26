@@ -122,7 +122,7 @@ def test_models_check_prints_ok_or_the_reason(
     )
     engine = open_database(store)
     migrate(engine)
-    models_check(settings, store, session_factory(engine), client)
+    code = models_check(settings, store, session_factory(engine), client)
     out = capsys.readouterr().out
     assert code == 1
     assert "good: OK" in out and "bad: FAILED HTTP 401 (key rejected)" in out
@@ -176,7 +176,7 @@ def test_models_check_goes_through_the_router_so_the_budget_pauses_it(
     engine = open_database(store)
     migrate(engine)
     client = httpx.Client(transport=httpx.MockTransport(handle))
-    models_check(settings, store, session_factory(engine), client)
+    code = models_check(settings, store, session_factory(engine), client)
     assert code == 1 and calls == []  # paused by the budget, no call made
     assert "budget" in capsys.readouterr().out
 
