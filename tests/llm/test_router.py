@@ -5,12 +5,15 @@ import pytest
 from careerhub.llm import (
     Destination,
     LLMRequest,
+    LLMResponse,
     PrivacyTier,
     PrivacyViolation,
     Router,
     UnknownProvider,
 )
 from careerhub.llm.fake import FakeProvider
+from careerhub.llm.providers import ProviderError
+from careerhub.llm.router import BENCH_AFTER, RATE_LIMIT_WAIT_SECONDS
 
 LOCAL = Destination.LOCAL
 CLOUD = Destination.CLOUD
@@ -81,3 +84,55 @@ def test_fake_provider_replays_scripted_replies_and_records_requests() -> None:
 
 def test_tiers_order_from_public_to_sensitive() -> None:
     assert PrivacyTier.PUBLIC < PrivacyTier.PERSONAL < PrivacyTier.SENSITIVE
+
+
+class _Flaky(FakeProvider):
+    """Fails with the scripted errors first, then answers."""
+
+    def __init__(self, errors: list[ProviderError]) -> None:
+        super().__init__("flaky")
+        self.errors = errors
+        self.calls = 0
+
+    def complete(self, request: LLMRequest) -> LLMResponse:
+        self.calls += 1
+        if self.errors:
+            raise self.errors.pop(0)
+        return super().complete(request)
+
+
+_ASK = LLMRequest(prompt="hi", tier=PrivacyTier.PUBLIC)
+
+
+def test_a_rate_limited_call_waits_and_retries_once() -> None:
+    waits: list[float] = []
+    flaky = _Flaky([ProviderError("x", "HTTP 429 (busy)", 429)])
+    router = Router([flaky], sleep=waits.append)
+    assert router.complete(_ASK, "flaky").text == "ok"
+    assert waits == [RATE_LIMIT_WAIT_SECONDS] and flaky.calls == 2
+
+
+def test_a_provider_failing_three_calls_in_a_row_is_benched_for_the_run() -> None:
+    flaky = _Flaky([ProviderError("x", "request failed (ReadTimeout)")] * 10)
+    router = Router([flaky], sleep=lambda _: None)
+    for _ in range(BENCH_AFTER):
+        with pytest.raises(ProviderError):
+            router.complete(_ASK, "flaky")
+    assert flaky.calls == BENCH_AFTER
+    with pytest.raises(ProviderError, match="benched"):
+        router.complete(_ASK, "flaky")
+    assert flaky.calls == BENCH_AFTER  # not called again
+
+
+def test_a_success_resets_the_failure_count() -> None:
+    flaky = _Flaky([ProviderError("x", "boom")] * 2)
+    router = Router([flaky])
+    for _ in range(2):
+        with pytest.raises(ProviderError):
+            router.complete(_ASK, "flaky")
+    router.complete(_ASK, "flaky")
+    flaky.errors = [ProviderError("x", "boom")] * 2
+    for _ in range(2):
+        with pytest.raises(ProviderError):
+            router.complete(_ASK, "flaky")
+    assert router.complete(_ASK, "flaky").text == "ok"

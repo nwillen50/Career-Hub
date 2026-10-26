@@ -11,16 +11,29 @@ see the call's privacy tier (PRD, "Privacy tiers"):
 
 There is no fallback: a refused call raises `PrivacyViolation` and never tries another provider
 on its own, so a privacy rule can't be bypassed by "retry elsewhere".
+
+Two things keep a big run from hammering a provider that can't answer (CH-216): a rate-limited
+call (HTTP 429) waits and is retried once, and a provider that fails `BENCH_AFTER` calls in a
+row is benched for the rest of this Router's life (one nightly run), so 1,500 postings don't each
+wait out a timeout before falling back to the next model.
 """
 
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Callable, Iterable
 
 from careerhub.llm.cache import ResponseCache
 from careerhub.llm.cost import CostLog
 from careerhub.llm.provider import Destination, Provider
+from careerhub.llm.providers import ProviderError
 from careerhub.llm.types import LLMRequest, LLMResponse, PrivacyTier
+
+#: Consecutive failures after which a provider is skipped for the rest of the run.
+BENCH_AFTER = 3
+#: Seconds to wait before retrying a call the provider rate limited (HTTP 429).
+RATE_LIMIT_WAIT_SECONDS = 20.0
 
 
 class PrivacyViolation(Exception):
@@ -55,6 +68,7 @@ class Router:
         providers: Iterable[Provider],
         cache: ResponseCache | None = None,
         costs: CostLog | None = None,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         """Register providers by name (duplicates are an error).
 
@@ -62,6 +76,8 @@ class Router:
         """
         self._cache = cache
         self._costs = costs
+        self._sleep = sleep
+        self._failures: dict[str, int] = {}
         #: Providers skipped because they were down, rate limited, or over budget ("name: Type").
         self.skipped: list[str] = []
         self._providers: dict[str, Provider] = {}
@@ -101,9 +117,36 @@ class Router:
                 return hit
         if self._costs is not None:
             self._costs.check_budget(chosen, request.essential)
-        response = chosen.complete(request)
+        response = self._call(chosen, request)
         if self._costs is not None:
             self._costs.record(chosen, response)
         if self._cache is not None and (accept is None or accept(response)):
             self._cache.put(chosen, request, response)
+        return response
+
+    def _call(self, provider: Provider, request: LLMRequest) -> LLMResponse:
+        """Call `provider`, retrying once after a 429 and benching it after repeated failures."""
+        name = provider.name
+        if self._failures.get(name, 0) >= BENCH_AFTER:
+            raise ProviderError(
+                f"{name}: benched", f"skipped for this run after {BENCH_AFTER} failures in a row"
+            )
+        try:
+            try:
+                response = provider.complete(request)
+            except ProviderError as error:
+                if error.status != 429:
+                    raise
+                self._sleep(RATE_LIMIT_WAIT_SECONDS)
+                response = provider.complete(request)
+        except ProviderError:
+            self._failures[name] = self._failures.get(name, 0) + 1
+            if self._failures[name] == BENCH_AFTER:
+                logging.getLogger("careerhub.llm").warning(
+                    "model %s failed %d times in a row; skipped for the rest of this run",
+                    name,
+                    BENCH_AFTER,
+                )
+            raise
+        self._failures[name] = 0
         return response
