@@ -277,7 +277,10 @@ def test_prefilter_rules_out_a_clearly_distant_place(session: Session) -> None:
     assert prefilter(session, saved, HardConstraints(locations=["Boston, MA"])) is not None
 
 
-@pytest.mark.parametrize("where", ["Remote - US", "Hybrid, Paris", "Anywhere", None])
+@pytest.mark.parametrize(
+    "where",
+    ["Remote - US", "Hybrid, Paris", "Anywhere", None, "United States", "Multiple Locations", "US"],
+)
 def test_prefilter_keeps_jobs_that_remote_or_missing_places_could_save(
     session: Session, where: str | None
 ) -> None:
