@@ -122,7 +122,7 @@ def test_models_check_prints_ok_or_the_reason(
     )
     engine = open_database(store)
     migrate(engine)
-    code = models_check(settings, store, session_factory(engine), client)
+    models_check(settings, store, session_factory(engine), client)
     out = capsys.readouterr().out
     assert code == 1
     assert "good: OK" in out and "bad: FAILED HTTP 401 (key rejected)" in out
@@ -176,6 +176,40 @@ def test_models_check_goes_through_the_router_so_the_budget_pauses_it(
     engine = open_database(store)
     migrate(engine)
     client = httpx.Client(transport=httpx.MockTransport(handle))
-    code = models_check(settings, store, session_factory(engine), client)
+    models_check(settings, store, session_factory(engine), client)
     assert code == 1 and calls == []  # paused by the budget, no call made
     assert "budget" in capsys.readouterr().out
+
+
+def test_models_check_includes_the_built_in_models_switched_on_by_a_key(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bug CH-217: with keys for built-in models, check said 'No models are set up'."""
+    from careerhub.core.migrate import migrate
+    from careerhub.core.storage import open_database, session_factory
+
+    monkeypatch.setenv("CAREERHUB_DATA_DIR", str(tmp_path))
+    store = InMemoryKeyStore()
+    store.set("api-key-claude-haiku", KEY)
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "content": [{"type": "text", "text": "pong"}],
+                "usage": {"input_tokens": 3, "output_tokens": 1},
+            },
+        )
+
+    engine = open_database(store)
+    migrate(engine)
+    models_check(
+        Settings(),
+        store,
+        session_factory(engine),
+        httpx.Client(transport=httpx.MockTransport(handle)),
+        local_running=lambda: False,
+    )
+    out = capsys.readouterr().out
+    assert "No models are set up" not in out
+    assert "claude-haiku: OK" in out
