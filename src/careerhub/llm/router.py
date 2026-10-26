@@ -36,6 +36,10 @@ BENCH_AFTER = 3
 RATE_LIMIT_WAIT_SECONDS = 20.0
 
 
+#: HTTP statuses that blame the one request, not the provider, so they never bench it.
+_REQUEST_SPECIFIC = frozenset({400, 404, 413, 422})
+
+
 class PrivacyViolation(Exception):
     """The call's data is too sensitive for the chosen provider."""
 
@@ -139,7 +143,9 @@ class Router:
                     raise
                 self._sleep(RATE_LIMIT_WAIT_SECONDS)
                 response = provider.complete(request)
-        except ProviderError:
+        except ProviderError as error:
+            if error.status in _REQUEST_SPECIFIC:
+                raise  # this posting was refused (too long, ...); the model itself is fine
             self._failures[name] = self._failures.get(name, 0) + 1
             if self._failures[name] == BENCH_AFTER:
                 logging.getLogger("careerhub.llm").warning(

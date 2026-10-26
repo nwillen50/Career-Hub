@@ -136,3 +136,12 @@ def test_a_success_resets_the_failure_count() -> None:
         with pytest.raises(ProviderError):
             router.complete(_ASK, "flaky")
     assert router.complete(_ASK, "flaky").text == "ok"
+
+
+def test_requests_refused_one_by_one_do_not_bench_a_healthy_provider() -> None:
+    flaky = _Flaky([ProviderError("x", "HTTP 400", 400)] * BENCH_AFTER)
+    router = Router([flaky])
+    for _ in range(BENCH_AFTER):
+        with pytest.raises(ProviderError):
+            router.complete(_ASK, "flaky")
+    assert router.complete(_ASK, "flaky").text == "ok"
