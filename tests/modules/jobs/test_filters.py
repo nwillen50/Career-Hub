@@ -291,3 +291,8 @@ def test_prefilter_keeps_jobs_that_remote_or_missing_places_could_save(
 def test_prefilter_ignores_salary_and_passes_a_good_job(session: Session) -> None:
     saved = _stored(session, "Analyst", "Boston, MA")
     assert prefilter(session, saved, HardConstraints(min_salary_usd=200_000)) is None
+
+
+def test_prefilter_keeps_a_bare_city_when_a_country_is_wanted(session: Session) -> None:
+    saved = _stored(session, "Analyst", "Munich")
+    assert prefilter(session, saved, HardConstraints(locations=["Germany"])) is None
