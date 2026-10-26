@@ -37,12 +37,17 @@ BENCH_AFTER = 3
 RATE_LIMIT_WAIT_SECONDS = 20.0
 
 
+<<<<<<< HEAD
 @dataclass(frozen=True)
 class RateLimit:
     """A provider's request limits (a free tier allows only a few a minute and a day)."""
 
     per_minute: int | None = None
     per_day: int | None = None
+=======
+#: HTTP statuses that blame the one request, not the provider, so they never bench it.
+_REQUEST_SPECIFIC = frozenset({400, 404, 413, 422})
+>>>>>>> ch-216-prefilter
 
 
 class PrivacyViolation(Exception):
@@ -154,8 +159,11 @@ class Router:
                 if error.status != 429:
                     raise
                 self._sleep(RATE_LIMIT_WAIT_SECONDS)
+                self._pace(name)  # the retry is a real request: count it against the limits
                 response = provider.complete(request)
-        except ProviderError:
+        except ProviderError as error:
+            if error.status in _REQUEST_SPECIFIC:
+                raise  # this posting was refused (too long, ...); the model itself is fine
             self._failures[name] = self._failures.get(name, 0) + 1
             if self._failures[name] == BENCH_AFTER:
                 logging.getLogger("careerhub.llm").warning(

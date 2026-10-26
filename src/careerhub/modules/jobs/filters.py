@@ -269,7 +269,14 @@ def prefilter(
     unsure passes on to extraction, so a good job is never dropped for a guess.
     """
     pre = constraints.model_copy(update={"min_salary_usd": None, "hide_no_visa_abroad": False})
-    if not job.location or _REMOTE_HINTS.search(job.location):
+    # A place is final only when both sides are "City, Region" shaped: a bare "Munich" for a wanted
+    # "Germany" is a guess, and a model may find the posting is remote.
+    sure = (
+        "," in job.location and all("," in w for w in constraints.locations)
+        if job.location
+        else False
+    )
+    if not sure or _REMOTE_HINTS.search(job.location or ""):
         pre = pre.model_copy(update={"locations": []})
     result = apply_filters(job, None, pre, None, aliases)
     if result.passed:
