@@ -314,3 +314,19 @@ def test_a_prefiltered_job_is_never_sent_to_a_model(env: Any) -> None:
     report = run_nightly(engine, InMemoryKeyStore(), SETTINGS, client, NOW)
     assert report.filtered_out == 1
     assert prompts and not any("Senior Sales Director" in p for p in prompts)
+
+
+def test_extraction_reads_target_companies_first_then_the_newest() -> None:
+    from careerhub.core.models import Company
+    from careerhub.pipeline import extraction_order
+
+    def make(id: int, company: str, day: int) -> Job:
+        return Job(
+            id=id,
+            company=Company(name=company, name_key=company.lower()),
+            first_seen_at=datetime(2026, 10, day, tzinfo=UTC),
+        )
+
+    jobs = [make(1, "Other", 25), make(2, "Acme", 1), make(3, "Acme", 20), make(4, "Other", 5)]
+    ordered = extraction_order(jobs, {"acme"}, {})
+    assert [j.id for j in ordered] == [3, 2, 1, 4]

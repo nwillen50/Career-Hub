@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from careerhub.core.backup import backup_database
 from careerhub.core.models import Job, utcnow
+from careerhub.core.names import company_key
 from careerhub.core.runlog import close_interrupted_runs, finish_run, start_run
 from careerhub.core.secrets import KeyStore
 from careerhub.core.settings import Settings, load_settings
@@ -58,6 +59,7 @@ from careerhub.modules.jobs.scoring import (
 )
 from careerhub.modules.jobs.store import only_visible_copies
 from careerhub.modules.jobs.tailoring import tailor_job
+from careerhub.modules.jobs.targets import TargetsError, load_targets
 from careerhub.profile.changes import check
 from careerhub.profile.eligibility import Eligibility, eligibility_from
 from careerhub.profile.extract import EducationFact
@@ -220,9 +222,33 @@ def _run(
             only_visible_copies(select(Job).where(Job.status != "closed")).order_by(Job.id)
         )
     )
+    jobs = extraction_order(jobs, _target_keys(aliases), aliases)
     _understand_and_rank(session, setup, settings, jobs, report, light)
     for note, count in Counter(setup.router.skipped).items():
         report.problems.append(f"fell back past a model ({note}, {count}x)")
+
+
+def _target_keys(aliases: dict[str, str]) -> set[str]:
+    """Return the company keys of the targets the user switched on (none if the file is bad)."""
+    try:
+        return {company_key(t.name, aliases) for t in load_targets() if t.enabled}
+    except TargetsError:
+        return set()
+
+
+def extraction_order(jobs: list[Job], targets: set[str], aliases: dict[str, str]) -> list[Job]:
+    """Put jobs at target companies first, then the newest first, so a capped night reads the best.
+
+    CH-216: a night that hits a provider's daily limit stops partway through this order.
+    """
+    return sorted(
+        jobs,
+        key=lambda j: (
+            company_key(j.company.name, aliases) not in targets,
+            -j.first_seen_at.timestamp(),
+            j.id,
+        ),
+    )
 
 
 def _costs_nothing(settings: Settings, name: str) -> bool:

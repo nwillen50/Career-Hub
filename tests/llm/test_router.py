@@ -13,7 +13,7 @@ from careerhub.llm import (
 )
 from careerhub.llm.fake import FakeProvider
 from careerhub.llm.providers import ProviderError
-from careerhub.llm.router import BENCH_AFTER, RATE_LIMIT_WAIT_SECONDS
+from careerhub.llm.router import BENCH_AFTER, RATE_LIMIT_WAIT_SECONDS, RateLimit
 
 LOCAL = Destination.LOCAL
 CLOUD = Destination.CLOUD
@@ -136,3 +136,34 @@ def test_a_success_resets_the_failure_count() -> None:
         with pytest.raises(ProviderError):
             router.complete(_ASK, "flaky")
     assert router.complete(_ASK, "flaky").text == "ok"
+
+
+def test_calls_are_spaced_to_the_per_minute_limit() -> None:
+    now = [100.0]
+    waits: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        waits.append(seconds)
+        now[0] += seconds
+
+    router = Router(
+        [FakeProvider("free")],
+        sleep=sleep,
+        clock=lambda: now[0],
+        limits={"free": RateLimit(per_minute=6)},
+    )
+    router.complete(_ASK, "free")
+    now[0] += 4  # 4 s passed on their own; 10 s are required between calls
+    router.complete(LLMRequest(prompt="again", tier=PrivacyTier.PUBLIC), "free")
+    assert waits == [pytest.approx(6.0)]
+
+
+def test_the_daily_cap_stops_calls_and_says_the_rest_waits() -> None:
+    free = FakeProvider("free")
+    router = Router([free], sleep=lambda _: None, limits={"free": RateLimit(per_day=2)})
+    for n in range(2):
+        router.complete(LLMRequest(prompt=f"p{n}", tier=PrivacyTier.PUBLIC), "free")
+    with pytest.raises(ProviderError) as caught:
+        router.complete(LLMRequest(prompt="p3", tier=PrivacyTier.PUBLIC), "free")
+    assert "waits for tomorrow" in caught.value.reason
+    assert len(free.requests) == 2

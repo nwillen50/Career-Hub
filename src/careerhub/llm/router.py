@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 
 from careerhub.llm.cache import ResponseCache
 from careerhub.llm.cost import CostLog
@@ -34,6 +35,14 @@ from careerhub.llm.types import LLMRequest, LLMResponse, PrivacyTier
 BENCH_AFTER = 3
 #: Seconds to wait before retrying a call the provider rate limited (HTTP 429).
 RATE_LIMIT_WAIT_SECONDS = 20.0
+
+
+@dataclass(frozen=True)
+class RateLimit:
+    """A provider's request limits (a free tier allows only a few a minute and a day)."""
+
+    per_minute: int | None = None
+    per_day: int | None = None
 
 
 class PrivacyViolation(Exception):
@@ -69,6 +78,8 @@ class Router:
         cache: ResponseCache | None = None,
         costs: CostLog | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        limits: dict[str, RateLimit] | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         """Register providers by name (duplicates are an error).
 
@@ -77,6 +88,10 @@ class Router:
         self._cache = cache
         self._costs = costs
         self._sleep = sleep
+        self._clock = clock
+        self._limits = limits or {}
+        self._sent: dict[str, int] = {}
+        self._last_sent: dict[str, float] = {}
         self._failures: dict[str, int] = {}
         #: Providers skipped because they were down, rate limited, or over budget ("name: Type").
         self.skipped: list[str] = []
@@ -131,6 +146,7 @@ class Router:
             raise ProviderError(
                 f"{name}: benched", f"skipped for this run after {BENCH_AFTER} failures in a row"
             )
+        self._pace(name)
         try:
             try:
                 response = provider.complete(request)
@@ -150,3 +166,24 @@ class Router:
             raise
         self._failures[name] = 0
         return response
+
+    def _pace(self, name: str) -> None:
+        """Keep to the provider's limits: space calls out, and stop at the daily cap.
+
+        The daily count is per run (a Router lives for one nightly run), so it stops a first big
+        run; a provider's own 429 handling covers anything the count misses.
+        """
+        limit = self._limits.get(name)
+        if limit is None:
+            return
+        if limit.per_day is not None and self._sent.get(name, 0) >= limit.per_day:
+            raise ProviderError(
+                f"{name}: daily limit",
+                f"daily limit of {limit.per_day} requests reached; the rest waits for tomorrow",
+            )
+        if limit.per_minute is not None and name in self._last_sent:
+            wait = 60.0 / limit.per_minute - (self._clock() - self._last_sent[name])
+            if wait > 0:
+                self._sleep(wait)
+        self._last_sent[name] = self._clock()
+        self._sent[name] = self._sent.get(name, 0) + 1
