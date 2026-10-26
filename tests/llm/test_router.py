@@ -138,7 +138,6 @@ def test_a_success_resets_the_failure_count() -> None:
     assert router.complete(_ASK, "flaky").text == "ok"
 
 
-<<<<<<< HEAD
 def test_calls_are_spaced_to_the_per_minute_limit() -> None:
     now = [100.0]
     waits: list[float] = []
@@ -168,7 +167,8 @@ def test_the_daily_cap_stops_calls_and_says_the_rest_waits() -> None:
         router.complete(LLMRequest(prompt="p3", tier=PrivacyTier.PUBLIC), "free")
     assert "waits for tomorrow" in caught.value.reason
     assert len(free.requests) == 2
-=======
+
+
 def test_requests_refused_one_by_one_do_not_bench_a_healthy_provider() -> None:
     flaky = _Flaky([ProviderError("x", "HTTP 400", 400)] * BENCH_AFTER)
     router = Router([flaky])
@@ -176,7 +176,6 @@ def test_requests_refused_one_by_one_do_not_bench_a_healthy_provider() -> None:
         with pytest.raises(ProviderError):
             router.complete(_ASK, "flaky")
     assert router.complete(_ASK, "flaky").text == "ok"
->>>>>>> ch-216-prefilter
 
 
 def test_a_retry_after_429_counts_against_the_daily_cap() -> None:
