@@ -209,6 +209,7 @@ def models_check(
     store: KeyStore,
     sessions: Any,
     client: Any = None,
+    local_running: Callable[[], bool] = ollama_is_running,
 ) -> int:
     """Send one tiny public call to each configured model and print OK or the short reason.
 
@@ -223,6 +224,9 @@ def models_check(
     from careerhub.llm.setup import build_router
     from careerhub.llm.types import LLMRequest, PrivacyTier
 
+    # The built-in models (switched on by a stored key) come from the catalog, as for routes;
+    # without this only hand-written providers were checked (CH-217).
+    settings = with_catalog(settings, store, local_running).settings
     setup = build_router(settings, store, sessions, client)
     router: Router = setup.router
     failed = bool(setup.problems)
