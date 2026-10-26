@@ -248,7 +248,11 @@ def assess_filters(
 
 
 #: Words in a listed location that may mean the job can be done from your places (CH-216).
-_REMOTE_HINTS = re.compile(r"remote|hybrid|anywhere|work from home|distributed|flexible", re.I)
+_REMOTE_HINTS = re.compile(
+    r"remote|hybrid|anywhere|work from home|distributed|flexible|multiple|various|nationwide"
+    r"|worldwide|global|north america|americas|emea|apac|\bus\b|\busa\b|united states",
+    re.I,
+)
 
 
 def prefilter(
