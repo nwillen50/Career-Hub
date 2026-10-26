@@ -48,7 +48,7 @@ from careerhub.modules.jobs import (
 from careerhub.modules.jobs.adapters import ADAPTERS
 from careerhub.modules.jobs.applications import mark_ghosted
 from careerhub.modules.jobs.extract import extract_and_save
-from careerhub.modules.jobs.filters import assess_filters
+from careerhub.modules.jobs.filters import assess_filters, prefilter
 from careerhub.modules.jobs.scoring import (
     ScoringError,
     current_rank_adjustments,
@@ -290,6 +290,13 @@ def _understand_and_rank(
     epoch = profile_epoch(session, settings, doc, preferences) if readiness.on else None
     for job in jobs:
         try:
+            if (
+                extract_routes
+                and not job.structured_fields.get("fields")
+                and prefilter(session, job, constraints, aliases)
+            ):
+                report.filtered_out += 1  # ruled out by title, company or place; no model needed
+                continue
             if (
                 extract_routes
                 and not budget_hit

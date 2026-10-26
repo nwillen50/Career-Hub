@@ -245,3 +245,36 @@ def assess_filters(
     assessment.filter_results = {"reasons": result.reasons, "uncertain": result.uncertain}
     session.commit()
     return assessment
+
+
+#: Words in a listed location that may mean the job can be done from your places (CH-216).
+_REMOTE_HINTS = re.compile(r"remote|hybrid|anywhere|work from home|distributed|flexible", re.I)
+
+
+def prefilter(
+    session: Session,
+    job: Job,
+    constraints: HardConstraints,
+    aliases: Mapping[str, str] | None = None,
+) -> Assessment | None:
+    """Rule a job out *before* any model reads it, from its title, company and listed location.
+
+    Returns the saved failing `Assessment`, or None when the job must be read first. Only
+    the cheap, certain rules run: an excluded company, an excluded title word, and a listed
+    location that is outside every wanted place and doesn't mention remote or hybrid. Anything
+    unsure passes on to extraction, so a good job is never dropped for a guess.
+    """
+    pre = constraints.model_copy(update={"min_salary_usd": None, "hide_no_visa_abroad": False})
+    if not job.location or _REMOTE_HINTS.search(job.location):
+        pre = pre.model_copy(update={"locations": []})
+    result = apply_filters(job, None, pre, None, aliases)
+    if result.passed:
+        return None
+    assessment = session.scalars(select(Assessment).where(Assessment.job_id == job.id)).first()
+    if assessment is None:
+        assessment = Assessment(job_id=job.id)
+        session.add(assessment)
+    assessment.filter_passed = False
+    assessment.filter_results = {"reasons": result.reasons, "uncertain": [], "prefiltered": True}
+    session.commit()
+    return assessment

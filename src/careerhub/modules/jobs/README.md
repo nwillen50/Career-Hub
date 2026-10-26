@@ -117,6 +117,12 @@ visa sponsorship, and deadline and lists every miss. File format and scoring rul
 check). A job is rejected only when a known fact breaks a rule; missing information passes. See
 [ADR-0016](../../../../docs/decisions/0016-hard-filters-and-assessment.md).
 
+`prefilter(session, job, constraints)` (CH-216) runs before extraction, with no model: only an
+excluded company, an excluded title word, or a listed place outside every wanted place (and not
+remote/hybrid/anywhere, or missing) rule a job out. It saves the failing `Assessment` with
+`prefiltered: true`, and the nightly run never sends that posting to a model. Anything unsure
+goes on to extraction.
+
 ## Scoring
 
 `score_job(session, router, job, profile_doc, rubric, routes)` has the model rate each rubric

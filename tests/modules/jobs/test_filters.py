@@ -12,7 +12,7 @@ from careerhub.core.secrets import new_database_key
 from careerhub.core.storage import open_engine, session_factory
 from careerhub.modules.jobs import NormalizedJob, store_jobs
 from careerhub.modules.jobs.extract import JobFields
-from careerhub.modules.jobs.filters import apply_filters, assess_filters
+from careerhub.modules.jobs.filters import apply_filters, assess_filters, prefilter
 from careerhub.profile.models import HardConstraints
 
 
@@ -253,3 +253,38 @@ def test_your_own_aliases_are_added_to_the_built_in_ones() -> None:
 def test_the_plain_city_substring_check_is_unchanged() -> None:
     constraints = HardConstraints(locations=["Boston, MA"], remote_ok=False)
     assert apply_filters(job(location="Greater Boston Area"), None, constraints).passed
+
+
+def _stored(session: Session, title: str, location: str | None, company: str = "Acme") -> Job:
+    source = session.scalars(select(Source)).first()
+    if source is None:
+        source = Source(kind="greenhouse", name="s", url="u", status="approved")
+        session.add(source)
+        session.commit()
+    store_jobs(session, source, [NormalizedJob(company, title, title, "u", location)])
+    return session.scalars(select(Job).where(Job.title == title)).one()
+
+
+def test_prefilter_rules_out_an_excluded_title_before_any_model_reads_it(session: Session) -> None:
+    saved = _stored(session, "Senior Engineer", "Boston, MA")
+    result = prefilter(session, saved, HardConstraints(excluded_title_words=["senior"]))
+    assert result is not None and not result.filter_passed
+    assert result.filter_results["prefiltered"] is True
+
+
+def test_prefilter_rules_out_a_clearly_distant_place(session: Session) -> None:
+    saved = _stored(session, "Analyst", "Berlin, Germany")
+    assert prefilter(session, saved, HardConstraints(locations=["Boston, MA"])) is not None
+
+
+@pytest.mark.parametrize("where", ["Remote - US", "Hybrid, Paris", "Anywhere", None])
+def test_prefilter_keeps_jobs_that_remote_or_missing_places_could_save(
+    session: Session, where: str | None
+) -> None:
+    saved = _stored(session, "Analyst", where)
+    assert prefilter(session, saved, HardConstraints(locations=["Boston, MA"])) is None
+
+
+def test_prefilter_ignores_salary_and_passes_a_good_job(session: Session) -> None:
+    saved = _stored(session, "Analyst", "Boston, MA")
+    assert prefilter(session, saved, HardConstraints(min_salary_usd=200_000)) is None
