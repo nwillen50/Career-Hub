@@ -5,12 +5,15 @@ import pytest
 from careerhub.llm import (
     Destination,
     LLMRequest,
+    LLMResponse,
     PrivacyTier,
     PrivacyViolation,
     Router,
     UnknownProvider,
 )
 from careerhub.llm.fake import FakeProvider
+from careerhub.llm.providers import ProviderError
+from careerhub.llm.router import BENCH_AFTER, RATE_LIMIT_WAIT_SECONDS, RateLimit
 
 LOCAL = Destination.LOCAL
 CLOUD = Destination.CLOUD
@@ -81,3 +84,104 @@ def test_fake_provider_replays_scripted_replies_and_records_requests() -> None:
 
 def test_tiers_order_from_public_to_sensitive() -> None:
     assert PrivacyTier.PUBLIC < PrivacyTier.PERSONAL < PrivacyTier.SENSITIVE
+
+
+class _Flaky(FakeProvider):
+    """Fails with the scripted errors first, then answers."""
+
+    def __init__(self, errors: list[ProviderError]) -> None:
+        super().__init__("flaky")
+        self.errors = errors
+        self.calls = 0
+
+    def complete(self, request: LLMRequest) -> LLMResponse:
+        self.calls += 1
+        if self.errors:
+            raise self.errors.pop(0)
+        return super().complete(request)
+
+
+_ASK = LLMRequest(prompt="hi", tier=PrivacyTier.PUBLIC)
+
+
+def test_a_rate_limited_call_waits_and_retries_once() -> None:
+    waits: list[float] = []
+    flaky = _Flaky([ProviderError("x", "HTTP 429 (busy)", 429)])
+    router = Router([flaky], sleep=waits.append)
+    assert router.complete(_ASK, "flaky").text == "ok"
+    assert waits == [RATE_LIMIT_WAIT_SECONDS] and flaky.calls == 2
+
+
+def test_a_provider_failing_three_calls_in_a_row_is_benched_for_the_run() -> None:
+    flaky = _Flaky([ProviderError("x", "request failed (ReadTimeout)")] * 10)
+    router = Router([flaky], sleep=lambda _: None)
+    for _ in range(BENCH_AFTER):
+        with pytest.raises(ProviderError):
+            router.complete(_ASK, "flaky")
+    assert flaky.calls == BENCH_AFTER
+    with pytest.raises(ProviderError, match="benched"):
+        router.complete(_ASK, "flaky")
+    assert flaky.calls == BENCH_AFTER  # not called again
+
+
+def test_a_success_resets_the_failure_count() -> None:
+    flaky = _Flaky([ProviderError("x", "boom")] * 2)
+    router = Router([flaky])
+    for _ in range(2):
+        with pytest.raises(ProviderError):
+            router.complete(_ASK, "flaky")
+    router.complete(_ASK, "flaky")
+    flaky.errors = [ProviderError("x", "boom")] * 2
+    for _ in range(2):
+        with pytest.raises(ProviderError):
+            router.complete(_ASK, "flaky")
+    assert router.complete(_ASK, "flaky").text == "ok"
+
+
+def test_calls_are_spaced_to_the_per_minute_limit() -> None:
+    now = [100.0]
+    waits: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        waits.append(seconds)
+        now[0] += seconds
+
+    router = Router(
+        [FakeProvider("free")],
+        sleep=sleep,
+        clock=lambda: now[0],
+        limits={"free": RateLimit(per_minute=6)},
+    )
+    router.complete(_ASK, "free")
+    now[0] += 4  # 4 s passed on their own; 10 s are required between calls
+    router.complete(LLMRequest(prompt="again", tier=PrivacyTier.PUBLIC), "free")
+    assert waits == [pytest.approx(6.0)]
+
+
+def test_the_daily_cap_stops_calls_and_says_the_rest_waits() -> None:
+    free = FakeProvider("free")
+    router = Router([free], sleep=lambda _: None, limits={"free": RateLimit(per_day=2)})
+    for n in range(2):
+        router.complete(LLMRequest(prompt=f"p{n}", tier=PrivacyTier.PUBLIC), "free")
+    with pytest.raises(ProviderError) as caught:
+        router.complete(LLMRequest(prompt="p3", tier=PrivacyTier.PUBLIC), "free")
+    assert "waits for tomorrow" in caught.value.reason
+    assert len(free.requests) == 2
+
+
+def test_requests_refused_one_by_one_do_not_bench_a_healthy_provider() -> None:
+    flaky = _Flaky([ProviderError("x", "HTTP 400", 400)] * BENCH_AFTER)
+    router = Router([flaky])
+    for _ in range(BENCH_AFTER):
+        with pytest.raises(ProviderError):
+            router.complete(_ASK, "flaky")
+    assert router.complete(_ASK, "flaky").text == "ok"
+
+
+def test_a_retry_after_429_counts_against_the_daily_cap() -> None:
+    flaky = _Flaky([ProviderError("x", "HTTP 429 (busy)", 429)])
+    router = Router([flaky], sleep=lambda _: None, limits={"flaky": RateLimit(per_day=2)})
+    router.complete(_ASK, "flaky")  # one call, two real requests
+    with pytest.raises(ProviderError) as caught:
+        router.complete(LLMRequest(prompt="next", tier=PrivacyTier.PUBLIC), "flaky")
+    assert "waits for tomorrow" in caught.value.reason

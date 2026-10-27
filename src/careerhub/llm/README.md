@@ -28,6 +28,10 @@ See [ADR-0003](../../../docs/decisions/0003-router-contract.md).
 - Every `LLMRequest` must state its tier; there is no default.
 - `Router.complete(request, provider_name)` checks the tier *before* the provider sees the
   request, and a refusal never falls back to another provider.
+- A rate-limited call (HTTP 429) waits 20 seconds and is retried once. A provider that fails 3
+  calls in a row is benched for the rest of the run (logged once), so a big night does not wait
+  out a timeout on every posting before falling back (CH-216). Providers with `requests_per_minute` / `requests_per_day` (the Gemini free preset has
+  both) are paced to them, and a provider at its daily cap raises "the rest waits for tomorrow".
 - Tests use `FakeProvider`. No test makes a network call.
 
 ## Validated output
