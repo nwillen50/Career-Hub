@@ -296,3 +296,19 @@ def test_prefilter_ignores_salary_and_passes_a_good_job(session: Session) -> Non
 def test_prefilter_keeps_a_bare_city_when_a_country_is_wanted(session: Session) -> None:
     saved = _stored(session, "Analyst", "Munich")
     assert prefilter(session, saved, HardConstraints(locations=["Germany"])) is None
+
+
+@pytest.mark.parametrize(
+    ("listed", "wanted"),
+    [
+        ("Zürich, Switzerland", "Zurich, Switzerland"),
+        ("São Paulo, Brazil", "Sao Paulo, Brazil"),
+        ("Montréal, QC", "Montreal, QC"),
+        ("Zurich, Switzerland", "Zürich, Switzerland"),
+    ],
+)
+def test_prefilter_ignores_accents_when_matching_places(
+    session: Session, listed: str, wanted: str
+) -> None:
+    saved = _stored(session, "Analyst", listed)
+    assert prefilter(session, saved, HardConstraints(locations=[wanted])) is None

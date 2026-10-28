@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from careerhub.core.models import Assessment, Job
 from careerhub.core.names import company_key
 from careerhub.modules.jobs.extract import JobFields
-from careerhub.modules.jobs.places import country_matches, parse_places
+from careerhub.modules.jobs.places import country_matches, fold, parse_places
 from careerhub.modules.jobs.visa import visa_flag
 from careerhub.profile.eligibility import Eligibility, rank
 from careerhub.profile.models import HardConstraints
@@ -88,7 +88,7 @@ def _title_matches(excluded: list[str], title: str) -> tuple[list[str], list[str
 
 def _aliases(city: str, extra: list[str]) -> set[str]:
     """Return the other names for `city`: the built-in metro groups plus the user's own."""
-    names = {" ".join(name.lower().split()) for name in extra}
+    names = {" ".join(fold(name).split()) for name in extra}
     for group in BUILT_IN_PLACES:
         if city in group:
             names.update(group)
@@ -98,7 +98,7 @@ def _aliases(city: str, extra: list[str]) -> set[str]:
 
 def _city(place: str) -> str:
     """Return the city part of "Boston, MA" in lowercase."""
-    return " ".join(place.split(",")[0].lower().split())
+    return " ".join(fold(place.split(",")[0]).split())
 
 
 def _mode_switched_off(constraints: HardConstraints, mode: str) -> str | None:
@@ -123,7 +123,7 @@ def _location_ok(
         return True, ""  # a remote job passes from anywhere
     if not job_places:
         return None, "no location was found for this job"
-    places = [" ".join(place.lower().split()) for place in job_places]
+    places = [" ".join(fold(place).split()) for place in job_places]
     read_places = parse_places(job_places)
     for wanted in constraints.locations:
         if country_matches(
