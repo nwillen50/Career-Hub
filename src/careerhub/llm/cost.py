@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -38,6 +39,17 @@ class Price:
 def month_start(now: datetime) -> datetime:
     """Return midnight UTC on the first day of `now`'s month."""
     return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+#: Provider daily quotas (Google's, notably) reset at midnight Pacific time.
+QUOTA_ZONE = ZoneInfo("America/Los_Angeles")
+
+
+def quota_day_start(now: datetime) -> datetime:
+    """Return when the quota day containing `now` began: midnight Pacific, as a UTC time."""
+    local = now.astimezone(QUOTA_ZONE)
+    start = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    return start.astimezone(UTC)
 
 
 class CostLog:
@@ -100,6 +112,17 @@ class CostLog:
                 )
             )
         return float(total or 0.0)
+
+    def calls_today(self, provider_name: str, now: datetime | None = None) -> int:
+        """Count the calls logged for `provider_name` since the quota day began."""
+        start = quota_day_start(now or utcnow())
+        with self._sessions() as session:
+            total = session.scalar(
+                select(func.count())
+                .select_from(LLMUsage)
+                .where(LLMUsage.provider == provider_name, LLMUsage.created_at >= start)
+            )
+        return int(total or 0)
 
     def check_budget(self, provider: Provider, essential: bool) -> None:
         """Raise `BudgetExceeded` if a cloud call would run past the budget.

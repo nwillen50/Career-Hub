@@ -13,7 +13,7 @@ from careerhub.llm import (
 )
 from careerhub.llm.fake import FakeProvider
 from careerhub.llm.providers import ProviderError
-from careerhub.llm.router import BENCH_AFTER, RATE_LIMIT_WAIT_SECONDS, RateLimit
+from careerhub.llm.router import BENCH_AFTER, BENCH_SECONDS, RATE_LIMIT_WAIT_SECONDS, RateLimit
 
 LOCAL = Destination.LOCAL
 CLOUD = Destination.CLOUD
@@ -112,7 +112,7 @@ def test_a_rate_limited_call_waits_and_retries_once() -> None:
     assert waits == [RATE_LIMIT_WAIT_SECONDS] and flaky.calls == 2
 
 
-def test_a_provider_failing_three_calls_in_a_row_is_benched_for_the_run() -> None:
+def test_a_provider_failing_three_calls_in_a_row_is_benched() -> None:
     flaky = _Flaky([ProviderError("x", "request failed (ReadTimeout)")] * 10)
     router = Router([flaky], sleep=lambda _: None)
     for _ in range(BENCH_AFTER):
@@ -122,6 +122,31 @@ def test_a_provider_failing_three_calls_in_a_row_is_benched_for_the_run() -> Non
     with pytest.raises(ProviderError, match="benched"):
         router.complete(_ASK, "flaky")
     assert flaky.calls == BENCH_AFTER  # not called again
+
+
+def test_a_benched_provider_is_tried_again_after_the_bench_ends() -> None:
+    now = [0.0]
+    flaky = _Flaky([ProviderError("x", "request failed (ReadTimeout)")] * BENCH_AFTER)
+    router = Router([flaky], sleep=lambda _: None, clock=lambda: now[0])
+    for _ in range(BENCH_AFTER):
+        with pytest.raises(ProviderError):
+            router.complete(_ASK, "flaky")
+    now[0] += BENCH_SECONDS + 1
+    assert router.complete(_ASK, "flaky").text == "ok"
+
+
+def test_a_failed_test_call_benches_the_provider_again_at_once() -> None:
+    now = [0.0]
+    flaky = _Flaky([ProviderError("x", "request failed (ReadTimeout)")] * (BENCH_AFTER + 1))
+    router = Router([flaky], sleep=lambda _: None, clock=lambda: now[0])
+    for _ in range(BENCH_AFTER):
+        with pytest.raises(ProviderError):
+            router.complete(_ASK, "flaky")
+    now[0] += BENCH_SECONDS + 1
+    with pytest.raises(ProviderError):
+        router.complete(_ASK, "flaky")
+    with pytest.raises(ProviderError, match="benched"):
+        router.complete(_ASK, "flaky")
 
 
 def test_a_success_resets_the_failure_count() -> None:

@@ -14,7 +14,7 @@ on its own, so a privacy rule can't be bypassed by "retry elsewhere".
 
 Two things keep a big run from hammering a provider that can't answer (CH-216): a rate-limited
 call (HTTP 429) waits and is retried once, and a provider that fails `BENCH_AFTER` calls in a
-row is benched for the rest of this Router's life (one nightly run), so 1,500 postings don't each
+row is benched for `BENCH_SECONDS`, then tried once more, so 1,500 postings don't each
 wait out a timeout before falling back to the next model.
 """
 
@@ -33,6 +33,8 @@ from careerhub.llm.types import LLMRequest, LLMResponse, PrivacyTier
 
 #: Consecutive failures after which a provider is skipped for the rest of the run.
 BENCH_AFTER = 3
+#: How long a benched provider is skipped before one call is allowed to test it again.
+BENCH_SECONDS = 600.0
 #: Seconds to wait before retrying a call the provider rate limited (HTTP 429).
 RATE_LIMIT_WAIT_SECONDS = 20.0
 
@@ -97,6 +99,8 @@ class Router:
         self._sent: dict[str, int] = {}
         self._last_sent: dict[str, float] = {}
         self._failures: dict[str, int] = {}
+        self._benched_at: dict[str, float] = {}
+        self._seeded: set[str] = set()
         #: Providers skipped because they were down, rate limited, or over budget ("name: Type").
         self.skipped: list[str] = []
         self._providers: dict[str, Provider] = {}
@@ -147,9 +151,11 @@ class Router:
         """Call `provider`, retrying once after a 429 and benching it after repeated failures."""
         name = provider.name
         if self._failures.get(name, 0) >= BENCH_AFTER:
-            raise ProviderError(
-                f"{name}: benched", f"skipped for this run after {BENCH_AFTER} failures in a row"
-            )
+            if self._clock() - self._benched_at[name] < BENCH_SECONDS:
+                raise ProviderError(
+                    f"{name}: benched", f"skipped for a while after {BENCH_AFTER} failures in a row"
+                )
+            self._failures[name] = BENCH_AFTER - 1  # try once; one more failure benches it again
         self._pace(name)
         try:
             try:
@@ -165,10 +171,12 @@ class Router:
                 raise  # this posting was refused (too long, ...); the model itself is fine
             self._failures[name] = self._failures.get(name, 0) + 1
             if self._failures[name] == BENCH_AFTER:
+                self._benched_at[name] = self._clock()
                 logging.getLogger("careerhub.llm").warning(
-                    "model %s failed %d times in a row; skipped for the rest of this run",
+                    "model %s failed %d times in a row; skipped for %d seconds",
                     name,
                     BENCH_AFTER,
+                    int(BENCH_SECONDS),
                 )
             raise
         self._failures[name] = 0
@@ -177,12 +185,16 @@ class Router:
     def _pace(self, name: str) -> None:
         """Keep to the provider's limits: space calls out, and stop at the daily cap.
 
-        The daily count is per run (a Router lives for one nightly run), so it stops a first big
-        run; a provider's own 429 handling covers anything the count misses.
+        The daily count starts from the calls already logged today (earlier runs count), so a
+        second run the same day does not spend the quota again.
         """
         limit = self._limits.get(name)
         if limit is None:
             return
+        if name not in self._seeded:
+            self._seeded.add(name)
+            if self._costs is not None:
+                self._sent[name] = self._costs.calls_today(name)
         if limit.per_day is not None and self._sent.get(name, 0) >= limit.per_day:
             raise ProviderError(
                 f"{name}: daily limit",
