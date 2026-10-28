@@ -12,6 +12,7 @@ The original text is always kept in `Place.text`; nothing is stored or changed o
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -229,6 +230,12 @@ def parse_places(texts: Iterable[str]) -> list[Place]:
     return places
 
 
+def fold(text: str) -> str:
+    """Lowercase `text` and drop accents, so "Zürich" and "Zurich" compare equal."""
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).lower()
+
+
 def country_matches(wanted: str, places: Iterable[Place]) -> bool:
     """Say whether `wanted` ("Germany", "DE", "Munich, Germany") names a country some place is in.
 
@@ -241,7 +248,7 @@ def country_matches(wanted: str, places: Iterable[Place]) -> bool:
     for place in places:
         if place.country != target.country:
             continue
-        if target.city is not None and (place.city or "").lower() != target.city.lower():
+        if target.city is not None and fold(place.city or "") != fold(target.city):
             continue
         if target.region is not None and place.region != target.region:
             continue

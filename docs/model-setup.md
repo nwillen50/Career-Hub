@@ -6,7 +6,7 @@ Expected cost: a few dollars a month at most (tailoring is about 15 cents).
 
 | Task | Sees | Models, in order |
 | --- | --- | --- |
-| `extract` (postings into fields) | Public data | `gemini-free`, then `local-8b` |
+| `extract` (postings into fields) | Public data | `gemini-free`, then `claude-haiku` if its key is set, then `local-8b` |
 | `score` (rubric ratings) | Your profile | `claude-haiku`, then `claude-sonnet` |
 | `tailor` (resume notes) | Your profile and resume | `claude-haiku`, then `local-8b` |
 | `profile_extract` | Your resume and transcript | `claude-haiku`, then `local-8b` |
@@ -38,8 +38,12 @@ send anything personal to it, and the settings below never route it there.
 
 ## When something is unavailable
 
-- Gemini's key is missing, or its free-tier rate limit is hit: extraction falls through to the
-  local model, and the nightly report lists "fell back past a model (gemini-free: ProviderError, Nx)".
+- Gemini's key is missing, or its free-tier rate limit is hit: extraction waits and retries a
+  429 once, paces itself to the free tier (8 requests a minute, 250 a day; change them with
+  `requests_per_minute` and `requests_per_day`), stops at the daily cap ("daily limit of 250
+  requests reached; the rest waits for tomorrow"), and a model that fails 3 calls in a row is
+  skipped for the rest of the run. Extraction falls through to the next model in the list (Haiku
+  if you added its key, a few cents per hundred postings read, then the local model), and the nightly report lists "fell back past a model (gemini-free: ProviderError, Nx)".
 - Haiku is paused by the monthly budget: tailoring and profile extraction use the local model;
   scoring is essential and keeps running up to the budget ceiling in ADR-0020.
 - The local model is not running: the task reports a problem and is skipped; nothing crashes.

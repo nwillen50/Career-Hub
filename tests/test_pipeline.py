@@ -101,7 +101,11 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
 def test_the_whole_pipeline_runs_and_writes_the_page(env: Any) -> None:
     engine, data = env
     report = run_nightly(engine, InMemoryKeyStore(), SETTINGS, handler(), NOW)
-    assert (report.sources_ok, report.new_jobs, report.extracted) == (1, 2, 2)
+    assert (report.sources_ok, report.new_jobs, report.extracted) == (
+        1,
+        2,
+        1,
+    )  # the Senior job is prefiltered
     assert (report.filtered_out, report.scored, report.problems) == (1, 1, [])
     page = (data / "shortlist" / "index.html").read_text(encoding="utf-8")
     assert "ML Engineer, New Grad" in page and "Good fit." in page
@@ -288,9 +292,41 @@ def test_scoring_and_tailoring_wait_until_the_profile_is_switched_on(env: Any) -
     engine, data = env
     (data / "profile" / "ready.json").unlink()
     report = run_nightly(engine, InMemoryKeyStore(), SETTINGS, handler(), NOW)
-    assert report.extracted == 2 and report.scored == 0 and report.tailored == 0
+    assert report.extracted == 1 and report.scored == 0 and report.tailored == 0
     assert any("scoring starts when your profile is ready" in n for n in report.notes)
     assert "Note: scoring starts" in report.summary()
     assert report.filtered_out == 1  # filtering still ran
     page = (data / "shortlist" / "index.html").read_text(encoding="utf-8")
     assert "Scoring starts when your profile is ready" in page
+
+
+def test_a_prefiltered_job_is_never_sent_to_a_model(env: Any) -> None:
+    engine, _ = env
+    prompts: list[str] = []
+    inner = handler()
+
+    def spy(request: httpx.Request) -> httpx.Response:
+        if request.url.host != "boards-api.greenhouse.io":
+            prompts.append(json.loads(request.content)["messages"][-1]["content"])
+        return inner._transport.handle_request(request)  # type: ignore[attr-defined,no-any-return]
+
+    client = httpx.Client(transport=httpx.MockTransport(spy))
+    report = run_nightly(engine, InMemoryKeyStore(), SETTINGS, client, NOW)
+    assert report.filtered_out == 1
+    assert prompts and not any("Senior Sales Director" in p for p in prompts)
+
+
+def test_extraction_reads_target_companies_first_then_the_newest() -> None:
+    from careerhub.core.models import Company
+    from careerhub.pipeline import extraction_order
+
+    def make(id: int, company: str, day: int) -> Job:
+        return Job(
+            id=id,
+            company=Company(name=company, name_key=company.lower()),
+            first_seen_at=datetime(2026, 10, day, tzinfo=UTC),
+        )
+
+    jobs = [make(1, "Other", 25), make(2, "Acme", 1), make(3, "Acme", 20), make(4, "Other", 5)]
+    ordered = extraction_order(jobs, {"acme"}, {})
+    assert [j.id for j in ordered] == [3, 2, 1, 4]

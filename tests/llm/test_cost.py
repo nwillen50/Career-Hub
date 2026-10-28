@@ -24,6 +24,7 @@ from careerhub.llm import (
 from careerhub.llm.cache import ResponseCache
 from careerhub.llm.cost import month_start
 from careerhub.llm.fake import FakeProvider
+from careerhub.llm.providers import ProviderError
 
 PRICES = {"cloud": Price(input_per_mtok=1.0, output_per_mtok=5.0)}
 
@@ -113,3 +114,30 @@ def test_budget_setting_defaults_and_rejects_negative() -> None:
 
 def test_utcnow_is_what_the_log_uses() -> None:
     assert utcnow().tzinfo is not None
+
+
+def test_the_quota_day_begins_at_midnight_pacific() -> None:
+    from careerhub.llm.cost import quota_day_start
+
+    # 02:00 UTC on Oct 28 is 7 p.m. Oct 27 in Pacific time (PDT), so the day began Oct 27 07:00 UTC.
+    assert quota_day_start(datetime(2026, 10, 28, 2, 0, tzinfo=UTC)) == datetime(
+        2026, 10, 27, 7, 0, tzinfo=UTC
+    )
+    assert quota_day_start(datetime(2026, 10, 28, 9, 0, tzinfo=UTC)) == datetime(
+        2026, 10, 28, 7, 0, tzinfo=UTC
+    )
+
+
+def test_a_second_run_the_same_day_counts_the_calls_of_the_first(
+    sessions: sessionmaker[Session],
+) -> None:
+    from careerhub.llm.router import RateLimit
+
+    limits = {"cloud": RateLimit(per_day=2)}
+    costs = CostLog(sessions, 100.0, PRICES)
+    first = Router([cloud()], costs=costs, limits=limits, sleep=lambda _: None)
+    for n in range(2):
+        first.complete(ask(f"p{n}"), "cloud")
+    second = Router([cloud()], costs=CostLog(sessions, 100.0, PRICES), limits=limits)
+    with pytest.raises(ProviderError, match="daily limit"):
+        second.complete(ask("p9"), "cloud")
