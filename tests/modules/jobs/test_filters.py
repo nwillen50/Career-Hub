@@ -312,3 +312,22 @@ def test_prefilter_ignores_accents_when_matching_places(
 ) -> None:
     saved = _stored(session, "Analyst", listed)
     assert prefilter(session, saved, HardConstraints(locations=[wanted])) is None
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    [
+        "",
+        "(" * 5000,
+        "A" * 200_000 + ", MA",
+        "Boston, MA\x00‮<script>alert(1)</script>",
+        "((((a+)+)+)+)+$, ZZ",
+        "́́́, MA",
+    ],
+)
+def test_filters_survive_hostile_listed_locations(hostile: str) -> None:
+    constraints = HardConstraints(
+        locations=["Boston, MA", "(x+)+"], excluded_title_words=["senior"]
+    )
+    result = apply_filters(job(title="Senior (x+)+ ‮ Engineer", location=hostile), None, constraints)
+    assert isinstance(result.passed, bool)
