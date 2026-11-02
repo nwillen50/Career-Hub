@@ -230,10 +230,15 @@ def parse_places(texts: Iterable[str]) -> list[Place]:
     return places
 
 
+# Letters that Unicode does not split into a base letter plus an accent, so NFKD alone leaves them.
+_NO_DECOMPOSITION = str.maketrans({"ł": "l", "ø": "o", "đ": "d", "ß": "ss", "æ": "ae", "œ": "oe"})
+
+
 def fold(text: str) -> str:
-    """Lowercase `text` and drop accents, so "Zürich" and "Zurich" compare equal."""
-    decomposed = unicodedata.normalize("NFKD", text)
-    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).lower()
+    """Lowercase `text` and drop accents: "Zürich" equals "Zurich", "Łódź" equals "Lodz"."""
+    decomposed = unicodedata.normalize("NFKD", text.lower())
+    stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    return stripped.translate(_NO_DECOMPOSITION)
 
 
 def country_matches(wanted: str, places: Iterable[Place]) -> bool:
