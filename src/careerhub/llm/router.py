@@ -154,7 +154,8 @@ class Router:
     def _call(self, provider: Provider, request: LLMRequest) -> LLMResponse:
         """Call `provider`, retrying once after a 429 and benching it after repeated failures."""
         name = provider.name
-        probing = self._failures.get(name, 0) >= BENCH_AFTER
+        before = self._failures.get(name, 0)
+        probing = before >= BENCH_AFTER
         if probing and self._clock() - self._benched_at[name] < BENCH_SECONDS:
             raise ProviderError(
                 f"{name}: benched", f"skipped for a while after {BENCH_AFTER} failures in a row"
@@ -174,6 +175,8 @@ class Router:
                 self._pace(name)  # the retry is a real request: count it against the limits
                 response = self._send(provider, request)
         except DailyLimitReached:
+            if probing:
+                self._failures[name] = before  # the test call never finished; keep the bench
             raise  # running out of quota says nothing about whether the model is healthy
         except ProviderError as error:
             if error.status in _REQUEST_SPECIFIC:

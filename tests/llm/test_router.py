@@ -279,3 +279,23 @@ def test_a_database_error_while_counting_todays_calls_is_retried_and_logged(
     assert "database is locked" in caplog.text
     with pytest.raises(ProviderError, match="daily limit"):
         router.complete(LLMRequest(prompt="again", tier=PrivacyTier.PUBLIC), "free")
+
+
+def test_a_test_call_that_hits_the_cap_on_its_retry_leaves_the_bench_in_place() -> None:
+    """CH-222 review: a 429 on the test call, then the cap, must not lift the bench."""
+    now = [0.0]
+    errors = [ProviderError("x", "timeout")] * BENCH_AFTER + [ProviderError("x", "429", 429)] * 5
+    flaky = _Flaky(errors)
+    router = Router(
+        [flaky],
+        sleep=lambda _: None,
+        clock=lambda: now[0],
+        limits={"flaky": RateLimit(per_day=BENCH_AFTER + 1)},
+    )
+    for _ in range(BENCH_AFTER):
+        with pytest.raises(ProviderError):
+            router.complete(_ASK, "flaky")
+    now[0] += BENCH_SECONDS + 1
+    with pytest.raises(ProviderError):
+        router.complete(_ASK, "flaky")
+    assert router._failures["flaky"] >= BENCH_AFTER
