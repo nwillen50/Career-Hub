@@ -34,7 +34,9 @@ See [ADR-0003](../../../docs/decisions/0003-router-contract.md).
   `requests_per_minute` / `requests_per_day` (the Gemini free preset has both) are paced to them.
   The daily count includes the calls logged earlier today (the quota day starts at midnight
   Pacific), so a second run does not spend the quota again; at the cap a provider raises "the
-  rest waits for tomorrow".
+  rest waits for tomorrow". Failed requests (429, timeout) are logged as zero-cost rows, because
+  they used quota too (CH-222). Hitting the cap never counts as a failure and never benches or
+  un-benches a provider; if the count can't be read, a warning is logged and it is read again.
 - Tests use `FakeProvider`. No test makes a network call.
 
 ## Validated output

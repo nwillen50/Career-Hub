@@ -210,3 +210,72 @@ def test_a_retry_after_429_counts_against_the_daily_cap() -> None:
     with pytest.raises(ProviderError) as caught:
         router.complete(LLMRequest(prompt="next", tier=PrivacyTier.PUBLIC), "flaky")
     assert "waits for tomorrow" in caught.value.reason
+
+
+def test_hitting_the_daily_cap_on_the_retry_does_not_bench_the_provider() -> None:
+    """CH-222: running out of quota is not a provider failure."""
+    now = [0.0]
+    flaky = _Flaky([ProviderError("x", "HTTP 429 (busy)", 429)] * 10)
+    router = Router(
+        [flaky], sleep=lambda _: None, clock=lambda: now[0], limits={"flaky": RateLimit(per_day=1)}
+    )
+    for _ in range(BENCH_AFTER + 1):
+        with pytest.raises(ProviderError) as caught:
+            router.complete(_ASK, "flaky")
+        assert "daily limit" in caught.value.reason or caught.value.status == 429
+    assert router._failures.get("flaky", 0) == 0
+
+
+def test_an_expired_bench_stays_until_the_test_call_is_actually_made() -> None:
+    """CH-222: if the daily cap stops the test call, the provider is not cleared unseen."""
+    now = [0.0]
+    flaky = _Flaky([ProviderError("x", "request failed (ReadTimeout)")] * 10)
+    router = Router(
+        [flaky],
+        sleep=lambda _: None,
+        clock=lambda: now[0],
+        limits={"flaky": RateLimit(per_day=BENCH_AFTER)},
+    )
+    for _ in range(BENCH_AFTER):
+        with pytest.raises(ProviderError):
+            router.complete(_ASK, "flaky")
+    now[0] += BENCH_SECONDS + 1
+    with pytest.raises(ProviderError, match="daily limit"):
+        router.complete(_ASK, "flaky")
+    assert router._failures["flaky"] >= BENCH_AFTER  # still benched, not quietly reset
+
+
+def test_a_database_error_while_counting_todays_calls_is_retried_and_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """CH-222: a failed seed must not leave the count at 0 for the rest of the run."""
+
+    class _Costs:
+        def __init__(self) -> None:
+            self.tries = 0
+
+        def calls_today(self, name: str) -> int:
+            self.tries += 1
+            if self.tries == 1:
+                raise RuntimeError("database is locked")
+            return 5
+
+        def check_budget(self, provider: object, essential: bool) -> None:
+            pass
+
+        def record(self, provider: object, response: object) -> float:
+            return 0.0
+
+        def record_failed_attempt(self, provider: object) -> None:
+            pass
+
+    costs = _Costs()
+    router = Router(
+        [FakeProvider("free")],
+        costs=costs,  # type: ignore[arg-type]
+        limits={"free": RateLimit(per_day=5)},
+    )
+    router.complete(_ASK, "free")  # the first count failed; the call still goes ahead
+    assert "database is locked" in caplog.text
+    with pytest.raises(ProviderError, match="daily limit"):
+        router.complete(LLMRequest(prompt="again", tier=PrivacyTier.PUBLIC), "free")

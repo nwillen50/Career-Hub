@@ -17,6 +17,7 @@ from careerhub.llm import (
     CostLog,
     Destination,
     LLMRequest,
+    LLMResponse,
     Price,
     PrivacyTier,
     Router,
@@ -141,3 +142,38 @@ def test_a_second_run_the_same_day_counts_the_calls_of_the_first(
     second = Router([cloud()], costs=CostLog(sessions, 100.0, PRICES), limits=limits)
     with pytest.raises(ProviderError, match="daily limit"):
         second.complete(ask("p9"), "cloud")
+
+
+def test_failed_requests_count_toward_the_daily_cap_in_a_later_run(
+    sessions: sessionmaker[Session],
+) -> None:
+    """CH-222: a 429 or timeout still used quota, so the next run must count it."""
+    from careerhub.llm.router import RateLimit
+
+    limits = {"cloud": RateLimit(per_day=2)}
+    flaky = _FailingCloud()
+    first = Router([flaky], costs=CostLog(sessions, 100.0, PRICES), limits=limits)
+    for n in range(2):
+        with pytest.raises(ProviderError):
+            first.complete(ask(f"p{n}"), "cloud")
+    second = Router([cloud()], costs=CostLog(sessions, 100.0, PRICES), limits=limits)
+    with pytest.raises(ProviderError, match="daily limit"):
+        second.complete(ask("p9"), "cloud")
+
+
+def test_failed_requests_cost_nothing(sessions: sessionmaker[Session]) -> None:
+    costs = CostLog(sessions, 100.0, PRICES)
+    router = Router([_FailingCloud()], costs=costs)
+    with pytest.raises(ProviderError):
+        router.complete(ask(), "cloud")
+    assert costs.spent_this_month() == 0.0
+
+
+class _FailingCloud(FakeProvider):
+    """A cloud provider whose every request times out."""
+
+    def __init__(self) -> None:
+        super().__init__("cloud", Destination.CLOUD)
+
+    def complete(self, request: LLMRequest) -> LLMResponse:
+        raise ProviderError("cloud", "request failed (ReadTimeout)")

@@ -39,6 +39,10 @@ BENCH_SECONDS = 600.0
 RATE_LIMIT_WAIT_SECONDS = 20.0
 
 
+class DailyLimitReached(ProviderError):
+    """The provider's daily request cap is used up; not a sign the model is unhealthy."""
+
+
 @dataclass(frozen=True)
 class RateLimit:
     """A provider's request limits (a free tier allows only a few a minute and a day)."""
@@ -150,22 +154,27 @@ class Router:
     def _call(self, provider: Provider, request: LLMRequest) -> LLMResponse:
         """Call `provider`, retrying once after a 429 and benching it after repeated failures."""
         name = provider.name
-        if self._failures.get(name, 0) >= BENCH_AFTER:
-            if self._clock() - self._benched_at[name] < BENCH_SECONDS:
-                raise ProviderError(
-                    f"{name}: benched", f"skipped for a while after {BENCH_AFTER} failures in a row"
-                )
-            self._failures[name] = BENCH_AFTER - 1  # try once; one more failure benches it again
+        probing = self._failures.get(name, 0) >= BENCH_AFTER
+        if probing and self._clock() - self._benched_at[name] < BENCH_SECONDS:
+            raise ProviderError(
+                f"{name}: benched", f"skipped for a while after {BENCH_AFTER} failures in a row"
+            )
+        # Pace before touching the failure count: if the daily cap stops us here, an expired
+        # bench stays in place instead of being lifted without a test call (CH-222).
         self._pace(name)
+        if probing:
+            self._failures[name] = BENCH_AFTER - 1  # try once; one more failure benches it again
         try:
             try:
-                response = provider.complete(request)
+                response = self._send(provider, request)
             except ProviderError as error:
                 if error.status != 429:
                     raise
                 self._sleep(RATE_LIMIT_WAIT_SECONDS)
                 self._pace(name)  # the retry is a real request: count it against the limits
-                response = provider.complete(request)
+                response = self._send(provider, request)
+        except DailyLimitReached:
+            raise  # running out of quota says nothing about whether the model is healthy
         except ProviderError as error:
             if error.status in _REQUEST_SPECIFIC:
                 raise  # this posting was refused (too long, ...); the model itself is fine
@@ -182,6 +191,20 @@ class Router:
         self._failures[name] = 0
         return response
 
+    def _send(self, provider: Provider, request: LLMRequest) -> LLMResponse:
+        """Send one real request; a failure is logged, because it still used quota."""
+        try:
+            return provider.complete(request)
+        except ProviderError:
+            if self._costs is not None:
+                try:
+                    self._costs.record_failed_attempt(provider)
+                except Exception:  # never let bookkeeping hide the real error
+                    logging.getLogger("careerhub.llm").warning(
+                        "could not log a failed request to %s", provider.name, exc_info=True
+                    )
+            raise
+
     def _pace(self, name: str) -> None:
         """Keep to the provider's limits: space calls out, and stop at the daily cap.
 
@@ -192,11 +215,22 @@ class Router:
         if limit is None:
             return
         if name not in self._seeded:
-            self._seeded.add(name)
             if self._costs is not None:
-                self._sent[name] = self._costs.calls_today(name)
+                try:
+                    self._sent[name] = self._costs.calls_today(name)
+                except Exception:  # a locked database must not stop the run, but must be seen
+                    logging.getLogger("careerhub.llm").warning(
+                        "could not read today's request count for %s; will try again",
+                        name,
+                        exc_info=True,
+                    )
+                    self._seeded.discard(name)
+                else:
+                    self._seeded.add(name)
+            else:
+                self._seeded.add(name)
         if limit.per_day is not None and self._sent.get(name, 0) >= limit.per_day:
-            raise ProviderError(
+            raise DailyLimitReached(
                 f"{name}: daily limit",
                 f"daily limit of {limit.per_day} requests reached; the rest waits for tomorrow",
             )

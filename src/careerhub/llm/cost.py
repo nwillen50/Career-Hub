@@ -102,6 +102,25 @@ class CostLog:
             session.commit()
         return cost
 
+    def record_failed_attempt(self, provider: Provider) -> None:
+        """Log a request that failed (429, timeout, server error) as a zero-cost call.
+
+        The provider still counted it against its daily quota, so `calls_today` must too. It
+        needs no new column: a row with no tokens and no cost is a failed attempt.
+        """
+        with self._sessions() as session:
+            session.add(
+                LLMUsage(
+                    run_id=self._run_id,
+                    provider=provider.name,
+                    model=provider.model,
+                    input_tokens=0,
+                    output_tokens=0,
+                    cost_usd=0.0,
+                )
+            )
+            session.commit()
+
     def spent_this_month(self, now: datetime | None = None) -> float:
         """Total estimated dollars logged since the start of the current UTC month."""
         start = month_start(now or utcnow())
