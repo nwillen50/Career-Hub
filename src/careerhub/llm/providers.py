@@ -26,13 +26,15 @@ class ProviderError(Exception):
     """A provider call failed. The message has the status code only, never the response body.
 
     `reason` is the short, safe cause (for example "HTTP 401 (key rejected)"), without the
-    provider's name; it defaults to the message.
+    provider's name; it defaults to the message. `status` is the HTTP status code when the
+    provider replied at all (the router waits and retries once on 429).
     """
 
-    def __init__(self, message: str, reason: str | None = None) -> None:
-        """Keep the message and the short `reason` (the message itself if none is given)."""
+    def __init__(self, message: str, reason: str | None = None, status: int | None = None) -> None:
+        """Keep the message, the short `reason` (the message itself if none) and the `status`."""
         super().__init__(message)
         self.reason = reason or message
+        self.status = status
 
 
 #: What the common HTTP failures usually mean, so a failing model can be diagnosed from the log.
@@ -106,7 +108,7 @@ class _HttpProvider:
             raise ProviderError(f"{self.name}: {reason}", reason) from None
         if reply.status_code != 200:
             reason = describe_status(reply.status_code)
-            raise ProviderError(f"{self.name}: {reason}", reason)
+            raise ProviderError(f"{self.name}: {reason}", reason, reply.status_code)
         try:
             data: dict[str, Any] = reply.json()
         except ValueError:

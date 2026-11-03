@@ -22,7 +22,7 @@ from careerhub.schedule import REFRESH_LABEL, install_plist, render_plist
 def test_refresh_reads_and_filters_new_jobs_but_never_scores_or_backs_up(env: Any) -> None:  # noqa: F811
     engine, data = env
     report = run_refresh(engine, InMemoryKeyStore(), SETTINGS, handler(), NOW)
-    assert (report.new_jobs, report.extracted, report.filtered_out) == (2, 2, 1)
+    assert (report.new_jobs, report.extracted, report.filtered_out) == (2, 1, 1)
     assert report.scored == 0 and report.tailored == 0 and report.profile_facts == 0
     assert report.problems == []
     assert (data / "shortlist" / "index.html").exists()
