@@ -37,6 +37,8 @@ See [ADR-0003](../../../docs/decisions/0003-router-contract.md).
   rest waits for tomorrow". Failed requests (429, timeout) are logged as zero-cost rows, because
   they used quota too (CH-222). Hitting the cap never counts as a failure and never benches or
   un-benches a provider; if the count can't be read, a warning is logged and it is read again.
+  A model skipped for the same reason (benched, capped, busy) is logged once per run, not once
+  per posting; the run summary still counts every skip (CH-220).
 - Tests use `FakeProvider`. No test makes a network call.
 
 ## Validated output
