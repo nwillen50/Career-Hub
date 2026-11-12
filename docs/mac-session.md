@@ -151,6 +151,11 @@ Record each result on the matching ticket or ADR. Tick the box when it passes.
   reached: N postings wait for tomorrow") and the next night picks them up. Compare the cap with
   your Google AI Studio dashboard; the catalog's 8 per minute and 250 per day are estimates, so
   correct `catalog.json` if they differ.
+- [ ] Run `uv run hub nightly` a second time the same day (CH-220, CH-222). Success: the second run
+  starts from the first run's request count (failed requests included) instead of zero; the count
+  starts over at midnight Pacific, when Gemini's daily quota resets.
+- [ ] In `careerhub.log`, a model skipped for the daily cap appears once per run with its reason,
+  not once per posting; the run summary still counts every posting that waits.
 
 ## Copy buttons on Contacts (CH-204)
 
