@@ -14,8 +14,9 @@ from careerhub.cli import main
 from careerhub.core.secrets import InMemoryKeyStore
 from careerhub.core.settings import Settings
 from careerhub.llm.commands import models_check
+from careerhub.llm.fake import FakeProvider
 from careerhub.llm.providers import OpenAIProvider, ProviderError
-from careerhub.llm.router import Router
+from careerhub.llm.router import RateLimit, Router
 from careerhub.llm.types import LLMRequest, PrivacyTier
 from careerhub.llm.validated import complete_validated
 
@@ -213,3 +214,20 @@ def test_models_check_includes_the_built_in_models_switched_on_by_a_key(
     out = capsys.readouterr().out
     assert "No models are set up" not in out
     assert "claude-haiku: OK" in out
+
+
+def test_a_capped_provider_is_logged_once_per_run_not_once_per_posting(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """CH-220 item 3: 1,500 postings past a capped model must not write 1,500 warnings."""
+    free = FakeProvider("free", replies=['{"ok": true}'])
+    backup = FakeProvider("backup", replies=['{"ok": true}'])
+    router = Router([free, backup], sleep=lambda _: None, limits={"free": RateLimit(per_day=1)})
+    with caplog.at_level(logging.WARNING, logger="careerhub.llm"):
+        for n in range(5):
+            posting = LLMRequest(prompt=f"posting {n}", tier=PrivacyTier.PUBLIC)
+            complete_validated(router, posting, Answer, ["free", "backup"])
+    skips = [r for r in caplog.records if "skipped" in r.getMessage()]
+    assert len(skips) == 1
+    assert "free skipped" in skips[0].getMessage()
+    assert len(router.skipped) == 4  # every skip is still counted for the run summary

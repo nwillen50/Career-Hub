@@ -61,6 +61,9 @@ class ProviderSetting(BaseModel):
     #: Dollars per million tokens, used to estimate cost. Leave unset for local models.
     input_per_mtok: float | None = Field(default=None, ge=0)
     output_per_mtok: float | None = Field(default=None, ge=0)
+    #: Request limits the router keeps to (free tiers are small). Unset means no limit.
+    requests_per_minute: int | None = Field(default=None, ge=1)
+    requests_per_day: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="before")
     @classmethod
@@ -87,6 +90,8 @@ class PresetOverride(BaseModel):
     base_url: str | None = None
     input_per_mtok: float | None = Field(default=None, ge=0)
     output_per_mtok: float | None = Field(default=None, ge=0)
+    requests_per_minute: int | None = Field(default=None, ge=1)
+    requests_per_day: int | None = Field(default=None, ge=1)
 
     @field_validator("base_url")
     @classmethod

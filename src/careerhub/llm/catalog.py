@@ -49,6 +49,8 @@ class Preset(BaseModel):
     input_per_mtok: float | None = Field(default=None, ge=0)
     output_per_mtok: float | None = Field(default=None, ge=0)
     trains_on_data: bool
+    requests_per_minute: int | None = Field(default=None, ge=1)
+    requests_per_day: int | None = Field(default=None, ge=1)
 
 
 class Catalog(BaseModel):
@@ -107,6 +109,8 @@ def _apply_overrides(preset: Preset, settings: Settings) -> ProviderSetting:
         "trains_on_data": preset.trains_on_data,
         "input_per_mtok": preset.input_per_mtok,
         "output_per_mtok": preset.output_per_mtok,
+        "requests_per_minute": preset.requests_per_minute,
+        "requests_per_day": preset.requests_per_day,
     }
     if override is not None:
         values.update(override.model_dump(exclude_none=True))

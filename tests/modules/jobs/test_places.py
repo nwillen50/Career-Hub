@@ -78,3 +78,19 @@ def test_the_location_filter_uses_countries_and_still_rejects_others() -> None:
     assert _location_ok(constraints, ["Berlin, Germany"], None)[0] is True
     assert _location_ok(constraints, ["Boston, MA"], None)[0] is False
     assert _location_ok(constraints, ["Wilmington, DE"], None)[0] is False
+
+
+@pytest.mark.parametrize(
+    ("posting", "wanted"),
+    [
+        ("Łódź, Poland", "Lodz, Poland"),
+        ("Malmø, Sweden", "Malmo, Sweden"),
+        ("Đà Nẵng, Vietnam", "Da Nang, Vietnam"),
+        ("Straße, Germany", "Strasse, Germany"),
+    ],
+)
+def test_fold_handles_letters_without_a_decomposition(posting: str, wanted: str) -> None:
+    """Letters like Ł, ø, đ and ß have no accent to drop; they still fold (CH-221)."""
+    from careerhub.modules.jobs.places import fold
+
+    assert fold(posting) == fold(wanted)

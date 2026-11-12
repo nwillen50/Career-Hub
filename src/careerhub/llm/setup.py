@@ -27,7 +27,7 @@ from careerhub.llm.providers import (
     OpenAIProvider,
     load_api_key,
 )
-from careerhub.llm.router import Router
+from careerhub.llm.router import RateLimit, Router
 
 
 class NoRoute(Exception):
@@ -72,12 +72,15 @@ def build_router(
     providers: list[Provider] = []
     problems: list[str] = []
     prices: dict[str, Price] = {}
+    limits: dict[str, RateLimit] = {}
     for config in settings.providers:
         try:
             providers.append(_build_provider(config, store, client))
         except (MissingApiKey, ValueError) as error:
             problems.append(str(error))
             continue
+        if config.requests_per_minute or config.requests_per_day:
+            limits[config.name] = RateLimit(config.requests_per_minute, config.requests_per_day)
         if config.input_per_mtok is not None and config.output_per_mtok is not None:
             prices[config.name] = Price(config.input_per_mtok, config.output_per_mtok)
         elif config.kind != "local":
@@ -86,7 +89,12 @@ def build_router(
                 "is not counted toward the monthly budget."
             )
     costs = CostLog(sessions, settings.monthly_budget_usd, prices, run_id)
-    router = Router(providers, cache=ResponseCache(sessions, settings.cache_ttl_days), costs=costs)
+    router = Router(
+        providers,
+        cache=ResponseCache(sessions, settings.cache_ttl_days),
+        costs=costs,
+        limits=limits,
+    )
     return RouterSetup(router, tuple(p.name for p in providers), problems)
 
 
